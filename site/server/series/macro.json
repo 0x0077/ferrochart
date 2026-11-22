@@ -1,0 +1,326 @@
+{
+  "series": [
+    {
+      "name": "ustCurveFactors",
+      "description": "Treasury curve factors with symbol US10Y: level (10-year yield, percent), slope (10y minus 2y, bp) and curvature (2x5y minus 2y minus 10y, bp)",
+      "unit": "percent; bp",
+      "cols": [
+        {
+          "name": "level",
+          "track": {
+            "factor": 1,
+            "noise": 0.002
+          }
+        },
+        {
+          "name": "slope",
+          "osc": {
+            "center": 10,
+            "amp": 45,
+            "beta": 0.4
+          }
+        },
+        {
+          "name": "curvature",
+          "osc": {
+            "center": -6,
+            "amp": 14,
+            "beta": -0.2
+          }
+        }
+      ]
+    },
+    {
+      "name": "ustReal",
+      "description": "10-year real (inflation-indexed) yield with symbol US10Y",
+      "unit": "percent",
+      "cols": [
+        {
+          "name": "real",
+          "track": {
+            "factor": 0.44,
+            "noise": 0.03
+          }
+        }
+      ]
+    },
+    {
+      "name": "debtMaturities",
+      "description": "Corporate bonds maturing per period, investment grade and high yield; use interval 1y with ahead",
+      "unit": "USD bn",
+      "cols": [
+        {
+          "name": "ig",
+          "amount": {
+            "scale": 2.4,
+            "vol": 0.25
+          }
+        },
+        {
+          "name": "hy",
+          "amount": {
+            "scale": 0.75,
+            "vol": 0.35
+          }
+        }
+      ]
+    },
+    {
+      "name": "creditSpread",
+      "description": "High-yield credit spread over treasuries; widens when the symbol falls (use NQ or ES)",
+      "unit": "bp",
+      "cols": [
+        {
+          "name": "spread",
+          "level": {
+            "base": 390,
+            "vol": 0.2,
+            "beta": -0.45
+          }
+        }
+      ]
+    },
+    {
+      "name": "swapSpread",
+      "description": "10-year swap spread: swap rate minus treasury yield (use US10Y)",
+      "unit": "bp",
+      "cols": [
+        {
+          "name": "spread",
+          "osc": {
+            "center": -24,
+            "amp": 16,
+            "beta": -0.2
+          }
+        }
+      ]
+    },
+    {
+      "name": "tsyAuctionStats",
+      "description": "10-year auction statistics: bid-to-cover ratio and indirect bidder share (read them on auction days)",
+      "unit": "ratio; fraction",
+      "cols": [
+        {
+          "name": "bidToCover",
+          "osc": {
+            "center": 2.5,
+            "amp": 0.18,
+            "lo": 2.05,
+            "hi": 3.0
+          }
+        },
+        {
+          "name": "indirect",
+          "osc": {
+            "center": 0.68,
+            "amp": 0.06,
+            "lo": 0.5,
+            "hi": 0.85
+          }
+        }
+      ]
+    },
+    {
+      "name": "cbBalanceSheets",
+      "description": "Total assets of four central banks (Bank A to D); use interval 1mo",
+      "unit": "USD tn",
+      "cols": [
+        {
+          "name": "bankA",
+          "level": {
+            "base": 6.9,
+            "vol": 0.12,
+            "growth": 0.08
+          }
+        },
+        {
+          "name": "bankB",
+          "level": {
+            "base": 6.4,
+            "vol": 0.12,
+            "growth": 0.09
+          }
+        },
+        {
+          "name": "bankC",
+          "level": {
+            "base": 4.6,
+            "vol": 0.1,
+            "growth": 0.1
+          }
+        },
+        {
+          "name": "bankD",
+          "level": {
+            "base": 2.9,
+            "vol": 0.1,
+            "growth": 0.06
+          }
+        }
+      ]
+    },
+    {
+      "name": "fxCarry",
+      "description": "Total-return index of an FX carry basket, long high-yielders against funders (use USDJPY)",
+      "unit": "index",
+      "cols": [
+        {
+          "name": "index",
+          "level": {
+            "base": 100,
+            "vol": 0.04,
+            "beta": 0.7,
+            "growth": 0.05
+          }
+        }
+      ]
+    },
+    {
+      "name": "usJpRateDiff",
+      "description": "2-year yield differential, US minus Japan; leads USDJPY by a few days",
+      "unit": "percent",
+      "cols": [
+        {
+          "name": "diff",
+          "track": {
+            "factor": 0.0268,
+            "noise": 0.015,
+            "lag": -4
+          }
+        }
+      ]
+    },
+    {
+      "name": "bopFlows",
+      "description": "Balance of payments by component per quarter (use interval 1q): current account (goods, services, income) and financial account (direct, portfolio, other)",
+      "unit": "USD bn",
+      "cols": [
+        {
+          "name": "goods",
+          "osc": {
+            "center": -255,
+            "amp": 35
+          }
+        },
+        {
+          "name": "services",
+          "osc": {
+            "center": 72,
+            "amp": 10
+          }
+        },
+        {
+          "name": "income",
+          "osc": {
+            "center": 22,
+            "amp": 16
+          }
+        },
+        {
+          "name": "direct",
+          "osc": {
+            "center": -30,
+            "amp": 35
+          }
+        },
+        {
+          "name": "portfolio",
+          "osc": {
+            "center": 150,
+            "amp": 70
+          }
+        },
+        {
+          "name": "other",
+          "osc": {
+            "center": 45,
+            "amp": 55
+          }
+        }
+      ]
+    },
+    {
+      "name": "eurEffective",
+      "description": "Euro nominal and real effective exchange rates (use EURUSD), index",
+      "unit": "index",
+      "cols": [
+        {
+          "name": "neer",
+          "level": {
+            "base": 100,
+            "vol": 0.008,
+            "beta": 0.55
+          }
+        },
+        {
+          "name": "reer",
+          "level": {
+            "base": 96,
+            "vol": 0.012,
+            "beta": 0.5,
+            "growth": -0.01
+          }
+        }
+      ]
+    },
+    {
+      "name": "eurPpp",
+      "description": "EURUSD purchasing-power-parity fair value, drifting with relative inflation",
+      "unit": "USD per EUR",
+      "cols": [
+        {
+          "name": "fair",
+          "level": {
+            "base": 1.07,
+            "vol": 0.005,
+            "growth": -0.006
+          }
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "tsyAuctions",
+      "description": "10-year treasury auctions; value is the tail in bp (stop-out minus when-issued yield, negative: stop-through)",
+      "when": {
+        "every": {
+          "days": 30
+        }
+      },
+      "labels": [
+        "Tail",
+        "Stop-through"
+      ],
+      "value": {
+        "osc": {
+          "center": 0.3,
+          "amp": 1.3
+        }
+      }
+    },
+    {
+      "name": "macroReleases",
+      "description": "Macro data releases; value is the surprise (actual minus consensus) in standard deviations",
+      "when": {
+        "random": {
+          "perDay": 0.45
+        }
+      },
+      "labels": [
+        "CPI",
+        "Payrolls",
+        "GDP",
+        "PMI",
+        "Retail",
+        "Claims"
+      ],
+      "value": {
+        "flow": {
+          "scale": 1.1,
+          "beta": 0.4
+        }
+      }
+    }
+  ]
+}

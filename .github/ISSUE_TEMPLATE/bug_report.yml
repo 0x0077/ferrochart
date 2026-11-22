@@ -1,0 +1,37 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Ideally a minimal code example. Use `ferrochart_core::testing::random_walk` for data if possible.
+      render: rust
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: FerroChart version or commit
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Platform
+      description: OS, Rust version, backend (wgpu / CPU), browser and GPU if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Logs, screenshots, anything else.

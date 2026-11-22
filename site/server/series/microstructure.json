@@ -1,0 +1,168 @@
+{
+  "series": [
+    {
+      "name": "microSpread",
+      "description": "Quoted bid-ask spread of the symbol, in basis points of the mid price.",
+      "unit": "bps",
+      "cols": [
+        {
+          "name": "spread",
+          "osc": {
+            "center": 4,
+            "amp": 1.5,
+            "lo": 1,
+            "hi": 20
+          }
+        }
+      ]
+    },
+    {
+      "name": "microBookEvents",
+      "description": "Order-book activity per bar near the touch: size added by new limit orders and size cancelled (both BTC), and order flow imbalance (signed BTC, positive when bids grow or asks shrink).",
+      "unit": "BTC",
+      "cols": [
+        {
+          "name": "added",
+          "amount": {
+            "scale": 170000,
+            "vol": 0.3,
+            "beta": 0.3
+          }
+        },
+        {
+          "name": "cancelled",
+          "amount": {
+            "scale": 155000,
+            "vol": 0.3,
+            "beta": 0.35
+          }
+        },
+        {
+          "name": "ofi",
+          "flow": {
+            "scale": 20000,
+            "beta": 1.4
+          }
+        }
+      ]
+    },
+    {
+      "name": "execFills",
+      "description": "Child-order fills of an execution algorithm, quantity per bar (BTC).",
+      "unit": "BTC",
+      "cols": [
+        {
+          "name": "qty",
+          "amount": {
+            "scale": 3000,
+            "vol": 0.4,
+            "beta": 0.3
+          }
+        }
+      ]
+    },
+    {
+      "name": "execStrategy",
+      "description": "Daily results of a trading strategy: gross equity before costs (a multiple of the starting capital) and turnover (traded notional as a multiple of equity).",
+      "unit": "x capital / x equity",
+      "cols": [
+        {
+          "name": "grossEquity",
+          "level": {
+            "base": 1.45,
+            "vol": 0.08,
+            "beta": 0.2,
+            "growth": 0.45
+          }
+        },
+        {
+          "name": "turnover",
+          "amount": {
+            "scale": 0.7,
+            "vol": 0.45,
+            "beta": 0.3
+          }
+        }
+      ]
+    },
+    {
+      "name": "xexVenues",
+      "description": "The symbol's price on two other venues (Exchange B at a small premium, Exchange C lagging slightly), in the quote currency.",
+      "unit": "USD",
+      "cols": [
+        {
+          "name": "venueB",
+          "track": {
+            "factor": 1.00035,
+            "noise": 0.0004,
+            "lag": 0.2
+          }
+        },
+        {
+          "name": "venueC",
+          "track": {
+            "factor": 0.9998,
+            "noise": 0.0005,
+            "lag": 0.6
+          }
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "execSlippage",
+      "description": "Fills of an execution desk; value: slippage against the arrival mid, in basis points (positive is a cost).",
+      "when": {
+        "random": {
+          "perDay": 260
+        }
+      },
+      "labels": [],
+      "value": {
+        "osc": {
+          "center": 1.4,
+          "amp": 3.2,
+          "beta": 0.5
+        }
+      }
+    },
+    {
+      "name": "execQuoteFills",
+      "description": "Buy fills of a liquidity-taking algorithm; value: fill price against the best ask, in basis points (positive is worse than the quote).",
+      "when": {
+        "random": {
+          "perDay": 900
+        }
+      },
+      "labels": [],
+      "value": {
+        "osc": {
+          "center": 0.2,
+          "amp": 1.3,
+          "beta": 0.4
+        }
+      }
+    },
+    {
+      "name": "execBuySignals",
+      "description": "Buy signals of a strategy; value: delay from the signal to the fill, in seconds.",
+      "when": {
+        "random": {
+          "perDay": 2000
+        }
+      },
+      "labels": [
+        "Signal"
+      ],
+      "value": {
+        "osc": {
+          "center": 7,
+          "amp": 5,
+          "lo": 0.5,
+          "hi": 30
+        }
+      }
+    }
+  ]
+}

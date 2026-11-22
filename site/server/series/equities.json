@@ -1,0 +1,321 @@
+{
+  "series": [
+    {
+      "name": "eqFinancials",
+      "description": "Quarterly revenue, net income and free cash flow of a large-cap stock",
+      "unit": "USD per quarter",
+      "cols": [
+        {"name": "revenue", "level": {"base": 2.4e10, "vol": 0.05, "beta": 0.15, "growth": 0.08}},
+        {"name": "netIncome", "level": {"base": 5.4e9, "vol": 0.1, "beta": 0.3, "growth": 0.1}},
+        {"name": "fcf", "level": {"base": 4.8e9, "vol": 0.16, "beta": 0.25, "growth": 0.09}}
+      ]
+    },
+    {
+      "name": "eqEps",
+      "description": "Quarterly EPS: consensus estimate before the report and the surprise of the reported figure (fraction of the estimate)",
+      "unit": "USD per share; fraction",
+      "cols": [
+        {"name": "estimate", "level": {"base": 2.45, "vol": 0.04, "beta": 0.2, "growth": 0.1}},
+        {"name": "surprise", "osc": {"center": 0.025, "amp": 0.045, "lo": -0.15, "hi": 0.2}}
+      ]
+    },
+    {
+      "name": "eqValuation",
+      "description": "Trailing twelve-month earnings per share (price / this = trailing P/E)",
+      "unit": "USD per share",
+      "cols": [
+        {"name": "epsTtm", "level": {"base": 9.4, "vol": 0.07, "beta": 0.15, "growth": 0.1}}
+      ]
+    },
+    {
+      "name": "eqTargets",
+      "description": "Analyst 12-month price targets: high, mean and low",
+      "unit": "USD",
+      "cols": [
+        {"name": "high", "track": {"factor": 1.3, "noise": 0.006, "lag": 30}},
+        {"name": "mean", "track": {"factor": 1.12, "noise": 0.006, "lag": 30}},
+        {"name": "low", "track": {"factor": 0.88, "noise": 0.006, "lag": 30}}
+      ]
+    },
+    {
+      "name": "eqSegments",
+      "description": "Quarterly revenue by business segment",
+      "unit": "USD per quarter",
+      "cols": [
+        {"name": "cloud", "level": {"base": 9.5e9, "vol": 0.05, "beta": 0.1, "growth": 0.2}},
+        {"name": "software", "level": {"base": 6.8e9, "vol": 0.04, "beta": 0.05, "growth": 0.07}},
+        {"name": "devices", "level": {"base": 4.6e9, "vol": 0.09, "beta": 0.15, "growth": -0.03}},
+        {"name": "services", "level": {"base": 3.1e9, "vol": 0.05, "growth": 0.1}}
+      ]
+    },
+    {
+      "name": "eqMargins",
+      "description": "Quarterly gross, operating and net margin",
+      "unit": "fraction of revenue",
+      "cols": [
+        {"name": "gross", "osc": {"center": 0.64, "amp": 0.02, "beta": 0.1, "lo": 0.5, "hi": 0.75}},
+        {"name": "operating", "osc": {"center": 0.32, "amp": 0.03, "beta": 0.2, "lo": 0.15, "hi": 0.45}},
+        {"name": "net", "osc": {"center": 0.24, "amp": 0.03, "beta": 0.2, "lo": 0.1, "hi": 0.35}}
+      ]
+    },
+    {
+      "name": "eqRevisions",
+      "description": "Consensus next-fiscal-year EPS and the number of analyst estimate raises and cuts per week",
+      "unit": "USD per share; count per week",
+      "cols": [
+        {"name": "consensus", "level": {"base": 10.4, "vol": 0.03, "beta": 0.25}},
+        {"name": "raises", "amount": {"scale": 0.5, "vol": 0.55, "beta": 0.3}},
+        {"name": "cuts", "amount": {"scale": 0.35, "vol": 0.6, "beta": 0.3}}
+      ]
+    },
+    {
+      "name": "eqDividend",
+      "description": "Quarterly dividend per share and its earnings coverage (EPS / dividend)",
+      "unit": "USD per share; multiple",
+      "cols": [
+        {"name": "dps", "level": {"base": 0.72, "vol": 0.01, "growth": 0.07}},
+        {"name": "coverage", "osc": {"center": 2.7, "amp": 0.45, "beta": 0.2, "lo": 1.1}}
+      ]
+    },
+    {
+      "name": "eqShortInterest",
+      "description": "Short interest as a fraction of free float and the annualised stock borrow fee",
+      "unit": "fraction",
+      "cols": [
+        {"name": "shortFloat", "osc": {"center": 0.095, "amp": 0.03, "beta": -0.4, "lo": 0.02, "hi": 0.3}},
+        {"name": "borrowFee", "osc": {"center": 0.02, "amp": 0.01, "beta": -0.4, "lo": 0.003, "hi": 0.2}}
+      ]
+    },
+    {
+      "name": "eqGuidance",
+      "description": "Quarterly revenue guidance (midpoint and half-width as a fraction) and the reported revenue",
+      "unit": "USD per quarter; fraction",
+      "cols": [
+        {"name": "mid", "level": {"base": 2.42e10, "vol": 0.012, "growth": 0.08}},
+        {"name": "width", "osc": {"center": 0.022, "amp": 0.006, "lo": 0.01, "hi": 0.04}},
+        {"name": "actual", "level": {"base": 2.45e10, "vol": 0.018, "growth": 0.08}}
+      ]
+    },
+    {
+      "name": "eqBuyback",
+      "description": "Quarterly share repurchases and shares outstanding",
+      "unit": "USD per quarter; shares",
+      "cols": [
+        {"name": "repurchased", "amount": {"scale": 3.4e7, "vol": 0.35}},
+        {"name": "shares", "level": {"base": 1.45e9, "vol": 0.004, "growth": -0.014}}
+      ]
+    },
+    {
+      "name": "eqQuality",
+      "description": "Quarterly net income, operating cash flow and total assets",
+      "unit": "USD",
+      "cols": [
+        {"name": "netIncome", "level": {"base": 5.4e9, "vol": 0.1, "beta": 0.3, "growth": 0.09}},
+        {"name": "cfo", "level": {"base": 6.1e9, "vol": 0.14, "beta": 0.2, "growth": 0.09}},
+        {"name": "assets", "level": {"base": 9.2e10, "vol": 0.03, "growth": 0.06}}
+      ]
+    },
+    {
+      "name": "eqBreadth",
+      "description": "Net advancing issues (advancers minus decliners) of a broad stock market, per day",
+      "unit": "issues",
+      "cols": [
+        {"name": "net", "flow": {"scale": 420, "beta": 1.1}}
+      ]
+    },
+    {
+      "name": "cnAuction",
+      "description": "Opening call auction feed: indicative match price change vs previous close, matched volume and unmatched imbalance (buy positive)",
+      "unit": "fraction; shares",
+      "cols": [
+        {"name": "gap", "osc": {"center": 0.006, "amp": 0.008, "lo": -0.05, "hi": 0.05}},
+        {"name": "matched", "amount": {"scale": 1.2e8, "vol": 0.5}},
+        {"name": "imbalance", "walk": {"scale": 4e5}}
+      ]
+    },
+    {
+      "name": "cnMoneyFlow",
+      "description": "Daily net inflow by order size: extra-large, large, medium and small orders",
+      "unit": "CNY",
+      "cols": [
+        {"name": "xl", "flow": {"scale": 9e7, "beta": 1.3}},
+        {"name": "large", "flow": {"scale": 6e7, "beta": 0.8}},
+        {"name": "medium", "flow": {"scale": 5e7, "beta": -0.4}},
+        {"name": "small", "flow": {"scale": 8e7, "beta": -1.1}}
+      ]
+    },
+    {
+      "name": "cnConnect",
+      "description": "Daily net buying of A-shares through the cross-border stock connect",
+      "unit": "CNY",
+      "cols": [
+        {"name": "net", "flow": {"scale": 4.5e9, "beta": 0.9}}
+      ]
+    },
+    {
+      "name": "cnLimits",
+      "description": "Market-wide limit-up and limit-down counts and the failed limit-up rate (touched the limit but closed below it)",
+      "unit": "stocks; fraction",
+      "cols": [
+        {"name": "limitUp", "osc": {"center": 58, "amp": 26, "beta": 0.9, "lo": 8, "hi": 220}},
+        {"name": "limitDown", "osc": {"center": 14, "amp": 12, "beta": -0.9, "lo": 0, "hi": 180}},
+        {"name": "failRate", "prob": {"center": -0.9, "amp": 0.45, "beta": -0.25}}
+      ]
+    },
+    {
+      "name": "cnSentiment",
+      "description": "Market breadth inputs: advancing stocks (of about 5,300), limit-up count and the highest consecutive limit-up streak",
+      "unit": "stocks; days",
+      "cols": [
+        {"name": "advancers", "osc": {"center": 2650, "amp": 950, "beta": 0.9, "lo": 150, "hi": 5150}},
+        {"name": "limitUp", "osc": {"center": 60, "amp": 25, "beta": 0.8, "lo": 8, "hi": 220}},
+        {"name": "streak", "osc": {"center": 5, "amp": 2, "beta": 0.5, "lo": 2, "hi": 13}}
+      ]
+    },
+    {
+      "name": "cnMargin",
+      "description": "Market-wide margin financing balance and securities lending balance",
+      "unit": "CNY",
+      "cols": [
+        {"name": "financing", "level": {"base": 1.56e12, "vol": 0.05, "beta": 0.7}},
+        {"name": "lending", "level": {"base": 8.8e10, "vol": 0.15, "beta": -0.2}}
+      ]
+    },
+    {
+      "name": "cnConvertible",
+      "description": "A convertible bond's conversion premium (over conversion value) and bond-floor premium (over its straight-bond value)",
+      "unit": "fraction",
+      "cols": [
+        {"name": "conversion", "level": {"base": 0.22, "vol": 0.25, "beta": -2.2}},
+        {"name": "bondFloor", "level": {"base": 0.14, "vol": 0.25, "beta": 2.2}}
+      ]
+    },
+    {
+      "name": "cnWarrants",
+      "description": "Registered warehouse receipts of a futures contract",
+      "unit": "tonnes",
+      "cols": [
+        {"name": "receipts", "level": {"base": 1.8e5, "vol": 0.3, "beta": -0.6}}
+      ]
+    },
+    {
+      "name": "fundCefPrice",
+      "description": "A listed fund: net asset value per share and the premium (+) or discount (-) of its market price to NAV, as a fraction",
+      "unit": "USD; fraction",
+      "cols": [
+        {"name": "nav", "track": {"factor": 0.01, "noise": 0.001}},
+        {"name": "premium", "osc": {"center": -0.012, "amp": 0.022, "beta": 0.3, "lo": -0.12, "hi": 0.1}}
+      ]
+    },
+    {
+      "name": "fundTracker",
+      "description": "An index (the symbol's price) and the NAV of a fund tracking it at about 1/10 of the index",
+      "unit": "index points; USD",
+      "cols": [
+        {"name": "index", "track": {"factor": 1, "noise": 0}},
+        {"name": "nav", "track": {"factor": 0.1, "noise": 0.0004}}
+      ]
+    },
+    {
+      "name": "fundGrowthNav",
+      "description": "Net asset value per share of an actively managed growth fund",
+      "unit": "USD",
+      "cols": [
+        {"name": "nav", "level": {"base": 3.2, "vol": 0.12, "beta": 0.85, "growth": 0.04}}
+      ]
+    },
+    {
+      "name": "fundHoldings",
+      "description": "Quarterly portfolio weights of a fund's five largest holdings",
+      "unit": "fraction of net assets",
+      "cols": [
+        {"name": "stockA", "osc": {"center": 0.08, "amp": 0.012, "lo": 0.01, "hi": 0.1}},
+        {"name": "stockB", "osc": {"center": 0.066, "amp": 0.012, "lo": 0.01, "hi": 0.1}},
+        {"name": "stockC", "osc": {"center": 0.055, "amp": 0.012, "lo": 0.01, "hi": 0.1}},
+        {"name": "stockD", "osc": {"center": 0.046, "amp": 0.012, "lo": 0.01, "hi": 0.1}},
+        {"name": "stockE", "osc": {"center": 0.038, "amp": 0.012, "lo": 0.01, "hi": 0.1}}
+      ]
+    },
+    {
+      "name": "fundUnits",
+      "description": "Fund shares outstanding (rise on subscriptions, fall on redemptions)",
+      "unit": "shares",
+      "cols": [
+        {"name": "shares", "level": {"base": 4.2e9, "vol": 0.18, "beta": -0.5}}
+      ]
+    },
+    {
+      "name": "fundTotalReturn",
+      "description": "Total-return index of the symbol: price plus reinvested dividends, about 100 today",
+      "unit": "index points",
+      "cols": [
+        {"name": "value", "level": {"base": 100, "vol": 0.01, "beta": 1, "growth": 0.09}}
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "eqDividends",
+      "description": "Quarterly cash dividend ex-dates, amount per share",
+      "when": {"every": {"days": 91}},
+      "labels": ["Dividend"],
+      "value": {"level": {"base": 0.72, "vol": 0.0, "growth": 0.07}}
+    },
+    {
+      "name": "eqBuybackAnnouncements",
+      "description": "Share repurchase authorisations, amount in USD",
+      "when": {"random": {"perDay": 0.004}},
+      "labels": ["Buyback"],
+      "value": {"amount": {"scale": 1.5e10, "vol": 0.4}}
+    },
+    {
+      "name": "eqSplits",
+      "description": "Stock splits (value: new shares per old share)",
+      "when": {"every": {"days": 700}},
+      "labels": ["Split"],
+      "value": {"osc": {"center": 3, "amp": 0, "lo": 2, "hi": 4}}
+    },
+    {
+      "name": "eqInsider",
+      "description": "Insider open-market trades, signed value in USD (buy positive)",
+      "when": {"random": {"perDay": 0.09}},
+      "labels": ["Buy", "Sell"],
+      "value": {"flow": {"scale": 2.5e6, "beta": -0.6}}
+    },
+    {
+      "name": "eqEarnings",
+      "description": "Earnings reports on the days of large moves; value is the EPS surprise as a fraction",
+      "when": {"move": {"z": 2.8}},
+      "labels": ["Beat", "Miss"],
+      "value": {"osc": {"center": 0.01, "amp": 0.05, "beta": 1.2}}
+    },
+    {
+      "name": "cnBlockTrades",
+      "description": "Block trades: premium (positive) or discount to the day's close as a fraction; label is the buying branch",
+      "when": {"random": {"perDay": 0.07}},
+      "labels": ["Branch A", "Branch B", "Branch C", "Branch D", "Institution"],
+      "value": {"osc": {"center": -0.04, "amp": 0.035, "lo": -0.1, "hi": 0.06}}
+    },
+    {
+      "name": "cnUnlocks",
+      "description": "Lock-up expiries of restricted shares, market value unlocked in CNY",
+      "when": {"every": {"days": 40}},
+      "labels": ["Unlock"],
+      "value": {"amount": {"scale": 6e8, "vol": 0.8}}
+    },
+    {
+      "name": "cnIpos",
+      "description": "New listings: first-day return as a fraction of the offer price",
+      "when": {"random": {"perDay": 0.4}},
+      "labels": ["IPO"],
+      "value": {"osc": {"center": 1.15, "amp": 0.95, "beta": 0.3, "lo": -0.6, "hi": 6}}
+    },
+    {
+      "name": "fundManagerChanges",
+      "description": "Days a fund's portfolio manager changed",
+      "when": {"every": {"days": 620}},
+      "labels": ["New manager"],
+      "value": {"osc": {"center": 1, "amp": 0}}
+    }
+  ]
+}

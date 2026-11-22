@@ -1,0 +1,66 @@
+{
+  "series": [
+    {
+      "name": "clBasis",
+      "description": "Front-month crude futures minus physical spot (use CL); negative: backwardation",
+      "unit": "USD per barrel",
+      "cols": [
+        { "name": "basis", "osc": { "center": -0.5, "amp": 1.1, "beta": -0.4 } }
+      ]
+    },
+    {
+      "name": "cotCrude",
+      "description": "Weekly net futures positions by trader category (use CL, interval 1w); producers and merchants are the rest",
+      "unit": "contracts",
+      "cols": [
+        { "name": "managedMoney", "osc": { "center": 210000, "amp": 85000, "beta": 0.5 } },
+        { "name": "swapDealers", "osc": { "center": -140000, "amp": 40000, "beta": -0.2 } },
+        { "name": "otherReportables", "osc": { "center": 25000, "amp": 20000 } }
+      ]
+    },
+    {
+      "name": "clInventory",
+      "description": "Commercial crude oil inventories (use CL, interval 1w); fall when the price rises",
+      "unit": "million barrels",
+      "cols": [
+        { "name": "stocks", "level": { "base": 432, "vol": 0.035, "beta": -0.12 } }
+      ]
+    },
+    {
+      "name": "freight",
+      "description": "Dry bulk freight index (points) and the soybean export price spread, origin B minus origin A FOB (USD per tonne); use ZS",
+      "unit": "points; USD per tonne",
+      "cols": [
+        { "name": "index", "level": { "base": 1750, "vol": 0.35, "beta": 0.3 } },
+        { "name": "spread", "osc": { "center": 6, "amp": 14, "beta": 0.3 } }
+      ]
+    },
+    {
+      "name": "powerLoad",
+      "description": "Daily average power demand, wind and solar output of a grid (use NG, interval 1d)",
+      "unit": "GW",
+      "cols": [
+        { "name": "load", "level": { "base": 54, "vol": 0.07, "beta": 0.05 } },
+        { "name": "wind", "level": { "base": 12, "vol": 0.3 } },
+        { "name": "solar", "level": { "base": 7, "vol": 0.3 } }
+      ]
+    },
+    {
+      "name": "euaBalance",
+      "description": "Weekly carbon allowance balance, supply minus verified emissions (use EUA, interval 1w); a deficit lifts the price",
+      "unit": "Mt CO2",
+      "cols": [
+        { "name": "balance", "flow": { "scale": 0.55, "beta": -0.6 } }
+      ]
+    },
+    {
+      "name": "tempAnomaly",
+      "description": "Daily population-weighted temperature anomaly against the seasonal normal (use NG, interval 1d); cold lifts gas",
+      "unit": "°F",
+      "cols": [
+        { "name": "anomaly", "osc": { "center": 0, "amp": 5, "beta": -0.5 } }
+      ]
+    }
+  ],
+  "events": []
+}

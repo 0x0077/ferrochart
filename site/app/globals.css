@@ -1,0 +1,250 @@
+@import "tailwindcss";
+
+/* Design tokens: Tailwind utilities such as bg-bg, text-muted, border-line,
+   font-mono and ease-spring come from these. A light page (warm white, dark
+   ink) with dark charts, like screens on paper: `chart` and the `on-chart`
+   colors are for the dark islands (charts, card images, code). */
+@theme {
+  --color-bg: #f8f7f4;
+  --color-ink: #0d0f14;
+  --color-muted: #5b6270;
+  --color-faint: #8a909c;
+  --color-line: rgb(13 15 20 / 0.09);
+  --color-glass: rgb(255 255 255 / 0.8);
+  --color-chart: #13161c;
+  --color-on-chart: #d6dae2;
+  --color-on-chart-muted: #8b94a5;
+  --color-chart-line: rgb(255 255 255 / 0.08);
+  --color-up: #2ee6b6;
+  --color-down: #ff5d73;
+  --color-brand: #ff7a3d;
+  --font-sans: "Inter", "SF Pro Display", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.15);
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  /* The viewer: one column below tab, list + chart from tab, three columns from desk. */
+  --breakpoint-tab: 861px;
+  --breakpoint-desk: 1181px;
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    line-height: 1.55;
+  }
+  ::selection { background: rgb(76 201 240 / 0.25); }
+  body.viewer-open { overflow: hidden; }
+  h1, h2, h3 { @apply font-semibold; letter-spacing: -0.035em; }
+}
+
+/* What utilities cannot say well: animations, the stacked-card geometry
+   driven by --i, and the classes the imperative stage sets. */
+@layer components {
+  .glow {
+    background: linear-gradient(100deg, #0aa57f 0%, #1d8fd8 35%, #7a4dff 65%, #f2611f 100%) 0 0 / 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: sheen 9s ease-in-out infinite alternate;
+  }
+
+  /* A category's accent as text on the light page: darkened for contrast. */
+  .accent-ink { color: color-mix(in srgb, var(--accent) 60%, var(--color-ink)); }
+
+  .scroll-wheel { animation: wheel 1.8s var(--ease-soft) infinite; }
+
+  /* Stacked cards: card i is pushed back, turned and dimmed (--rest, set
+     per card in Library.tsx); on hover the top card lifts and the others
+     fan out to the lower right (--fan). */
+  .card {
+    transform: var(--rest);
+    filter: brightness(calc(1 - var(--i) * 0.28)) saturate(calc(1 - var(--i) * 0.2));
+    z-index: calc(10 - var(--i));
+    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.6s var(--ease-soft), box-shadow 0.6s, border-color 0.3s;
+  }
+  .stack:hover .card, .stack:focus-visible .card {
+    transform: var(--fan);
+    filter: brightness(calc(1 - var(--i) * 0.14));
+  }
+  .stack:hover .card.top, .stack:focus-visible .card.top {
+    border-color: var(--accent);
+    box-shadow: 0 40px 80px -30px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+  .shimmer::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 30%, rgb(255 255 255 / 0.05) 50%, transparent 70%) -200% 0 / 200% 100%;
+    animation: shimmer 1.8s linear infinite;
+  }
+
+  .live-dot::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-up);
+    box-shadow: 0 0 10px var(--color-up);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  /* Viewer opening and closing (data-state on #viewer). With a card to grow
+     out of (data-motion="grow"), the panel is clipped by lib/reveal.js
+     instead of fading; it stays invisible until that starts. */
+  .viewer .backdrop { opacity: 0; transition: opacity 0.5s var(--ease-soft); }
+  .viewer .panel { opacity: 0; transform: translateY(24px) scale(0.97); transition: opacity 0.5s var(--ease-soft), transform 0.6s var(--ease-spring); }
+  .viewer[data-state="open"] .backdrop { opacity: 1; }
+  .viewer[data-state="open"] .panel { opacity: 1; transform: none; }
+  .viewer .panel[data-motion="grow"] { transform: none; transition: none; will-change: clip-path; }
+  .viewer[data-phase="closing"] .panel[data-motion="grow"] { opacity: 1; }
+
+  /* The rest of the viewer arrives after the chart is drawn (data-shell). */
+  .shell-rail, .shell-head, .shell-hint {
+    transition: opacity 0.5s ease 0.1s, transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s;
+  }
+  .panel[data-shell="off"] .shell-rail { opacity: 0; transform: translateX(-28px); }
+  .panel[data-shell="off"] .shell-head { opacity: 0; transform: translateY(-10px); }
+  .panel[data-shell="off"] .shell-hint { opacity: 0; }
+  .panel[data-shell="off"] .code-drawer { visibility: hidden; }
+
+  /* The code drawer over the right of the chart. */
+  .code-drawer { transition: opacity 0.3s ease, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .code-drawer[data-open="off"] { opacity: 0; transform: translateX(24px); pointer-events: none; }
+
+  .layer-in { animation: layer-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+  /* Set by lib/stage.js and lib/dissolve.js: a surface the stage owns (it
+     moves to the details layer), one slot per chart. */
+  .stage-surface { position: absolute; inset: 0; }
+  .stage-slot {
+    position: absolute;
+    inset: 0;
+    transition: opacity 0.7s var(--ease-soft), filter 0.9s var(--ease-soft), transform 0.9s var(--ease-soft);
+  }
+  .stage-slot.entering { opacity: 0; filter: blur(10px); transform: scale(0.985); }
+  .stage-slot.leaving { opacity: 0; transition: none; }
+  .stage-slot canvas.chart { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* A chart with a side plot (lib/engine.js): the plot's canvas on the right. */
+  .stage-slot canvas.chart[data-side="main"] { width: var(--main-share); }
+  .stage-slot canvas.chart[data-side="plot"] { left: var(--main-share); width: calc(100% - var(--main-share)); }
+  .stage-surface .dust, .stage-surface .intact { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+  .stage-slot .error { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; padding: 24px; color: var(--color-on-chart-muted); text-align: center; }
+
+  /* Code highlighting (lib/highlight.js), on dark code blocks. */
+  .tok-k { color: #ff7ab2; }
+  .tok-s { color: #a5e075; }
+  .tok-n { color: #ffb547; }
+  .tok-c { color: #7c8596; font-style: italic; }
+  .tok-f { color: #6ad1ff; }
+  .prose-code code { font: 12.5px var(--font-mono); color: var(--color-ink); background: rgb(13 15 20 / 0.05); border-radius: 5px; padding: 1px 5px; }
+
+  /* Long lists: off-screen items skip layout and paint. */
+  .lazy-item { content-visibility: auto; contain-intrinsic-size: auto 190px; }
+
+  /* app/thumb: one chart filling the page, for the card images. */
+  .thumb-page, .thumb-page body { height: 100%; margin: 0; overflow: hidden; background: var(--color-chart); }
+  .thumb-canvas { display: block; width: 100vw; height: 100vh; }
+  .thumb-canvas[data-side] { float: left; }
+  .thumb-canvas[data-side="main"] { width: var(--main-share); }
+  .thumb-canvas[data-side="plot"] { width: calc(100vw - var(--main-share)); }
+}
+
+/* "All charts" over the chart area: the list goes, the chart area widens.
+   Outside the layers: it overrides utilities (display, grid columns). */
+@media (width >= 861px) {
+  .panel[data-all="on"] > .shell-rail { display: none; }
+  .panel[data-all="on"] > header, .panel[data-all="on"] > .chart-area { grid-column: 1 / -1; }
+}
+
+@keyframes sheen { to { background-position: 100% 0; } }
+@keyframes wheel { 60% { transform: translateY(12px); opacity: 0; } 100% { opacity: 0; } }
+@keyframes shimmer { to { background-position: 200% 0; } }
+@keyframes pulse { 50% { opacity: 0.35; } }
+@keyframes layer-in { from { opacity: 0; transform: translateY(8px) scale(0.99); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: 0.01s !important; }
+}
+
+/* Documentation articles (lib/docs.ts renders the user guide). */
+@layer components {
+  .doc { max-width: 76ch; color: var(--color-ink); font-size: 16px; line-height: 1.7; }
+  .doc h1 { font-size: clamp(32px, 3.4vw, 44px); line-height: 1.1; letter-spacing: -0.035em; margin: 0 0 24px; }
+  .doc h2 { font-size: 24px; letter-spacing: -0.02em; margin: 52px 0 14px; scroll-margin-top: 88px; }
+  .doc h3 { font-size: 18px; letter-spacing: -0.01em; margin: 36px 0 10px; scroll-margin-top: 88px; }
+  .doc h2, .doc h3 { position: relative; }
+  .doc .anchor { position: absolute; left: -1.1em; color: var(--color-faint); opacity: 0; text-decoration: none; font-weight: 400; }
+  .doc h2:hover .anchor, .doc h3:hover .anchor { opacity: 1; }
+  .doc p, .doc ul, .doc ol { margin: 0 0 16px; color: #2f3440; }
+  .doc ul, .doc ol { padding-left: 1.3em; }
+  .doc ul { list-style: disc; }
+  .doc ol { list-style: decimal; }
+  .doc li { margin: 4px 0; }
+  .doc li::marker { color: var(--color-faint); }
+  .doc a { color: var(--color-ink); text-decoration: underline; text-decoration-color: rgb(13 15 20 / 0.25); text-underline-offset: 3px; }
+  .doc a:hover { text-decoration-color: var(--color-ink); }
+  .doc strong { font-weight: 600; color: var(--color-ink); }
+  .doc :not(pre) > code { font: 0.86em var(--font-mono); background: rgb(13 15 20 / 0.055); border-radius: 5px; padding: 1.5px 5px; }
+  .doc blockquote { margin: 0 0 20px; padding: 14px 18px; border: 1px solid var(--color-line); border-left: 3px solid var(--color-ink); border-radius: 10px; background: #fff; }
+  .doc blockquote p:last-child { margin: 0; }
+  .doc .code { position: relative; margin: 0 0 20px; border-radius: 14px; background: var(--color-chart); border: 1px solid var(--color-chart-line); }
+  .doc .code pre { margin: 0; padding: 18px 20px; overflow-x: auto; font: 13px/1.7 var(--font-mono); color: var(--color-on-chart); }
+  .doc .code .lang { position: absolute; top: 9px; right: 64px; font: 11px var(--font-mono); color: var(--color-on-chart-muted); }
+  .doc .code .copy { position: absolute; top: 6px; right: 8px; padding: 2px 8px; border-radius: 6px; font: 11px var(--font-mono); color: var(--color-on-chart-muted); cursor: pointer; }
+  .doc .code .copy:hover { color: var(--color-on-chart); background: rgb(255 255 255 / 0.1); }
+  .doc .table { margin: 0 0 20px; overflow-x: auto; border: 1px solid var(--color-line); border-radius: 12px; background: #fff; }
+  .doc table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .doc th, .doc td { padding: 9px 14px; border-bottom: 1px solid var(--color-line); text-align: left; vertical-align: top; }
+  .doc th { font-weight: 600; background: rgb(13 15 20 / 0.025); }
+  .doc tr:last-child td { border-bottom: 0; }
+  .doc hr { border: 0; border-top: 1px solid var(--color-line); margin: 40px 0; }
+  .docs-menu summary::-webkit-details-marker { display: none; }
+}
+
+/* API reference */
+@layer components {
+  .doc .api-kind { margin: 0 0 -0.6em; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-faint); }
+  .doc .api-sig { margin: 0.6em 0 0.9em; }
+  .doc .api-sig pre { white-space: pre-wrap; overflow-wrap: anywhere; padding-right: 3.5em; }
+  .doc .api-sig a, .doc .api-type a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
+  .doc .api-sig a:hover, .doc .api-type a:hover { text-decoration-color: currentColor; }
+  .doc h3 > code { font-size: 0.95em; }
+  .doc .api-type { white-space: pre-wrap; font-size: 12.5px; }
+  .doc .api-props td:nth-child(2) { min-width: 150px; }
+  .doc .api-props td:first-child { white-space: nowrap; }
+  .doc .api-props td p { margin: 0; }
+  .doc .api-index td:first-child { white-space: nowrap; width: 1%; }
+  .doc .api-note { margin-top: 3em; font-size: 13px; color: var(--color-faint); }
+}
+
+/* Site header. On the homepage it becomes a floating pill once the page
+   scrolls (`data-scrolled`, set by HeaderScroll). */
+@layer components {
+  .site-header { transition: padding 0.35s var(--ease-soft); }
+  .site-header-bar {
+    height: 64px;
+    max-width: 100%;
+    padding: 0 clamp(20px, 4vw, 48px);
+    border: 1px solid transparent;
+    border-bottom-color: color-mix(in srgb, var(--color-line) 60%, transparent);
+    background: color-mix(in srgb, var(--color-bg) 75%, transparent);
+    backdrop-filter: blur(16px) saturate(1.4);
+    transition: max-width 0.35s var(--ease-soft), height 0.35s var(--ease-soft), padding 0.35s var(--ease-soft),
+      border-radius 0.35s var(--ease-soft), background-color 0.35s, border-color 0.35s, box-shadow 0.35s;
+  }
+  .site-header[data-scrolled] { padding: 12px 20px; }
+  .site-header[data-scrolled] .site-header-bar {
+    height: 54px;
+    max-width: 920px;
+    padding: 0 9px 0 20px;
+    border-radius: 999px;
+    border-color: rgb(13 15 20 / 0.08);
+    background: rgb(255 255 255 / 0.72);
+    box-shadow: 0 10px 30px -12px rgb(13 15 20 / 0.18);
+  }
+  .site-nav a[data-active], .site-nav a[aria-current='page'] { background: rgb(13 15 20 / 0.06); color: var(--color-ink); font-weight: 500; }
+  @media (prefers-reduced-motion: reduce) {
+    .site-header, .site-header-bar { transition: none; }
+  }
+}

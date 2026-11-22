@@ -1,0 +1,828 @@
+<!doctype html>
+<!-- Browser test page for the wasm API (FerroChart, FerroPlot) and the
+     lightweight-charts compatibility layer;
+     driven by tests/web/api.mjs. -->
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<style>canvas, div.c { width: 600px; height: 300px; display: block; }</style>
+<canvas id="a"></canvas><canvas id="b"></canvas><div class="c" id="lwc"></div><canvas id="t"></canvas><canvas id="p"></canvas>
+<script type="module">
+// The package entry (index.js, built by scripts/build-npm.sh): create loads the module.
+import init, { FerroChart, FerroPlot, SyncGroup, indicatorNames, randomWalk } from '/crates/ferrochart-wasm/pkg/index.js';
+import { createChart, CandlestickSeries, LineSeries, createSeriesMarkers } from '/crates/ferrochart-wasm/pkg/lightweight-charts.js';
+
+const renderer = new URLSearchParams(location.search).get('renderer') ?? 'auto';
+const results = [];
+const check = (name, ok, detail = '') => results.push({ name, ok: !!ok, detail: String(detail) });
+const frames = (n = 3) => new Promise((r) => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+// A real mouse click at page coordinates, done by api.mjs.
+const realInput = (req) => new Promise((r) => { window.__clickDone = r; window.__clickReq = req; });
+const realClick = (x, y) => realInput({ x, y });
+// Real input served by api.mjs: a double click, a key, a drag through points.
+const realDblClick = (x, y) => realInput({ type: 'dblclick', x, y });
+const realKey = (key) => realInput({ type: 'key', key });
+const realDrag = (points) => realInput({ type: 'drag', points });
+const realMove = (x, y) => realInput({ type: 'move', x, y });
+const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps * Math.max(1, Math.abs(b));
+
+async function api() {
+  // No init() first: the entry's create loads the module.
+  const first = await FerroChart.create(document.getElementById('a'), { renderer });
+  check('create loads the module without init()', first instanceof FerroChart);
+  first.destroy();
+  await init(); // still allowed, returns at once
+  const a = await FerroChart.create(document.getElementById('a'), { renderer });
+  const b = await FerroChart.create(document.getElementById('b'), { renderer });
+  const data = randomWalk(7, 500, 0, 60_000);
+  const c = a.addCandlestickSeries({ color: '#26a69a' });
+  c.setData(data);
+  // Rows instead of columns: the same bars (times as numbers and as Dates).
+  {
+    const rows = Array.from(data.close, (close, i) => ({
+      time: i % 2 ? new Date(Number(data.time[i])) : Number(data.time[i]),
+      open: data.open[i], high: data.high[i], low: data.low[i], close, volume: data.volume[i],
+    }));
+    const r = a.addCandlestickSeries();
+    r.setData(rows);
+    const same = [0, 1, 250, 499].every((i) => JSON.stringify(r.dataAt(i)) === JSON.stringify(c.dataAt(i)));
+    check('setData rows equal columns', same, JSON.stringify([r.dataAt(1), c.dataAt(1)]));
+    let msg = '';
+    try { r.setData([{ time: 0, high: 1, low: 0, close: 1 }]); } catch (e) { msg = String(e.message ?? e); }
+    check('setData rows name the missing field', msg.includes("'open'"), msg);
+    r.remove();
+    const v = a.addSeries('line');
+    v.setData([{ time: 0, value: 1 }, { time: 60_000 }, { time: new Date(120_000), value: 3 }]);
+    check('setData value rows', v.dataAt(0)?.value === 1 && v.dataAt(2)?.value === 3, JSON.stringify([v.dataAt(0), v.dataAt(1), v.dataAt(2)]));
+    v.remove();
+  }
+  // append and prepend: history loading keeps logical indices and the view,
+  // and needMoreHistory comes again for the new first bar.
+  {
+    const h = await FerroChart.create(document.getElementById('t'), { renderer });
+    const s = h.addCandlestickSeries();
+    const cols = (from, to) => ({
+      time: data.time.slice(from, to), open: data.open.slice(from, to), high: data.high.slice(from, to),
+      low: data.low.slice(from, to), close: data.close.slice(from, to), volume: data.volume.slice(from, to),
+    });
+    const rows = (from, to) => Array.from({ length: to - from }, (_, k) => {
+      const i = from + k;
+      return { time: new Date(Number(data.time[i])), open: data.open[i], high: data.high[i], low: data.low[i], close: data.close[i], volume: data.volume[i] };
+    });
+    let asks = 0;
+    h.on('needMoreHistory', () => asks++);
+    s.setData(cols(200, 400));
+    const sma = h.addIndicator(s, 'sma', { n: 5 }).outputs()[0];
+    h.setVisibleLogicalRange(0, 100);
+    await frames();
+    const asked = asks;
+    check('needMoreHistory near the first bar', asked >= 1, asked);
+    s.prepend(rows(100, 200));
+    const r1 = h.dataRange();
+    check('prepend: new bars get negative indices', r1?.from === -100 && r1?.to === 199, JSON.stringify(r1));
+    check('prepend: old bars keep their index', JSON.stringify(s.dataAt(0)) === JSON.stringify(c.dataAt(200)) && JSON.stringify(s.dataAt(-100)) === JSON.stringify(c.dataAt(100)),
+      JSON.stringify([s.dataAt(0), c.dataAt(200)]));
+    check('prepend recomputes indicators', Number.isFinite(sma.dataAt(-50)?.value) && near(sma.dataAt(-50).value, [-54, -53, -52, -51, -50].reduce((t, i) => t + s.dataAt(i).close, 0) / 5),
+      JSON.stringify(sma.dataAt(-50)));
+    const view = h.visibleLogicalRange();
+    check('prepend: the view stays', near(view.from, 0, 1e-3) && near(view.to, 100, 1e-3), JSON.stringify(view));
+    h.setVisibleLogicalRange(-100, 0);
+    await frames();
+    check('needMoreHistory again after prepend', asks > asked, `${asked} → ${asks}`);
+    s.append(cols(400, 450));
+    s.append(rows(450, 460));
+    const r2 = h.dataRange();
+    check('append columns and rows', r2?.to === 259 && JSON.stringify(s.dataAt(259)) === JSON.stringify(c.dataAt(459)), JSON.stringify(r2));
+    const throws = (f) => { try { f(); return ''; } catch (e) { return String(e.message ?? e) || 'threw'; } };
+    const late = throws(() => s.prepend(cols(300, 310)));
+    const early = throws(() => s.append(cols(300, 310)));
+    const { volume: _, ...noVolume } = cols(460, 470);
+    const vol = throws(() => s.append(noVolume));
+    check('prepend/append reject out-of-order times', late && early, `${late} | ${early}`);
+    check('append without the volume column throws', vol, vol);
+    check('failed append leaves the data', JSON.stringify(h.dataRange()) === JSON.stringify(r2), JSON.stringify(h.dataRange()));
+    const l = h.addSeries('line');
+    l.setData([{ time: data.time[300], value: 1 }]);
+    l.prepend([{ time: data.time[250], value: 0.5 }]);
+    l.append({ time: [Number(data.time[350])], value: [2] });
+    check('value series append/prepend', l.dataAt(h.indexOfTime(Number(data.time[250])))?.value === 0.5 && l.dataAt(h.indexOfTime(Number(data.time[350])))?.value === 2);
+    h.destroy();
+  }
+  check('candlestick kind', c.kind === 'candlestick', c.kind);
+  check('options round trip', c.options().color.toLowerCase().startsWith('#26a69a'), JSON.stringify(c.options()));
+  c.applyOptions({ downColor: 'rgb(255, 0, 0)', pricePrecision: 3 });
+  check('applyOptions', c.options().pricePrecision === 3, JSON.stringify(c.options()));
+
+  const line = a.addSeries('line', { lineStyle: 'dashed' });
+  line.setData({ time: [0, 60_000, 120_000], value: [1, NaN, 3] });
+  line.update({ time: 180_000, value: 4 });
+  check('value series dataAt', line.dataAt(3)?.value === 4, JSON.stringify(line.dataAt(3)));
+  check('value series gap', line.dataAt(1) === null, JSON.stringify(line.dataAt(1)));
+
+  const pane = a.addPane(0.3);
+  const hist = a.addSeries('histogram', { baseValue: 0 }, pane);
+  check('series on new pane', hist.pane === pane && a.panes().length === 2, `${hist.pane} ${a.panes()}`);
+  a.setPaneStretch(pane, 0.5);
+  check('pane stretch', near(a.paneStretch(pane), 0.5), a.paneStretch(pane));
+  hist.remove();
+  a.removePane(pane);
+  check('remove pane', a.panes().length === 1, a.panes());
+
+  a.applyPriceScaleOptions({ mode: 'logarithmic', inverted: true });
+  const ps = a.priceScale();
+  check('price scale options', ps.mode === 'logarithmic' && ps.inverted, JSON.stringify(ps));
+  a.applyPriceScaleOptions({ mode: 'normal', inverted: false });
+
+  // API fixes: input checks, atomic price scale options, Date times, typed
+  // warnings, listener errors reported, unknown indicator parameters.
+  {
+    const msg = (f) => { try { f(); return ''; } catch (e) { return String(e.message ?? e) || 'threw'; } };
+    const panes = a.panes().length;
+    check('addPane rejects a bad stretch', [0, -1, NaN, Infinity].every((v) => msg(() => a.addPane(v)) !== '') && a.panes().length === panes, a.panes());
+    const m1 = msg(() => a.applyPriceScaleOptions({ mode: 'logarithmic', inverted: true, margins: { top: 0.7, bottom: 0.7 } }));
+    const ps1 = a.priceScale();
+    check('applyPriceScaleOptions is all or nothing', m1 !== '' && ps1.mode === 'normal' && !ps1.inverted, `${m1} ${JSON.stringify(ps1)}`);
+    const m2 = msg(() => a.applyPriceScaleOptions({ range: { low: 1, high: 2 }, autoScale: true }));
+    check('range with autoScale: true throws', m2.includes('autoScale') && a.priceScale().autoScale !== false, m2);
+    const m3 = msg(() => a.addIndicator(c, 'sma', { n: 5, length: 9 }));
+    check('unknown indicator parameter throws', m3.includes("'length'") && m3.includes('n'), m3);
+    const m4 = msg(() => a.addIndicator(c, 'macd', { fast: 5, slow: 9, signal: 3 }).remove());
+    check('known indicator parameters accepted', m4 === '', m4);
+    const m5 = msg(() => a.addTransformSeries('renko', { boxSize: 1, box: 2 }));
+    check('unknown transform parameter throws', m5.includes("'box'"), m5);
+
+    const d = a.addSeries('line');
+    d.setData([{ time: new Date(0), value: 1 }]);
+    d.update({ time: new Date(60_000), value: 2 });
+    check('update accepts a Date', d.dataAt(a.indexOfTime(new Date(60_000)))?.value === 2, JSON.stringify(d.dataAt(1)));
+    check('indexOfTime accepts a Date', a.indexOfTime(new Date(Number(data.time[10]))) === 10, a.indexOfTime(new Date(Number(data.time[10]))));
+    c.setMarkers([{ time: new Date(Number(data.time[12])), position: 'aboveBar', shape: 'circle' }]);
+    check('marker time accepts a Date', c.markers().length === 1 && Number(c.markers()[0].time) === Number(data.time[12]), JSON.stringify(c.markers()));
+    c.setMarkers([]);
+    d.remove();
+
+    // An off-axis time sends a typed warning; a throwing listener is reported, not swallowed.
+    const h = await FerroChart.create(document.getElementById('t'), { renderer });
+    h.addSeries('line').setData({ time: [0, 60_000, 120_000], value: [1, 2, 3] });
+    const warnings = [];
+    const thrower = () => { throw new Error('listener boom'); };
+    const reported = [];
+    const saved = globalThis.reportError;
+    globalThis.reportError = (e) => reported.push(e);
+    h.on('warning', (e) => warnings.push(e));
+    h.on('warning', thrower);
+    const off = h.addSeries('line');
+    off.setData({ time: [30_000, 90_000], value: [1, 2] });
+    await frames();
+    globalThis.reportError = saved;
+    const w = warnings.find((e) => e.kind === 'timeAxisMerged');
+    check('warning kind is a name with the series', w && w.series?.id === off.id && w.count === 2, JSON.stringify(warnings.map((e) => ({ ...e, series: e.series?.id }))));
+    check('listener exception reported', reported.some((e) => e?.message === 'listener boom'), reported.map(String));
+    h.destroy();
+  }
+
+  check('30 indicators', indicatorNames().length === 30, indicatorNames().length);
+  const ma = a.addIndicator(c, 'sma', { n: 20 });
+  const macd = a.addIndicator(c, 'macd', {}, 'newPane');
+  await frames();
+  const sma = ma.outputs()[0];
+  let mean = 0;
+  for (let i = 480; i < 500; i++) mean += data.close[i] / 20;
+  check('sma value', near(sma.dataAt(499)?.value ?? NaN, mean, 1e-9), `${sma.dataAt(499)?.value} vs ${mean}`);
+  check('macd outputs in new pane', macd.outputs().length === 3 && macd.outputs()[0].pane !== a.mainPane, macd.outputs().length);
+  let threw = false;
+  try { a.addIndicator(c, 'nope'); } catch { threw = true; }
+  check('unknown indicator throws', threw);
+  macd.remove();
+  check('indicator pane removed', a.panes().length === 1, a.panes());
+
+  const pl = c.createPriceLine({ price: 100, title: 'x' });
+  pl.applyOptions({ lineStyle: 'dotted' });
+  check('price line', pl.options().lineStyle === 'dotted' && pl.options().price === 100, JSON.stringify(pl.options()));
+  pl.remove();
+  c.setMarkers([{ time: data.time[10], position: 'belowBar', shape: 'arrowUp', text: 'buy' }]);
+  check('markers', c.markers().length === 1 && c.markers()[0].text === 'buy', JSON.stringify(c.markers()));
+
+  const d = a.drawings;
+  const kinds = d.kinds();
+  check('drawing kinds', kinds.includes('trend_line'), kinds);
+  const events = [];
+  a.on('drawingCreated', (e) => events.push(e));
+  const id = d.add({ kind: 'trend_line', anchors: [{ time: data.time[100], price: data.close[100] }, { time: data.time[200], price: data.close[200] }], style: { line: '#ff0000', lineWidth: 2 } });
+  check('drawing get', d.get(id)?.anchors.length === 2 && d.get(id).style.lineWidth === 2, JSON.stringify(d.get(id)));
+  d.setLocked(id, true);
+  check('drawing locked', d.isLocked(id) === true);
+  check('drawing undo', d.canUndo && d.undo() && d.ids().length === 0, d.ids());
+  check('drawing redo', d.redo() && d.ids().length === 1, d.ids());
+  await frames();
+
+  const state = JSON.parse(JSON.stringify(a.saveState()));
+  check('state version', state.version === 1 && state.drawings.length === 1, JSON.stringify(state).slice(0, 200));
+  b.addCandlestickSeries().setData(data);
+  b.loadState(state);
+  check('loadState', b.drawings.ids().length === 1 && near(b.barSpacing, a.barSpacing), `${b.drawings.ids()} ${b.barSpacing} ${a.barSpacing}`);
+  let bad = false;
+  try { b.loadState({ version: 99 }); } catch { bad = true; }
+  check('loadState rejects bad version', bad);
+
+  const g = new SyncGroup();
+  a.joinSync(g);
+  b.joinSync(g, { crosshair: false });
+  check('sync options', b.syncOptions().crosshair === false && b.syncOptions().visibleRange === true, JSON.stringify(b.syncOptions()));
+  a.setVisibleLogicalRange(100, 200);
+  await frames(5);
+  const ra = a.visibleLogicalRange();
+  const rb = b.visibleLogicalRange();
+  check('visible range synced', Math.abs(ra.from - rb.from) < 1.01 && Math.abs(ra.to - rb.to) < 1.01, `${JSON.stringify(ra)} ${JSON.stringify(rb)}`);
+  b.leaveSync();
+  check('leaveSync', b.syncOptions() === null);
+  a.destroy();
+  b.destroy();
+}
+
+async function compat() {
+  const el = document.getElementById('lwc');
+  const chart = createChart(el, { layout: { background: { color: '#131722' } } });
+  const s = chart.addSeries(CandlestickSeries, { upColor: '#26a69a' });
+  const t0 = 1700000000;
+  const bars = Array.from({ length: 100 }, (_, i) => ({ time: t0 + i * 60, open: 10 + i, high: 12 + i, low: 9 + i, close: 11 + i }));
+  s.setData(bars);
+  const l = chart.addSeries(LineSeries, { color: '#2962ff' });
+  l.setData(bars.map((b) => ({ time: b.time, value: b.close })));
+  createSeriesMarkers(s, [{ time: t0 + 600, position: 'aboveBar', shape: 'circle' }]);
+  chart.timeScale().fitContent();
+  check('lwc null before ready', chart.ferrochart === null || chart.ferrochart !== undefined);
+  await chart.whenReady();
+  await frames();
+  check('lwc ready', chart.ferrochart !== null);
+  const r = chart.timeScale().getVisibleLogicalRange();
+  check('lwc logical range from 0', r && r.from <= 0.5 && r.to >= 98.5, JSON.stringify(r));
+  const d = s.dataByIndex(5);
+  check('lwc dataByIndex', d && d.time === t0 + 300 && d.close === 16, JSON.stringify(d));
+  const vr = chart.timeScale().getVisibleRange();
+  check('lwc visible time range in seconds', vr && vr.from === t0 && vr.to === t0 + 99 * 60, JSON.stringify(vr));
+  chart.timeScale().setVisibleLogicalRange({ from: 10, to: 50 });
+  await frames();
+  const r2 = chart.timeScale().getVisibleLogicalRange();
+  check('lwc setVisibleLogicalRange', near(r2.from, 10, 1e-3) && near(r2.to, 50, 1e-3), JSON.stringify(r2));
+  const x = chart.timeScale().timeToCoordinate(t0 + 30 * 60);
+  check('lwc time <-> coordinate', x !== null && chart.timeScale().coordinateToTime(x) === t0 + 30 * 60, x);
+  s.update({ time: t0 + 100 * 60, open: 1, high: 2, low: 0.5, close: 1.5 });
+  check('lwc update', s.dataByIndex(100)?.close === 1.5, JSON.stringify(s.dataByIndex(100)));
+  const moves = [];
+  chart.subscribeCrosshairMove((p) => moves.push(p));
+  const box = el.getBoundingClientRect();
+  window.__lwcBox = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  window.__lwcMoves = moves;
+  window.__lwcSeries = s;
+  window.__lwcChart = chart;
+}
+
+// JS layer plugins and drawing tools.
+async function plugins() {
+  const el = document.getElementById('b');
+  const chart = await FerroChart.create(el, { renderer });
+  const c = chart.addCandlestickSeries();
+  const data = randomWalk(3, 200, 0, 60_000);
+  c.setData(data);
+  chart.fitContent();
+  const t = Number(data.time[100]);
+  let calls = 0, conv = null, saved = null, wide = null, shot = null, snap = false;
+  const id = chart.addLayer({
+    pane: chart.mainPane,
+    position: 'overlay',
+    build(ctx) {
+      calls += 1;
+      saved = ctx;
+      const x = ctx.timeToX(t);
+      const y = ctx.priceToY(data.close[100]);
+      conv = { x, y, t: ctx.xToTime(x), p: ctx.yToPrice(y), w: ctx.textWidth('abc'), f: ctx.formatPrice(1.5), rect: ctx.rect };
+      // The frame is rendered in this task and presented after it: take
+      // the snapshot in a microtask, before the canvas is composited.
+      if (snap) { snap = false; queueMicrotask(() => { shot = createImageBitmap(el); }); }
+      const r = ctx.rect;
+      return [
+        { type: 'rect', x: r.x + 10, y: r.y + 10, width: 40, height: 30, color: '#ff00ff' },
+        { type: 'line', x1: r.x, y1: r.y, x2: r.x + 50, y2: r.y + 50, color: 'red', width: 2, dash: 'dashed' },
+        { type: 'polyline', points: [[0, 0], { x: 5, y: 5 }, [9, 1]], color: '#00f' },
+        { type: 'polygon', points: [[60, 60], [80, 60], [70, 80]], color: 'rgba(0,128,0,0.5)' },
+        { type: 'text', x: 100, y: 100, text: 'hello', color: '#000', size: 14, align: 'center', background: '#ff0' },
+        { type: 'icon', x: 120, y: 120, shape: 'arrowUp', size: 10, color: '#0a0' },
+      ];
+    },
+  });
+  const wideId = chart.addLayer({ build(ctx) { wide = { x: ctx.timeToX(t), rect: ctx.rect }; return []; } });
+  await frames(3);
+  check('layer build called', calls >= 1, calls);
+  check('layer converts time and price', conv && conv.x !== null && Math.abs(conv.t - t) <= 1 && near(conv.p, data.close[100], 1e-3),
+    JSON.stringify(conv));
+  check('layer ctx helpers', conv && conv.w > 0 && conv.f === '1.50' && conv.rect.width > 100, JSON.stringify(conv));
+  check('chart-wide layer has no coordinates', wide && wide.x === null && wide.rect.width > 100, JSON.stringify(wide));
+  let stale = false;
+  try { saved.timeToX(t); } catch { stale = true; }
+  check('ctx functions end with build', stale);
+  // The drawn rect: read the canvas back.
+  let pixel = null;
+  try {
+    snap = true;
+    chart.invalidateLayer(id);
+    await frames(2);
+    const bmp = await shot;
+    const cv = new OffscreenCanvas(bmp.width, bmp.height);
+    const g = cv.getContext('2d');
+    g.drawImage(bmp, 0, 0);
+    const dpr = bmp.width / el.clientWidth;
+    pixel = [...g.getImageData(Math.round((conv.rect.x + 30) * dpr), Math.round((conv.rect.y + 25) * dpr), 1, 1).data];
+  } catch (e) { pixel = String(e); }
+  check('layer rect drawn', Array.isArray(pixel) && pixel[0] > 240 && pixel[1] < 15 && pixel[2] > 240, JSON.stringify(pixel));
+  const before = calls;
+  await frames(3);
+  const idle = calls;
+  chart.invalidateLayer(id);
+  await frames(3);
+  check('no rebuild while idle, invalidateLayer redraws', idle - before <= 1 && calls > idle, `${before} ${idle} ${calls}`);
+  chart.removeLayer(id);
+  chart.removeLayer(wideId);
+  const removed = calls;
+  chart.setBarSpacing(9);
+  await frames(3);
+  check('removed layer not called', calls === removed, `${removed} ${calls}`);
+  let threw = false;
+  try { chart.addLayer({ position: 'nowhere', build: () => [] }); } catch { threw = true; }
+  check('bad layer position throws', threw);
+  // A plugin with a bad command draws nothing and does not break the chart.
+  const badId = chart.addLayer({ build: () => [{ type: 'circle' }] });
+  await frames(2);
+  chart.removeLayer(badId);
+
+  // A drawing tool: a box between two anchors (in view).
+  chart.fitContent();
+  const d = chart.drawings;
+  let seen = null, box = null, hits = 0;
+  d.register('test_box', {
+    anchorCount: 2,
+    build(ctx) {
+      seen = { n: ctx.anchors.length, x: ctx.anchors[0].x, kind: ctx.params.label, style: ctx.style.lineWidth, tol: ctx.hitTolerance };
+      const [p, q] = ctx.anchors;
+      if (p.x === null || q.x === null || p.y === null || q.y === null) return [];
+      box = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+      return [{ type: 'rect', x: Math.min(p.x, q.x), y: Math.min(p.y, q.y), width: Math.abs(q.x - p.x), height: Math.abs(q.y - p.y), color: ctx.style.fill }];
+    },
+    hitTest(ctx, point) { hits += 1; return true; },
+  });
+  check('tool registered', d.kinds().includes('test_box'), d.kinds());
+  const did = d.add({
+    kind: 'test_box',
+    anchors: [{ time: data.time[50], price: data.low[50] }, { time: data.time[60], price: data.high[60] }],
+    style: { lineWidth: 3, fill: '#00ff0080' },
+    params: { label: 'box' },
+  });
+  await frames(3);
+  check('tool build called', seen && seen.n === 2 && typeof seen.x === 'number' && seen.kind === 'box' && seen.style === 3 && seen.tol > 0,
+    JSON.stringify(seen));
+  check('tool saves', d.get(did)?.kind === 'test_box' && chart.saveState().drawings.some((x) => x.data.kind === 'test_box'),
+    JSON.stringify(d.get(did)));
+  // Click inside the box: selected through hitTest.
+  if (box) {
+    const r = el.getBoundingClientRect();
+    await realClick(r.x + box.x, r.y + box.y);
+    await frames(2);
+  }
+  check('tool hitTest selects', box && hits > 0 && d.selected === did, `${JSON.stringify(box)} hits=${hits} selected=${d.selected}`);
+  threw = false;
+  try { d.register('trend_line', { anchorCount: 2, build: () => [] }); } catch { threw = true; }
+  check('built-in kinds cannot be replaced', threw);
+  threw = false;
+  try { d.register('test_bad', { anchorCount: 0, build: () => [] }); } catch { threw = true; }
+  check('anchorCount validated', threw);
+
+  // Open and freehand creation: JS tools and the built-in path/brush.
+  for (const id of d.ids()) d.remove(id);
+  const polyline = (ctx) => {
+    const pts = ctx.anchors.filter((a) => a.x !== null && a.y !== null);
+    return pts.slice(1).map((q, i) => ({ type: 'line', x1: pts[i].x, y1: pts[i].y, x2: q.x, y2: q.y, color: ctx.style.line, width: 2 }));
+  };
+  d.register('test_open', { anchorCount: { open: 3 }, build: polyline });
+  d.register('test_free', { anchorCount: 'freehand', build: polyline });
+  for (const bad of [{ open: 0 }, { open: 65 }, 'brush', {}]) {
+    threw = false;
+    try { d.register('test_bad', { anchorCount: bad, build: () => [] }); } catch { threw = true; }
+    check(`anchorCount ${JSON.stringify(bad)} rejected`, threw);
+  }
+  el.scrollIntoView();
+  await frames(1);
+  const r = el.getBoundingClientRect();
+  // Fractions of the canvas, inside the plot (price axis on the right, time
+  // axis at the bottom).
+  const px = (fx, fy) => [r.x + r.width * 0.85 * fx, r.y + r.height * 0.85 * fy];
+  const created = () => d.ids().map((id) => d.get(id)).filter(Boolean);
+  // Open, finished by a double click: 4 anchors (the double click's second
+  // press is not an extra anchor).
+  d.startTool('test_open');
+  await realClick(...px(0.2, 0.3)); await frames(1);
+  await realClick(...px(0.3, 0.5)); await frames(1);
+  await realClick(...px(0.4, 0.3)); await frames(1);
+  await realDblClick(...px(0.5, 0.5)); await frames(2);
+  let got = created().find((x) => x.kind === 'test_open');
+  check('JS open tool ends on double click', got && got.anchors.length === 4 && d.activeTool == null, JSON.stringify([got?.anchors.length, d.activeTool, created().map((x) => x.kind)]));
+  // Built-in path, finished by Enter.
+  d.startTool('path');
+  await realClick(...px(0.2, 0.7)); await frames(1);
+  await realClick(...px(0.35, 0.8)); await frames(1);
+  await realClick(...px(0.5, 0.7)); await frames(1);
+  await realKey('Enter'); await frames(2);
+  got = created().find((x) => x.kind === 'path');
+  check('path ends on Enter', got && got.anchors.length === 3, JSON.stringify([got?.anchors.length, d.activeTool, created().map((x) => x.kind)]));
+  // Too few anchors and Escape: cancelled.
+  d.startTool('test_open');
+  await realClick(...px(0.6, 0.3)); await frames(1);
+  await realKey('Escape'); await frames(2);
+  check('Escape cancels an open tool with too few anchors', created().filter((x) => x.kind === 'test_open').length === 1 && d.activeTool == null);
+  // Freehand: an anchor every few CSS px of the drag, ends on release.
+  const stroke = (y0) => Array.from({ length: 40 }, (_, i) => px(0.55 + i * 0.008, y0 + 0.05 * Math.sin(i / 4)));
+  d.startTool('test_free');
+  await realDrag(stroke(0.4)); await frames(2);
+  got = created().find((x) => x.kind === 'test_free');
+  check('JS freehand tool follows the drag', got && got.anchors.length >= 10, JSON.stringify([got?.anchors.length, d.activeTool, created().map((x) => x.kind)]));
+  d.startTool('brush');
+  await realDrag(stroke(0.75)); await frames(2);
+  got = created().find((x) => x.kind === 'brush');
+  check('brush follows the drag', got && got.anchors.length >= 10 && d.activeTool == null, JSON.stringify([got?.anchors.length, d.activeTool, created().map((x) => x.kind)]));
+  chart.destroy();
+}
+
+// Series transforms.
+async function transforms() {
+  const chart = await FerroChart.create(document.getElementById('t'), { renderer });
+  const data = randomWalk(5, 2000, 0, 60_000);
+  const n = data.close.length;
+  const renko = chart.addTransformSeries('renko', { boxSize: 0.5, kind: 'ohlc' });
+  renko.setData(data);
+  const brick = renko.dataAt(0);
+  check('renko kind and brick', renko.kind === 'ohlc' && brick && near(Math.abs(brick.close - brick.open), 0.5, 1e-9), `${renko.kind} ${JSON.stringify(brick)}`);
+  let threw = false;
+  try { chart.addSeries('line'); } catch { threw = true; }
+  check('no time-based series next to a transform', threw);
+  threw = false;
+  try { chart.addTransformSeries('kagi', { reversal: 1 }); } catch { threw = true; }
+  check('one transform per chart', threw);
+  renko.remove();
+
+  const kagi = chart.addTransformSeries('kagi', { reversalPercent: 2 });
+  kagi.setData(data);
+  const vol = chart.addVolumeSeries(kagi);
+  chart.fitContent();
+  await frames();
+  const lines = chart.visibleLogicalRange();
+  const first = kagi.dataAt(0);
+  check('kagi kind and first line', kagi.kind === 'kagi' && first && near(first.open, data.close[0], 1e-12), `${kagi.kind} ${JSON.stringify(first)}`);
+  check('kagi has fewer elements', lines && lines.to > 1 && lines.to < n / 2, JSON.stringify(lines));
+  const p = data.close[n - 1] * 1.05;
+  const t = Number(data.time[n - 1]) + 60_000;
+  kagi.update({ time: t, open: p, high: p, low: p, close: p, volume: 1 });
+  await frames();
+  const last = Math.round(chart.visibleLogicalRange().to);
+  let top = null;
+  for (let i = last + 2; i >= 0 && !top; i--) top = kagi.dataAt(i);
+  check('kagi tick update', top && near(top.close, p, 1e-12), JSON.stringify(top));
+  vol.remove();
+  kagi.remove();
+
+  const pf = chart.addTransformSeries('pointFigure', { boxSize: 1 });
+  pf.setData(data);
+  const col = pf.dataAt(0);
+  const boxes = col ? (col.high - col.low) : NaN;
+  check('point & figure columns', pf.kind === 'pointFigure' && boxes >= 3 && near(boxes, Math.round(boxes), 1e-9), `${pf.kind} ${JSON.stringify(col)}`);
+  pf.remove();
+
+  for (const [name, params] of [['renko', {}], ['renko', { boxSize: 1, atr: 14 }], ['kagi', { reversal: -1 }], ['pointFigure', { boxSize: 1, reversal: 1.5 }], ['nope', {}]]) {
+    threw = false;
+    try { chart.addTransformSeries(name, params); } catch { threw = true; }
+    check(`bad transform ${name} ${JSON.stringify(params)} throws`, threw);
+  }
+  const range = chart.addTransformSeries('rangeBars', { range: 1 });
+  range.setData(data);
+  const bar = range.dataAt(0);
+  check('range bar size', bar && bar.high - bar.low <= 1 + 1e-9, JSON.stringify(bar));
+  chart.destroy();
+}
+
+// Points, bands and indicator fills.
+async function bands() {
+  const chart = await FerroChart.create(document.getElementById('t'), { renderer });
+  const data = randomWalk(9, 300, 0, 60_000);
+  const c = chart.addCandlestickSeries();
+  c.setData(data);
+  chart.addVolumeSeries(c);
+  const dots = chart.addSeries('points', { lineWidth: 4 });
+  dots.setData({ time: data.time, value: Array.from(data.low, (v) => v - 0.5) });
+  check('points kind', dots.kind === 'points' && near(dots.dataAt(10)?.value ?? NaN, data.low[10] - 0.5), `${dots.kind} ${JSON.stringify(dots.dataAt(10))}`);
+  const hi = chart.addSeries('line');
+  const lo = chart.addSeries('line');
+  hi.setData({ time: data.time, value: Array.from(data.high) });
+  lo.setData({ time: data.time, value: Array.from(data.low) });
+  const band = chart.addBand(hi, lo, { fill: '#26a69a40' });
+  const o = chart.bandOptions(band);
+  check('band options', o && o.fill.startsWith('rgba(38, 166, 154') && o.fillCrossed === null, JSON.stringify(o));
+  chart.setBandOptions(band, { fillCrossed: 'rgba(255, 0, 0, 0.25)' });
+  const o2 = chart.bandOptions(band);
+  check('setBandOptions keeps the rest', o2 && o2.fill === o.fill && o2.fillCrossed !== null, JSON.stringify(o2));
+  let threw = false;
+  try { chart.addBand(hi, c); } catch { threw = true; }
+  check('band needs value series', threw);
+  threw = false;
+  try { chart.setBandOptions(band, { fill: 'nope' }); } catch { threw = true; }
+  check('band color validated', threw);
+  await frames();
+  chart.removeBand(band);
+  check('removeBand', chart.bandOptions(band) === null);
+  const boll = chart.addIndicator(c, 'boll');
+  const ichi = chart.addIndicator(c, 'ichimoku');
+  const cloud = ichi.bands()[0];
+  check('indicator bands', boll.bands().length === 1 && ichi.bands().length === 1 && chart.bandOptions(cloud)?.fillCrossed, `${boll.bands()} ${ichi.bands()} ${JSON.stringify(chart.bandOptions(cloud))}`);
+  const sar = chart.addIndicator(c, 'sar');
+  check('sar is points', sar.outputs()[0].kind === 'points', sar.outputs()[0].kind);
+  const vma = chart.addIndicator(c, 'volumeMa');
+  check('volume MA on the volume pane', vma.outputs()[0].pane === chart.mainPane && chart.panes().length === 1, `${vma.outputs()[0].pane} ${chart.panes()}`);
+  const vma2 = chart.addIndicator(c, 'volumeMa', { n: 5 }, 'volume');
+  check("'volume' placement", vma2.outputs()[0].pane === chart.mainPane, vma2.outputs()[0].pane);
+  await frames();
+  const bollBand = boll.bands()[0];
+  boll.remove();
+  check('bands go with the indicator', chart.bandOptions(bollBand) === null && chart.bandOptions(cloud) !== null);
+  chart.destroy();
+}
+
+async function clicks() {
+  const canvas = document.getElementById('t');
+  const chart = await FerroChart.create(canvas, { renderer });
+  const c = chart.addCandlestickSeries();
+  c.setData(randomWalk(5, 300, 0, 60_000));
+  await frames();
+  const events = [];
+  chart.on('click', (e) => events.push(e));
+  canvas.scrollIntoView({ block: 'start' });
+  await frames();
+  const r = canvas.getBoundingClientRect();
+  // Real mouse clicks (Chrome ignores synthetic pointer events here).
+  const tap = (x, y) => realClick(r.x + x, r.y + y);
+  // The top margin of the price scale is empty.
+  const { to } = chart.visibleLogicalRange();
+  const x = chart.logicalToCoordinate(Math.floor(to) - 20);
+  await tap(x, 3);
+  await frames();
+  const e = events[0];
+  check('click event', events.length === 1 && e.target === null && e.pane === chart.mainPane && near(e.x, x, 1e-3)
+    && Number.isFinite(e.logicalIndex) && e.time !== null && Number.isFinite(e.price), JSON.stringify(events));
+  // Down a column through a candle: some clicks hit the series.
+  events.length = 0;
+  for (let y = 0; y < r.height * 0.85; y += 3) await tap(x, y);
+  await frames();
+  const hit = events.find((e) => e.target?.type === 'series');
+  check('click hits a series', hit && hit.target.series.id === c.id && hit.target.series.kind === 'candlestick',
+    JSON.stringify(events.map((e) => [e.target?.type ?? null, e.y, e.price])));
+  chart.destroy();
+}
+
+async function drawingSync() {
+  const data = randomWalk(3, 300, 0, 60_000);
+  const make = async (id) => {
+    const chart = await FerroChart.create(document.getElementById(id), { renderer });
+    chart.addCandlestickSeries().setData(data);
+    return chart;
+  };
+  const [a, b, c] = [await make('a'), await make('b'), await make('t')];
+  const g = new SyncGroup(5);
+  a.joinSync(g, { drawings: true });
+  b.joinSync(g, { drawings: true, crosshair: false });
+  check('drawings sync option', a.syncOptions().drawings === true && b.syncOptions().drawings === true, JSON.stringify(a.syncOptions()));
+  let syncEvents = 0;
+  a.on('drawingSync', () => syncEvents++);
+  const line = { kind: 'trend_line', anchors: [{ time: data.time[100], price: data.close[100] }, { time: data.time[200], price: data.close[200] }] };
+  const id = a.drawings.add(line);
+  a.drawings.setLocked(id, true);
+  await frames(5);
+  const bid = b.drawings.ids()[0];
+  check('drawing reaches the other chart', b.drawings.ids().length === 1 && b.drawings.isLocked(bid) === true
+    && b.drawings.get(bid)?.anchors[1].time === Number(data.time[200]) && !b.drawings.canUndo, JSON.stringify(b.drawings.ids()));
+  b.drawings.remove(bid);
+  await frames(5);
+  check('removal comes back', a.drawings.ids().length === 0, JSON.stringify(a.drawings.ids()));
+  check('drawingSync once until taken', syncEvents === 1, syncEvents);
+  const ops = a.takeDrawingSyncOps();
+  check('takeDrawingSyncOps', ops.length === 2 && ops[0].type === 'add' && ops[1].type === 'setLocked' && Math.floor(ops[0].key / 2 ** 32) === 5,
+    JSON.stringify(ops).slice(0, 300));
+  for (const op of JSON.parse(JSON.stringify(ops))) c.applyDrawingSync(op);
+  check('applyDrawingSync', c.drawings.ids().length === 1 && c.drawings.isLocked(c.drawings.ids()[0]) === true, JSON.stringify(c.drawings.ids()));
+  a.drawings.add(line);
+  await frames(3);
+  const state = a.drawingSyncState();
+  c.loadDrawingSyncState(state);
+  check('drawing sync state round trip', state.length === 1 && c.drawings.ids().length === 1
+    && c.drawings.get(c.drawings.ids()[0]).anchors[0].time === Number(data.time[100]), JSON.stringify(state).slice(0, 300));
+  let threw = false;
+  try { c.loadDrawingSyncState([{ type: 'remove', key: 1 }]); } catch { threw = true; }
+  check('loadDrawingSyncState validates', threw && c.drawings.ids().length === 1);
+  threw = false;
+  try { new SyncGroup(2 ** 21); } catch { threw = true; }
+  check('SyncGroup origin range', threw);
+  a.destroy();
+  b.destroy();
+  c.destroy();
+}
+
+async function plots() {
+  const canvas = document.getElementById('p');
+  const plot = await FerroPlot.create(canvas, { renderer, crosshair: true });
+  check('plot renderer', plot.renderer === 'webgpu' || plot.renderer === 'webgl2', plot.renderer);
+  const throws = (f) => { try { f(); return false; } catch { return true; } };
+  check('unknown mark kind', throws(() => plot.addMark('pie')));
+  check('unknown axis', throws(() => plot.axis('y')));
+
+  // A line, its options and data checks.
+  const line = plot.addMark('line', { color: '#ff0000', lineStyle: 'dashed', pointSize: 4 });
+  line.setData({ x: new Float64Array([0, 1, 2, 3]), y: [1, 3, NaN, 2] });
+  const lo = line.options();
+  check('mark options round trip', line.kind === 'line' && lo.color.toLowerCase().startsWith('#ff0000') && lo.lineStyle === 'dashed'
+    && lo.pointSize === 4 && lo.yAxis === 'right' && lo.group === null && lo.band === null, JSON.stringify(lo));
+  line.applyOptions({ color: null, valueFormat: { type: 'fixed', decimals: 2 } });
+  check('applyOptions keeps other keys', line.options().color === null && line.options().lineStyle === 'dashed'
+    && line.options().valueFormat.decimals === 2, JSON.stringify(line.options()));
+  check('invalid data rejected', throws(() => line.setData({ x: [0, 1], y: [1] })) && throws(() => line.setData({ x: [NaN], y: [1] })));
+  line.update({ x: 3, y: 5 });
+  line.append({ x: [4, 5], y: [4, 6] });
+  check('bad options rejected', throws(() => line.applyOptions({ fillAlpha: 2 })) && throws(() => line.applyOptions({ icon: 'star' })));
+  line.remove();
+  check('removed mark', throws(() => line.options()));
+
+  // Axes.
+  const x = plot.axis('x');
+  x.applyOptions({ type: 'category', title: 'Sector' });
+  x.setCategories(['Tech', 'Energy', 'Banks']);
+  const xo = x.options();
+  check('axis options round trip', xo.type === 'category' && xo.title === 'Sector' && xo.grid === false && xo.range === 'auto', JSON.stringify(xo));
+  const right = plot.axis('right');
+  right.applyOptions({ format: 'compact', includeZero: true });
+  check('axis format', right.options().format === 'compact' && right.options().includeZero === true, JSON.stringify(right.options()));
+  check('bad axis options rejected', throws(() => right.applyOptions({ type: 'polar' })) && throws(() => right.applyOptions({ range: [1] })));
+
+  // Stacked bars, a rule, a label; colored cells.
+  const a = plot.addMark('bars', { stack: 1, showValues: true });
+  const b = plot.addMark('bars', { stack: 1, color: 'rgba(0, 128, 255, 0.8)' });
+  a.setData({ x: [0, 1, 2], y: [5, 6, 7], label: ['a', null, 'c'] });
+  b.setData({ x: [0, 1, 2], y: [3, -2, 2] });
+  check('category numbers checked', throws(() => b.setData({ x: [0.5], y: [1] })));
+  const rule = plot.addRule({ value: 4, label: 'target', lineStyle: 'solid' });
+  rule.applyOptions({ to: 5 });
+  plot.addLabel({ x: 1, y: 6, text: 'peak', icon: 'arrowDown', align: 'center' });
+  await frames();
+  const [v0, v1] = right.view();
+  check('auto range covers the stacks', v0 <= -2 && v1 >= 9 && v1 < 10, `${v0} ${v1}`);
+  right.setView(-10, 20);
+  check('setView', JSON.stringify(right.view()) === '[-10,20]', right.view());
+  plot.fit();
+  rule.remove();
+  const cells = plot.addMark('cells', { yAxis: 'left', colorScale: { center: 0, domain: [-1, 1] }, cellSize: [1, 1] });
+  const cs = cells.options().colorScale;
+  check('color scale round trip', cs.center === 0 && JSON.stringify(cs.domain) === '[-1,1]' && cs.stops.length === 3, JSON.stringify(cs));
+  check('bad color scale rejected', throws(() => cells.applyOptions({ colorScale: { stops: [[0.5, 'red'], [0.2, 'blue']] } })));
+  cells.remove();
+
+  // Real pointer input: hover, click and pan.
+  const events = { hover: [], click: [], viewChange: [] };
+  for (const k of Object.keys(events)) plot.on(k, (e) => events[k].push(e));
+  canvas.scrollIntoView({ block: 'start' });
+  await frames();
+  const r = canvas.getBoundingClientRect();
+  // The middle category's bar at 2/3 of the plot height is `a` (6 above b's -2).
+  const cx = r.x + r.width * 0.45, cy = r.y + r.height * 0.35;
+  await realMove(cx, cy);
+  await realMove(cx + 2, cy);
+  await frames();
+  const h = events.hover.find((e) => e.hit);
+  check('hover event', h && h.hit.mark.kind === 'bars' && Number.isInteger(h.hit.index) && Number.isFinite(h.hit.position.x)
+    && h.hit.mark.id === a.id && a.id !== b.id,
+    JSON.stringify(events.hover.map((e) => e.hit && [e.hit.index, e.hit.x, e.hit.y])));
+  await realClick(cx, cy);
+  await frames();
+  check('click event', events.click.length === 1 && events.click[0].hit !== null && Number.isFinite(events.click[0].y), JSON.stringify(events.click));
+  right.applyOptions({ type: 'linear' });
+  await realDrag([[cx, cy], [cx, cy + 20], [cx, cy + 60]]);
+  await frames();
+  check('viewChange event', events.viewChange.length >= 1, events.viewChange.length);
+  plot.dispose();
+  {
+    const p2 = await FerroPlot.create(canvas, { renderer });
+    p2.destroy();
+    check('FerroPlot.destroy', true);
+  }
+
+  // A side plot follows a chart's price range.
+  const chart = await FerroChart.create(document.getElementById('t'), { renderer });
+  chart.addCandlestickSeries().setData(randomWalk(9, 300, 0, 60_000));
+  const side = await FerroPlot.create(canvas, { renderer });
+  const depth = side.addMark('bars', { orientation: 'horizontal' });
+  depth.setData({ x: [3, 5, 2], y: [100, 150, 200] });
+  side.axis('x').applyOptions({ visible: false });
+  chart.attachSidePlot(side);
+  const view = async (range) => {
+    chart.applyPriceScaleOptions({ autoScale: false, range: { low: range[0], high: range[1] } });
+    await frames(4);
+    return side.axis('right').view();
+  };
+  const p1 = await view([100, 200]);
+  const p2 = await view([150, 250]);
+  const p3 = await view([100, 300]);
+  const span = (v) => v[1] - v[0];
+  check('side plot axis locked', side.axis('right').options().locked === true);
+  check('side plot follows a shift', near(p2[0] - p1[0], 50, 1e-6) && near(p2[1] - p1[1], 50, 1e-6), JSON.stringify([p1, p2]));
+  check('side plot follows a zoom', near(span(p3) / span(p1), 2, 1e-6), JSON.stringify([p1, p3]));
+  chart.detachSidePlot(side);
+  const p4 = await view([500, 600]);
+  check('detached side plot stays', JSON.stringify(p4) === JSON.stringify(p3), JSON.stringify(p4));
+  side.dispose();
+  chart.destroy();
+  window.scrollTo(0, 0);
+  await frames();
+}
+
+// playIntro / finishIntro and the attribution logo.
+async function intro() {
+  const canvas = document.getElementById('a');
+  const logos = () => [...document.querySelectorAll('a[href="https://ferrochart.com"]')];
+  const chart = await FerroChart.create(canvas, { renderer });
+  chart.addCandlestickSeries().setData(randomWalk(3, 200, 0, 60_000));
+  await frames();
+  const logo = logos()[0];
+  check('logo shown by default, next to the canvas', logos().length === 1 && canvas.nextElementSibling === logo, logos().length);
+  const lr = logo.getBoundingClientRect();
+  const cr = canvas.getBoundingClientRect();
+  // The plot starts at the canvas's left edge; the time axis is 20–40 px.
+  const gap = cr.bottom - lr.bottom;
+  check('logo at the bottom-left of the plot, above the time axis',
+    Math.abs(lr.left - cr.left - 10) <= 1 && gap > 10 + 15 && gap < 10 + 45 && Math.abs(lr.width - 19) <= 0.5,
+    JSON.stringify([lr.left - cr.left, gap, lr.width]));
+  // Under the pointer it opens to the right with the name; the mark stays put.
+  logo.style.transition = 'none';
+  logo.dispatchEvent(new PointerEvent('pointerenter'));
+  const open = logo.getBoundingClientRect();
+  logo.dispatchEvent(new PointerEvent('pointerleave'));
+  const closed = logo.getBoundingClientRect();
+  check('logo shows the name under the pointer',
+    logo.textContent === 'FerroChart' && open.width > 60 && open.left === lr.left && closed.width === lr.width,
+    JSON.stringify([open.width, closed.width]));
+  chart.setAttributionLogo(false);
+  check('setAttributionLogo(false) removes it', logos().length === 0);
+  chart.setAttributionLogo(true);
+  check('setAttributionLogo(true) adds it back', logos().length === 1);
+
+  let t0 = performance.now();
+  await chart.playIntro({ duration: 200, delay: 100, pen: '#4cc9f0' });
+  const took = performance.now() - t0;
+  check('playIntro resolves after delay + duration', took >= 280 && took < 3000, took);
+  t0 = performance.now();
+  const p = chart.playIntro({ duration: 60_000 });
+  await frames(2);
+  chart.finishIntro();
+  await p;
+  check('finishIntro resolves at once', performance.now() - t0 < 3000, performance.now() - t0);
+  let done = false;
+  chart.playIntro({ duration: 60_000 }).then(() => { done = true; });
+  await frames(2);
+  await realClick(cr.left + 100, cr.top + 100);
+  await frames(2);
+  check('a press ends the intro', done);
+  let threw = false;
+  try { chart.playIntro({ duration: -1 }); } catch { threw = true; }
+  check('bad duration throws', threw);
+
+  const quiet = await FerroChart.create(document.getElementById('b'), { renderer, attributionLogo: false });
+  check('attributionLogo: false', logos().length === 1);
+  const side = await FerroPlot.create(document.getElementById('p'), { renderer });
+  check('plot logo', logos().length === 2);
+  chart.attachSidePlot(side);
+  check('attachSidePlot removes the side plot logo', logos().length === 1);
+  await side.playIntro({ duration: 50 });
+  check('plot playIntro resolves', true);
+  side.dispose();
+  quiet.destroy();
+  chart.destroy();
+  check('destroy removes the logo', logos().length === 0);
+  await frames();
+}
+
+try {
+  await init();
+  await intro();
+  await plots();
+  await api();
+  await plugins();
+  await transforms();
+  await bands();
+  await clicks();
+  await drawingSync();
+  await compat();
+} catch (e) {
+  check('no exception', false, e?.stack ?? e);
+}
+window.__results = results;
+</script>

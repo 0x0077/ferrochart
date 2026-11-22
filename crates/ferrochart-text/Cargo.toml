@@ -1,0 +1,16 @@
+[package]
+name = "ferrochart-text"
+description = "Font loading, text measurement and glyph atlas for FerroChart backends"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+include = ["src", "assets"]
+
+[dependencies]
+ab_glyph.workspace = true
+
+[lints]
+workspace = true

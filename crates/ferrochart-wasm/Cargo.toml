@@ -1,0 +1,57 @@
+[package]
+name = "ferrochart-wasm"
+description = "WebAssembly bindings for FerroChart"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+# Shipped as the npm package @ferrochart/core, not on crates.io.
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ferrochart-core = { workspace = true, features = ["testing"] }
+ferrochart-indicators.workspace = true
+ferrochart-orderflow.workspace = true
+ferrochart-plot.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+ferrochart-render-wgpu = { workspace = true, features = ["webgl"] }
+ferrochart-orderflow = { workspace = true, features = ["gpu"] }
+wgpu.workspace = true
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+wasm-bindgen-futures.workspace = true
+console_error_panic_hook.workspace = true
+web-sys = { workspace = true, features = [
+    "AddEventListenerOptions",
+    "console",
+    "CssStyleDeclaration",
+    "DomRect",
+    "Document",
+    "DomRectReadOnly",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "KeyboardEvent",
+    "MediaQueryList",
+    "MouseEvent",
+    "Node",
+    "Performance",
+    "PointerEvent",
+    "ResizeObserver",
+    "ResizeObserverEntry",
+    "WheelEvent",
+    "Window",
+] }
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-O3"]
+
+[lints]
+workspace = true

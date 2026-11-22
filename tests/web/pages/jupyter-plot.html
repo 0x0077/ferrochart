@@ -1,0 +1,86 @@
+<!doctype html>
+<!-- Browser test of the Python package's Jupyter front end for plots:
+     the widget module with a mock anywidget model replaying the
+     messages of a plot captured from Python (tests/web/jupyter_fixture.py);
+     driven by tests/web/jupyter.mjs. -->
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<style>body { margin: 0; width: 900px; }</style>
+<div id="el"></div>
+<script type="module">
+const dir = '/tests/web/out/jupyter/plot/';
+const results = [];
+const check = (name, ok, detail = '') => results.push({ name, ok: !!ok, detail: String(detail) });
+const frames = (n = 3) => new Promise((r) => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+const until = async (f, ms = 10_000) => { const t = performance.now(); while (!f()) { if (performance.now() - t > ms) return false; await frames(1); } return true; };
+
+const buffers = (names) => Promise.all(names.map(async (n) => new DataView(await (await fetch(dir + n)).arrayBuffer())));
+
+/** Asks jupyter.mjs to compare a screenshot of the canvas with the Python
+ * reference image `name` (resolves to the share of differing pixels), or
+ * to move the mouse to `{ move: [x, y] }` (canvas CSS px). */
+const ask = (req) => new Promise((r) => { window.__compareDone = r; window.__compareReq = req; });
+
+async function main() {
+  const { messages, hit } = await (await fetch(dir + 'messages.json')).json();
+  const [snapshot, ...live] = messages;
+  const sent = [];
+  const handlers = { 'msg:custom': [], 'change:events': [] };
+  const state = {
+    kind: 'plot', width: 500, height: 300, theme: 'light',
+    options: { crosshair: false, hoverHighlight: true }, events: ['hover', 'view_change'],
+  };
+  const model = {
+    get: (k) => state[k],
+    on: (name, cb) => handlers[name].push(cb),
+    off: (name, cb) => { handlers[name] = handlers[name].filter((f) => f !== cb); },
+    send: (content) => sent.push(content),
+  };
+  const deliver = async (m) => {
+    const bufs = await buffers(m.buffers);
+    for (const cb of handlers['msg:custom']) cb(m.msg, bufs);
+  };
+  const errors = [];
+  const origError = console.error;
+  console.error = (...a) => { errors.push(a.map(String).join(' ')); origError(...a); };
+
+  const mod = await import('/tests/web/out/jupyter/widget.mjs');
+  const el = document.getElementById('el');
+  const cleanup = mod.default.render({ model, el });
+  const init = sent.find((m) => m.type === 'init');
+  check('view asks for the snapshot', init && init.wasm === true, JSON.stringify(init));
+  snapshot.msg.to = init.view;
+  await deliver(snapshot);
+  const canvas = el.querySelector('canvas');
+  const box = canvas.parentElement.getBoundingClientRect();
+  check('box sized from the model', box.width === 500 && box.height === 300, `${box.width}×${box.height}`);
+  // The plot is created asynchronously: compare until its first frames are up.
+  let diff = 1;
+  for (let i = 0; i < 20 && diff >= 0.03; i++) {
+    await frames(10);
+    diff = await ask('before.png');
+  }
+  check('snapshot draws like the Python plot', diff < 0.03, `${(diff * 100).toFixed(2)}% pixels differ`);
+
+  await ask({ move: [250, 150] });
+  const hovered = await until(() => sent.some((m) => m.type === 'event' && m.name === 'hover' && m.payload.hit));
+  const ev = sent.filter((m) => m.type === 'event' && m.name === 'hover' && m.payload.hit).pop();
+  check('hover forwarded with the Python mark id', hovered && ev.payload.hit.mark === hit.mark && ev.payload.hit.index === hit.index
+    && typeof ev.payload.hit.position.x === 'number', JSON.stringify(ev));
+  await ask({ move: [-20, -20] });
+  await until(() => sent.filter((m) => m.type === 'event' && m.name === 'hover').pop()?.payload.hit === null);
+  await frames(5);
+
+  for (const m of live) await deliver(m);
+  const changed = await until(() => sent.some((m) => m.type === 'event' && m.name === 'view_change'));
+  check('viewChange forwarded as view_change (fit)', changed);
+  await frames(5);
+  diff = await ask('after.png');
+  check('live operations draw like the Python plot', diff < 0.03, `${(diff * 100).toFixed(2)}% pixels differ`);
+  cleanup();
+  check('cleanup leaves no handlers', handlers['msg:custom'].length === 0 && handlers['change:events'].length === 0);
+  check('no errors', errors.length === 0, errors.join(' | '));
+}
+
+main().catch((e) => check('page', false, e && e.stack || e)).finally(() => { window.__results = results; });
+</script>

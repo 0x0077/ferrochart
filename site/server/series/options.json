@@ -1,0 +1,269 @@
+{
+  "series": [
+    {
+      "name": "optAtmIv",
+      "description": "At-the-money 30-day implied volatility (any symbol); rises when the price falls",
+      "unit": "fraction per year",
+      "cols": [
+        {
+          "name": "iv",
+          "osc": {
+            "center": 0.45,
+            "amp": 0.05,
+            "beta": -0.5,
+            "lo": 0.15,
+            "hi": 1.2
+          }
+        }
+      ]
+    },
+    {
+      "name": "optPutCall",
+      "description": "Put/call ratio of daily option volume; rises when the price falls",
+      "unit": "ratio",
+      "cols": [
+        {
+          "name": "ratio",
+          "osc": {
+            "center": 0.92,
+            "amp": 0.2,
+            "beta": -0.6,
+            "lo": 0.45,
+            "hi": 2.2
+          }
+        }
+      ]
+    },
+    {
+      "name": "optSkew",
+      "description": "25-delta risk reversal (call minus put IV) and butterfly (wings minus ATM IV), 30-day",
+      "unit": "vol points",
+      "cols": [
+        {
+          "name": "rr",
+          "osc": {
+            "center": -1.2,
+            "amp": 2.2,
+            "beta": 0.6
+          }
+        },
+        {
+          "name": "bf",
+          "osc": {
+            "center": 0.9,
+            "amp": 0.35,
+            "beta": -0.2,
+            "lo": 0.15
+          }
+        }
+      ]
+    },
+    {
+      "name": "optVolume",
+      "description": "Daily option volume across all strikes",
+      "unit": "contracts",
+      "cols": [
+        {
+          "name": "contracts",
+          "amount": {
+            "scale": 60000,
+            "vol": 0.3,
+            "beta": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "name": "optOiStrikes",
+      "description": "Open interest at nine evenly spaced strikes around the recent price (strike 1 the lowest; use BTCUSD, interval 1d): calls build when the price rises, puts when it falls",
+      "unit": "contracts",
+      "cols": [
+        {
+          "name": "call1",
+          "level": {
+            "base": 1500,
+            "vol": 0.25,
+            "beta": 1.5
+          }
+        },
+        {
+          "name": "call2",
+          "level": {
+            "base": 2000,
+            "vol": 0.25,
+            "beta": 1.5
+          }
+        },
+        {
+          "name": "call3",
+          "level": {
+            "base": 3500,
+            "vol": 0.25,
+            "beta": 1.5
+          }
+        },
+        {
+          "name": "call4",
+          "level": {
+            "base": 6000,
+            "vol": 0.25,
+            "beta": 1.5
+          }
+        },
+        {
+          "name": "call5",
+          "level": {
+            "base": 12000,
+            "vol": 0.25,
+            "beta": 1.5
+          }
+        },
+        {
+          "name": "call6",
+          "level": {
+            "base": 15000,
+            "vol": 0.25,
+            "beta": 1.5
+          }
+        },
+        {
+          "name": "call7",
+          "level": {
+            "base": 18000,
+            "vol": 0.25,
+            "beta": 1.5
+          }
+        },
+        {
+          "name": "call8",
+          "level": {
+            "base": 9000,
+            "vol": 0.25,
+            "beta": 1.5
+          }
+        },
+        {
+          "name": "call9",
+          "level": {
+            "base": 14000,
+            "vol": 0.25,
+            "beta": 1.5
+          }
+        },
+        {
+          "name": "put1",
+          "level": {
+            "base": 13000,
+            "vol": 0.25,
+            "beta": -1.5
+          }
+        },
+        {
+          "name": "put2",
+          "level": {
+            "base": 8000,
+            "vol": 0.25,
+            "beta": -1.5
+          }
+        },
+        {
+          "name": "put3",
+          "level": {
+            "base": 16000,
+            "vol": 0.25,
+            "beta": -1.5
+          }
+        },
+        {
+          "name": "put4",
+          "level": {
+            "base": 14000,
+            "vol": 0.25,
+            "beta": -1.5
+          }
+        },
+        {
+          "name": "put5",
+          "level": {
+            "base": 11000,
+            "vol": 0.25,
+            "beta": -1.5
+          }
+        },
+        {
+          "name": "put6",
+          "level": {
+            "base": 5000,
+            "vol": 0.25,
+            "beta": -1.5
+          }
+        },
+        {
+          "name": "put7",
+          "level": {
+            "base": 3000,
+            "vol": 0.25,
+            "beta": -1.5
+          }
+        },
+        {
+          "name": "put8",
+          "level": {
+            "base": 1500,
+            "vol": 0.25,
+            "beta": -1.5
+          }
+        },
+        {
+          "name": "put9",
+          "level": {
+            "base": 1000,
+            "vol": 0.25,
+            "beta": -1.5
+          }
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "optBlocks",
+      "description": "Large option prints: premium in USD, positive for calls, negative for puts",
+      "when": {
+        "random": {
+          "perDay": 5
+        }
+      },
+      "labels": [
+        "Call",
+        "Put"
+      ],
+      "value": {
+        "flow": {
+          "scale": 25000000.0,
+          "beta": 0.6
+        }
+      }
+    },
+    {
+      "name": "optEarnings",
+      "description": "Quarterly earnings dates; value is the implied earnings move from options, percent",
+      "when": {
+        "every": {
+          "days": 91
+        }
+      },
+      "labels": [
+        "Earnings"
+      ],
+      "value": {
+        "osc": {
+          "center": 6.5,
+          "amp": 1.4,
+          "lo": 3,
+          "hi": 12
+        }
+      }
+    }
+  ]
+}

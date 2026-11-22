@@ -1,0 +1,16 @@
+{
+  "name": "ferrochart-compare",
+  "private": true,
+  "type": "module",
+  "description": "Same-scenario comparison of FerroChart, lightweight-charts and Vela (not published)",
+  "scripts": {
+    "bench": "node bench.mjs"
+  },
+  "dependencies": {
+    "@luxalgo/vela": "0.10.13",
+    "lightweight-charts": "5.3.0"
+  },
+  "devDependencies": {
+    "playwright": "1.65.1"
+  }
+}

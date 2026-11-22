@@ -1,0 +1,32 @@
+{
+  "name": "ferrochart-site",
+  "private": true,
+  "type": "module",
+  "description": "ferrochart.com (Next.js, static export)",
+  "scripts": {
+    "wasm": "node scripts/copy-wasm.mjs",
+    "predev": "npm run wasm",
+    "dev": "next dev",
+    "prebuild": "npm run wasm",
+    "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "postbuild": "node scripts/precompress.mjs",
+    "server": "cargo run --release --manifest-path server/Cargo.toml -- --site out",
+    "server:api": "cargo run --release --manifest-path server/Cargo.toml -- --cors"
+  },
+  "dependencies": {
+    "marked": "^16.4.2",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "postcss": "^8.5.33",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^5.9.3"
+  }
+}

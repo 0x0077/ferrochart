@@ -1,0 +1,16 @@
+{
+  "name": "ferrochart-web-tests",
+  "private": true,
+  "type": "module",
+  "description": "Browser smoke tests for examples/web (Playwright + real Safari via safaridriver; not published)",
+  "scripts": {
+    "test": "node smoke.mjs",
+    "types": "tsc -p .",
+    "safari": "node safari.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.1",
+    "pngjs": "^7.0.0",
+    "typescript": "^5.9.3"
+  }
+}

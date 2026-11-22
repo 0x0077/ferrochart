@@ -1,0 +1,31 @@
+[package]
+name = "ferrochart-plot"
+description = "Non-time charts for FerroChart: numeric, category and date axes, lines, scatter, bars, waterfalls and heatmaps"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["plot", "chart", "visualization", "finance", "heatmap"]
+categories = ["visualization", "finance"]
+readme = "../../README.md"
+
+[dependencies]
+ferrochart-core.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+ferrochart-core = { workspace = true, features = ["testing"] }
+ferrochart-render-cpu.workspace = true
+ferrochart-render-wgpu.workspace = true
+ferrochart-text.workspace = true
+proptest.workspace = true
+image.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "plot"
+harness = false

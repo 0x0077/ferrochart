@@ -1,0 +1,84 @@
+# Desktop (Rust + winit)
+
+`ferrochart-winit` opens a window, renders with wgpu and handles mouse,
+trackpad and keyboard input. You give it a `Chart` and, optionally, callbacks.
+
+```toml
+[dependencies]
+ferrochart-core = "0.1"
+ferrochart-winit = "0.1"
+```
+
+## A window with data
+
+```rust,ignore
+use ferrochart_core::data::OhlcColumns;
+use ferrochart_core::{Chart, ChartOptions};
+use ferrochart_indicators::named::ChartExt; // add_indicator_by_name
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut chart = Chart::new(ChartOptions::default());
+    let candles = chart.add_candlestick()?;
+    chart.add_volume(candles)?;
+    chart.set_data(candles, OhlcColumns {
+        time: vec![/* UTC ms */],
+        open: vec![], high: vec![], low: vec![], close: vec![],
+        volume: Some(vec![]),
+    })?;
+    chart.add_indicator_by_name(candles, "ema", &[("n", 20.into())])?;
+    ferrochart_winit::show(chart)?;
+    Ok(())
+}
+```
+
+`show` opens a window with the default title and size and returns when it is
+closed. For a title, a size or callbacks (live data, events), use
+`run(WindowOptions, chart, app)` with a `ChartApp`, below. `run` returns when
+the window is closed. The chart redraws only when something
+changed (input, new data, kinetic scrolling), so an idle chart uses no CPU.
+
+## Live data
+
+Implement `ChartApp::update`. It is called on every event-loop iteration; return
+when you want to be called next, on the same millisecond clock it receives:
+
+```rust,ignore
+use ferrochart_core::Chart;
+use ferrochart_core::data::{BarUpdate, SeriesId};
+use ferrochart_winit::ChartApp;
+
+struct Feed { series: SeriesId, bar: BarUpdate, next: f64 }
+
+impl ChartApp for Feed {
+    fn update(&mut self, chart: &mut Chart, now_ms: f64) -> Option<f64> {
+        if now_ms >= self.next {
+            self.bar.close += 0.01;
+            self.bar.high = self.bar.high.max(self.bar.close);
+            let _ = chart.update_last(self.series, self.bar);
+            self.next = now_ms + 10.0; // 100 updates per second
+        }
+        Some(self.next)
+    }
+}
+```
+
+`ChartApp::on_event` receives crosshair, visible-range and history events;
+`ChartApp::on_frame` receives the CPU time of each rendered frame.
+
+## The demo
+
+```bash
+cargo run -p example-desktop --release
+```
+
+Ten million one-minute bars with a simulated feed of 100 ticks per second.
+Drag to pan (flick for kinetic scrolling), wheel or pinch to zoom, drag an axis
+to scale it, double-click an axis to reset it, arrow keys and Home/End to
+navigate.
+
+## Your own event loop
+
+If your app already owns the window (egui, a game engine), use
+`ferrochart_winit::InputConverter` to turn winit events into chart input, and
+drive `Chart::build_frame` and `WgpuRenderer::render` yourself — see
+[How rendering works](rendering.md).

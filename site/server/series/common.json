@@ -1,0 +1,521 @@
+{
+  "series": [
+    {
+      "name": "equityCurve",
+      "description": "Strategy equity (starts near 1) and its benchmark",
+      "unit": "multiple",
+      "cols": [
+        {
+          "name": "strategy",
+          "level": {
+            "base": 1,
+            "vol": 0.06,
+            "beta": 0.45,
+            "growth": 0.12
+          }
+        },
+        {
+          "name": "benchmark",
+          "level": {
+            "base": 1,
+            "vol": 0.02,
+            "beta": 0.8,
+            "growth": 0.05
+          }
+        }
+      ]
+    },
+    {
+      "name": "venueVolume",
+      "description": "Spot volume by venue (Exchange A to D), USD per bar",
+      "unit": "USD",
+      "cols": [
+        {
+          "name": "exA",
+          "amount": {
+            "scale": 9000000000.0,
+            "vol": 0.35,
+            "beta": 0.35
+          }
+        },
+        {
+          "name": "exB",
+          "amount": {
+            "scale": 6000000000.0,
+            "vol": 0.35,
+            "beta": 0.35
+          }
+        },
+        {
+          "name": "exC",
+          "amount": {
+            "scale": 3500000000.0,
+            "vol": 0.4,
+            "beta": 0.35
+          }
+        },
+        {
+          "name": "exD",
+          "amount": {
+            "scale": 2000000000.0,
+            "vol": 0.45,
+            "beta": 0.35
+          }
+        }
+      ]
+    },
+    {
+      "name": "assetMix",
+      "description": "Portfolio weights by asset class, shares of 1",
+      "unit": "share",
+      "shares": true,
+      "cols": [
+        {
+          "name": "btc",
+          "level": {
+            "base": 40,
+            "vol": 0.25,
+            "beta": 0.6
+          }
+        },
+        {
+          "name": "eth",
+          "level": {
+            "base": 25,
+            "vol": 0.3,
+            "beta": 0.4
+          }
+        },
+        {
+          "name": "sol",
+          "level": {
+            "base": 10,
+            "vol": 0.45,
+            "beta": 0.8
+          }
+        },
+        {
+          "name": "stables",
+          "level": {
+            "base": 20,
+            "vol": 0.3,
+            "beta": -0.8
+          }
+        },
+        {
+          "name": "other",
+          "level": {
+            "base": 5,
+            "vol": 0.5
+          }
+        }
+      ]
+    },
+    {
+      "name": "streamTopics",
+      "description": "Social mentions by topic, posts per day",
+      "unit": "posts",
+      "cols": [
+        {
+          "name": "layer1",
+          "level": {
+            "base": 40000,
+            "vol": 0.35,
+            "beta": 0.4
+          }
+        },
+        {
+          "name": "defi",
+          "level": {
+            "base": 24000,
+            "vol": 0.45
+          }
+        },
+        {
+          "name": "ai",
+          "level": {
+            "base": 18000,
+            "vol": 0.6,
+            "growth": 0.5
+          }
+        },
+        {
+          "name": "gaming",
+          "level": {
+            "base": 9000,
+            "vol": 0.5
+          }
+        },
+        {
+          "name": "memes",
+          "level": {
+            "base": 26000,
+            "vol": 0.7,
+            "beta": 0.8
+          }
+        }
+      ]
+    },
+    {
+      "name": "feedQuality",
+      "description": "Feed health per bar: trades seen and the price's deviation from a reference venue in basis points",
+      "unit": "trades, bps",
+      "cols": [
+        {
+          "name": "trades",
+          "amount": {
+            "scale": 40000,
+            "vol": 0.7
+          }
+        },
+        {
+          "name": "deviation",
+          "osc": {
+            "center": 0,
+            "amp": 3,
+            "beta": 1.5,
+            "lo": -40,
+            "hi": 40
+          }
+        }
+      ]
+    },
+    {
+      "name": "socialHeat",
+      "description": "Social activity about the asset, posts per bar",
+      "unit": "posts",
+      "cols": [
+        {
+          "name": "posts",
+          "amount": {
+            "scale": 60000,
+            "vol": 0.45,
+            "beta": 0.8
+          }
+        }
+      ]
+    },
+    {
+      "name": "liqResilience",
+      "description": "Quoted spread in basis points (per-day scale for one-minute bars) and resting depth within 10 bps in USD millions",
+      "unit": "bps, USD millions",
+      "cols": [
+        {
+          "name": "spread",
+          "amount": {
+            "scale": 2400,
+            "vol": 0.25,
+            "beta": 0.6
+          }
+        },
+        {
+          "name": "depth",
+          "level": {
+            "base": 24,
+            "vol": 0.35,
+            "beta": 0.4
+          }
+        }
+      ]
+    },
+    {
+      "name": "feedLatency",
+      "description": "Delay between exchange time and receive time, in milliseconds",
+      "unit": "ms",
+      "cols": [
+        {
+          "name": "ms",
+          "osc": {
+            "center": 1100,
+            "amp": 700,
+            "beta": 0.5,
+            "lo": 60,
+            "hi": 4000
+          }
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "news",
+      "description": "Headlines that moved the price",
+      "when": {
+        "move": {
+          "z": 2.6
+        }
+      },
+      "labels": [
+        "Upgrade",
+        "Downgrade"
+      ],
+      "value": {
+        "flow": {
+          "scale": 1,
+          "beta": 3
+        }
+      }
+    },
+    {
+      "name": "contractRolls",
+      "description": "Quarterly futures rolls: price of the next contract minus the expiring one, in index points",
+      "when": {
+        "every": {
+          "days": 91
+        }
+      },
+      "labels": [
+        "Roll"
+      ],
+      "value": {
+        "osc": {
+          "center": 45,
+          "amp": 12,
+          "lo": 15,
+          "hi": 80
+        }
+      }
+    },
+    {
+      "name": "corpEarnings",
+      "description": "Quarterly earnings releases; value is the EPS surprise in percent of the estimate",
+      "when": {
+        "every": {
+          "days": 91
+        }
+      },
+      "labels": [
+        "Earnings beat",
+        "Earnings miss"
+      ],
+      "value": {
+        "osc": {
+          "center": 1.5,
+          "amp": 6,
+          "beta": 0.5,
+          "lo": -25,
+          "hi": 25
+        }
+      }
+    },
+    {
+      "name": "corpDividends",
+      "description": "Quarterly cash dividends; value is the amount per share in USD",
+      "when": {
+        "every": {
+          "days": 91
+        }
+      },
+      "labels": [
+        "Dividend"
+      ],
+      "value": {
+        "steps": {
+          "base": 0.52,
+          "step": 0.06,
+          "perYear": 1
+        }
+      }
+    },
+    {
+      "name": "corpSplits",
+      "description": "Stock splits; value is the split ratio (new shares per old share)",
+      "when": {
+        "every": {
+          "days": 800
+        }
+      },
+      "labels": [
+        "Split"
+      ],
+      "value": {
+        "osc": {
+          "center": 2,
+          "amp": 0,
+          "lo": 2,
+          "hi": 2
+        }
+      }
+    },
+    {
+      "name": "macroEvents",
+      "description": "Scheduled and unscheduled macro and industry events; value is the price reaction in percent",
+      "when": {
+        "random": {
+          "perDay": 0.035
+        }
+      },
+      "labels": [
+        "Rates",
+        "CPI",
+        "Jobs",
+        "Regulation",
+        "Upgrade",
+        "Outage"
+      ],
+      "value": {
+        "flow": {
+          "scale": 2,
+          "beta": 4
+        }
+      }
+    },
+    {
+      "name": "onchainEvents",
+      "description": "On-chain events; value is the amount moved in USD millions",
+      "when": {
+        "random": {
+          "perDay": 0.25
+        }
+      },
+      "labels": [
+        "Whale transfer",
+        "Exchange inflow",
+        "Exchange outflow",
+        "Token mint",
+        "Bridge flow"
+      ],
+      "value": {
+        "amount": {
+          "scale": 200,
+          "vol": 0.6
+        }
+      }
+    },
+    {
+      "name": "myFills",
+      "description": "The desk's own fills; value is the signed quantity (positive: buy)",
+      "when": {
+        "random": {
+          "perDay": 8
+        }
+      },
+      "labels": [
+        "Buy",
+        "Sell"
+      ],
+      "value": {
+        "flow": {
+          "scale": 1
+        }
+      }
+    },
+    {
+      "name": "smartFills",
+      "description": "Fills of a well-informed account; value is the signed quantity (positive: buy)",
+      "when": {
+        "random": {
+          "perDay": 3
+        }
+      },
+      "labels": [
+        "Smart buy",
+        "Smart sell"
+      ],
+      "value": {
+        "flow": {
+          "scale": 1,
+          "beta": 4
+        }
+      }
+    },
+    {
+      "name": "pitFundamentals",
+      "description": "Quarterly fundamentals: event at period end, value is the publication lag in days",
+      "when": {
+        "every": {
+          "days": 91
+        }
+      },
+      "labels": [
+        "Fundamentals"
+      ],
+      "value": {
+        "osc": {
+          "center": 35,
+          "amp": 8,
+          "lo": 20,
+          "hi": 50
+        }
+      }
+    },
+    {
+      "name": "pitMacro",
+      "description": "Monthly macro data: event at period end, value is the publication lag in days",
+      "when": {
+        "every": {
+          "days": 30
+        }
+      },
+      "labels": [
+        "Macro"
+      ],
+      "value": {
+        "osc": {
+          "center": 14,
+          "amp": 4,
+          "lo": 6,
+          "hi": 22
+        }
+      }
+    },
+    {
+      "name": "pitAltData",
+      "description": "Weekly alternative data: event at period end, value is the delivery lag in days",
+      "when": {
+        "every": {
+          "days": 7
+        }
+      },
+      "labels": [
+        "Alt data"
+      ],
+      "value": {
+        "osc": {
+          "center": 2.5,
+          "amp": 1,
+          "lo": 1,
+          "hi": 5
+        }
+      }
+    },
+    {
+      "name": "legFills",
+      "description": "Fills of a two-leg trade, one per second at most; value is the signed quantity in BTC (positive: leg A buys, negative: leg B sells)",
+      "when": {
+        "random": {
+          "perDay": 2400
+        }
+      },
+      "labels": [
+        "Leg A",
+        "Leg B"
+      ],
+      "value": {
+        "flow": {
+          "scale": 20000
+        }
+      }
+    },
+    {
+      "name": "feedGaps",
+      "description": "Outages of a data feed; value is the length in bars",
+      "when": {
+        "random": {
+          "perDay": 4
+        }
+      },
+      "labels": [
+        "Feed gap"
+      ],
+      "value": {
+        "osc": {
+          "center": 14,
+          "amp": 6,
+          "lo": 4,
+          "hi": 30
+        }
+      }
+    }
+  ]
+}

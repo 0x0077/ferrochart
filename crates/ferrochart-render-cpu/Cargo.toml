@@ -1,0 +1,20 @@
+[package]
+name = "ferrochart-render-cpu"
+description = "CPU (tiny-skia) rendering backend for FerroChart"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[dependencies]
+ferrochart-core.workspace = true
+ferrochart-text.workspace = true
+tiny-skia.workspace = true
+
+[dev-dependencies]
+ferrochart-core = { workspace = true, features = ["testing"] }
+
+[lints]
+workspace = true

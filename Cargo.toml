@@ -1,0 +1,115 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/ferrochart-core",
+    "crates/ferrochart-indicators",
+    "crates/ferrochart-text",
+    "crates/ferrochart-render-cpu",
+    "crates/ferrochart-render-wgpu",
+    "crates/ferrochart-winit",
+    "crates/ferrochart-wasm",
+    "crates/ferrochart-py",
+    "crates/ferrochart-ffi",
+    "crates/ferrochart-orderflow",
+    "crates/ferrochart-plot",
+    "crates/ferrochart-bench",
+    "examples/desktop",
+    "examples/egui",
+    "examples/plugins",
+]
+# ferrochart-py needs a Python interpreter to build; it is tested separately.
+# Note: `--workspace` ignores default-members, so CI also passes `--exclude ferrochart-py`.
+default-members = [
+    "crates/ferrochart-core",
+    "crates/ferrochart-indicators",
+    "crates/ferrochart-text",
+    "crates/ferrochart-render-cpu",
+    "crates/ferrochart-render-wgpu",
+    "crates/ferrochart-winit",
+    "crates/ferrochart-wasm",
+    "crates/ferrochart-ffi",
+    "crates/ferrochart-orderflow",
+    "crates/ferrochart-plot",
+    "crates/ferrochart-bench",
+    "examples/desktop",
+    "examples/egui",
+    "examples/plugins",
+]
+
+[workspace.package]
+version = "0.3.0"
+edition = "2024"
+# MSRV: latest stable minus 2.
+rust-version = "1.93"
+license = "Apache-2.0"
+repository = "https://github.com/0x0077/ferrochart"
+homepage = "https://github.com/0x0077/ferrochart"
+readme = "README.md"
+keywords = ["chart", "candlestick", "finance", "trading", "wgpu"]
+categories = ["visualization", "rendering", "finance", "wasm"]
+
+[workspace.dependencies]
+ferrochart-core = { path = "crates/ferrochart-core", version = "0.3.0" }
+ferrochart-indicators = { path = "crates/ferrochart-indicators", version = "0.3.0" }
+ferrochart-text = { path = "crates/ferrochart-text", version = "0.3.0" }
+ferrochart-render-cpu = { path = "crates/ferrochart-render-cpu", version = "0.3.0" }
+ferrochart-render-wgpu = { path = "crates/ferrochart-render-wgpu", version = "0.3.0" }
+ferrochart-winit = { path = "crates/ferrochart-winit", version = "0.3.0" }
+ferrochart-orderflow = { path = "crates/ferrochart-orderflow", version = "0.3.0", default-features = false }
+ferrochart-plot = { path = "crates/ferrochart-plot", version = "0.3.0" }
+
+# core
+smallvec = "1"
+serde = { version = "1", features = ["derive"] }
+rayon = "1"
+
+# backends
+ab_glyph = "0.2"
+tiny-skia = "0.12"
+wgpu = "30"
+bytemuck = { version = "1", features = ["derive"] }
+raw-window-handle = "0.6"
+winit = "0.30"
+pollster = "1"
+
+# web bindings
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = "0.3"
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+
+# Python binding; `extension-module` only from pyproject.toml
+pyo3 = "0.30"
+numpy = "0.30"
+
+# dev / bench
+proptest = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde_json = "1"
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+# pedantic is enabled as a group; noisy lints are opted out below.
+pedantic = { level = "warn", priority = -1 }
+must_use_candidate = "allow"
+module_name_repetitions = "allow"
+# Numeric casts are pervasive in geometry code (f64 -> f32, i64 <-> usize); every
+# cast site is bounded by construction.
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+similar_names = "allow"
+# o/h/l/c/v are the conventional names in OHLC code.
+many_single_char_names = "allow"
+too_many_lines = "allow"
+# The public API must not panic. Tests are allowed via clippy.toml.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+undocumented_unsafe_blocks = "deny"

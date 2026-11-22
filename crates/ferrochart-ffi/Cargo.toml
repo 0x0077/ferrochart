@@ -1,0 +1,27 @@
+[package]
+name = "ferrochart-ffi"
+description = "C ABI for FerroChart"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+# Published from 0.3.0.
+publish = false
+
+[lib]
+# libferrochart.so / ferrochart.dll / libferrochart.dylib (and .a/.lib).
+name = "ferrochart"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+ferrochart-core.workspace = true
+ferrochart-indicators.workspace = true
+ferrochart-text.workspace = true
+ferrochart-render-cpu.workspace = true
+ferrochart-render-wgpu.workspace = true
+wgpu.workspace = true
+raw-window-handle.workspace = true
+
+[lints]
+workspace = true

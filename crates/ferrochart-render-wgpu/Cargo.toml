@@ -1,0 +1,26 @@
+[package]
+name = "ferrochart-render-wgpu"
+description = "wgpu rendering backend for FerroChart"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+
+[dependencies]
+ferrochart-core.workspace = true
+ferrochart-text.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
+
+[dev-dependencies]
+ferrochart-core = { workspace = true, features = ["testing"] }
+image.workspace = true
+
+[features]
+# WebGL2 fallback.
+webgl = ["wgpu/webgl"]
+
+[lints]
+workspace = true

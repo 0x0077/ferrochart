@@ -1,0 +1,36 @@
+[package]
+name = "ferrochart-orderflow"
+description = "Order flow series for FerroChart: footprint, heatmap and TPO"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["orderflow", "footprint", "heatmap", "trading", "chart"]
+categories = ["finance", "visualization"]
+readme = "../../README.md"
+
+[features]
+default = ["gpu"]
+# The native wgpu heatmap (compute shader). Data and portable drawing need no GPU.
+gpu = ["dep:ferrochart-render-wgpu", "dep:wgpu", "dep:bytemuck"]
+# Scenes and data generators shared by tests and benchmarks.
+testing = ["ferrochart-core/testing"]
+
+[dependencies]
+ferrochart-core.workspace = true
+ferrochart-render-wgpu = { workspace = true, optional = true }
+wgpu = { workspace = true, optional = true }
+bytemuck = { workspace = true, optional = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+ferrochart-core = { workspace = true, features = ["testing"] }
+ferrochart-orderflow = { path = ".", default-features = false, features = ["testing"] }
+ferrochart-render-cpu.workspace = true
+ferrochart-render-wgpu.workspace = true
+proptest.workspace = true
+image.workspace = true

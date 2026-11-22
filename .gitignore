@@ -1,0 +1,23 @@
+# Rust
+target/
+**/*.rs.bk
+
+# Python / maturin
+*.whl
+dist/
+__pycache__/
+*.so
+.venv/
+
+# Web
+node_modules/
+pkg/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python package: generated Jupyter front end (scripts/build-py-static.sh)
+crates/ferrochart-py/python/ferrochart/static/ferrochart_wasm.js
+crates/ferrochart-py/python/ferrochart/static/ferrochart_wasm_bg.wasm

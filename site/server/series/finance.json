@@ -1,0 +1,226 @@
+{
+  "series": [
+    {
+      "name": "finFundCashflows",
+      "description": "Capital called from and distributed to the investors of a private fund, per period",
+      "unit": "USD millions",
+      "cols": [
+        {
+          "name": "called",
+          "level": {
+            "base": 0.8,
+            "vol": 0.3,
+            "growth": -0.35
+          }
+        },
+        {
+          "name": "distributed",
+          "level": {
+            "base": 9,
+            "vol": 0.35,
+            "growth": 0.35
+          }
+        }
+      ]
+    },
+    {
+      "name": "finFundMultiples",
+      "description": "Distributed to paid-in (dpi) and total value to paid-in (tvpi) of a private fund",
+      "unit": "multiple",
+      "cols": [
+        {
+          "name": "dpi",
+          "level": {
+            "base": 0.9,
+            "vol": 0.06,
+            "growth": 0.42
+          }
+        },
+        {
+          "name": "tvpi",
+          "level": {
+            "base": 1.68,
+            "vol": 0.05,
+            "beta": 0.15,
+            "growth": 0.085
+          }
+        }
+      ]
+    },
+    {
+      "name": "finRunway",
+      "description": "A startup's cash balance and its monthly net burn",
+      "unit": "USD millions",
+      "cols": [
+        {
+          "name": "cash",
+          "level": {
+            "base": 21,
+            "vol": 0.04,
+            "growth": -0.55
+          }
+        },
+        {
+          "name": "burn",
+          "amount": {
+            "scale": 0.042,
+            "vol": 0.08
+          }
+        }
+      ]
+    },
+    {
+      "name": "finCovenant",
+      "description": "A borrower's net debt to EBITDA",
+      "unit": "multiple",
+      "cols": [
+        {
+          "name": "leverage",
+          "osc": {
+            "center": 3.45,
+            "amp": 0.4,
+            "beta": -0.3,
+            "lo": 1.5
+          }
+        }
+      ]
+    },
+    {
+      "name": "finCashCycle",
+      "description": "Days sales outstanding (dso), days inventory outstanding (dio) and days payables outstanding (dpo)",
+      "unit": "days",
+      "cols": [
+        {
+          "name": "dso",
+          "osc": {
+            "center": 52,
+            "amp": 5
+          }
+        },
+        {
+          "name": "dio",
+          "osc": {
+            "center": 68,
+            "amp": 8
+          }
+        },
+        {
+          "name": "dpo",
+          "osc": {
+            "center": 46,
+            "amp": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "finNetWorth",
+      "description": "A household's assets (cash, investments, home) and liabilities (mortgage, other debt)",
+      "unit": "USD thousands",
+      "cols": [
+        {
+          "name": "cash",
+          "level": {
+            "base": 45,
+            "vol": 0.2,
+            "growth": 0.03
+          }
+        },
+        {
+          "name": "investments",
+          "level": {
+            "base": 420,
+            "vol": 0.1,
+            "beta": 0.8,
+            "growth": 0.13
+          }
+        },
+        {
+          "name": "home",
+          "level": {
+            "base": 650,
+            "vol": 0.04,
+            "growth": 0.04
+          }
+        },
+        {
+          "name": "mortgage",
+          "level": {
+            "base": 380,
+            "vol": 0.005,
+            "growth": -0.045
+          }
+        },
+        {
+          "name": "otherDebt",
+          "level": {
+            "base": 16,
+            "vol": 0.35,
+            "growth": -0.12
+          }
+        }
+      ]
+    },
+    {
+      "name": "finAum",
+      "description": "Assets under management of an investment platform by business line",
+      "unit": "USD billions",
+      "cols": [
+        {
+          "name": "privateEquity",
+          "level": {
+            "base": 62,
+            "vol": 0.05,
+            "beta": 0.15,
+            "growth": 0.11
+          }
+        },
+        {
+          "name": "credit",
+          "level": {
+            "base": 48,
+            "vol": 0.05,
+            "beta": 0.1,
+            "growth": 0.19
+          }
+        },
+        {
+          "name": "realEstate",
+          "level": {
+            "base": 35,
+            "vol": 0.06,
+            "beta": 0.2,
+            "growth": 0.06
+          }
+        },
+        {
+          "name": "infrastructure",
+          "level": {
+            "base": 21,
+            "vol": 0.05,
+            "beta": 0.1,
+            "growth": 0.17
+          }
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "finRounds",
+      "description": "A startup's funding rounds; value is the amount raised in USD millions",
+      "when": {
+        "every": {
+          "days": 460
+        }
+      },
+      "value": {
+        "level": {
+          "base": 40,
+          "vol": 0.15,
+          "growth": 0.45
+        }
+      }
+    }
+  ]
+}

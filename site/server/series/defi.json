@@ -1,0 +1,201 @@
+{
+  "series": [
+    {
+      "name": "defiPool",
+      "description": "An ETH/stablecoin pool: total value locked (USD) and daily swap volume (USD)",
+      "unit": "USD",
+      "cols": [
+        { "name": "tvl", "level": { "base": 180000000, "vol": 0.18, "beta": 0.6 } },
+        { "name": "volume", "amount": { "scale": 95000000, "vol": 0.35, "beta": 0.45 } }
+      ]
+    },
+    {
+      "name": "defiPoolDepth",
+      "description": "An ETH pool's value locked (USD), to spread over price levels",
+      "unit": "USD",
+      "cols": [
+        { "name": "tvl", "level": { "base": 60000000, "vol": 0.15, "beta": 0.5 } }
+      ]
+    },
+    {
+      "name": "defiLending",
+      "description": "Utilisation of a stablecoin lending market (0-1); it rises when the collateral rallies",
+      "unit": "fraction",
+      "cols": [
+        { "name": "utilization", "prob": { "center": 1.35, "amp": 0.9, "beta": 0.35 } }
+      ]
+    },
+    {
+      "name": "defiStable",
+      "description": "A stablecoin's market price (USD, peg 1) and its circulating supply (USD)",
+      "unit": "USD",
+      "cols": [
+        { "name": "price", "osc": { "center": 0.99995, "amp": 0.0003, "beta": 5, "lo": 0.95, "hi": 1.0006 } },
+        { "name": "supply", "level": { "base": 2400000000, "vol": 0.06, "beta": 0.12 } }
+      ]
+    },
+    {
+      "name": "defiUnstake",
+      "description": "Staking queues: ETH waiting to enter and to exit the validator set",
+      "unit": "ETH",
+      "cols": [
+        { "name": "entry", "level": { "base": 180000, "vol": 0.45, "beta": 1 } },
+        { "name": "exit", "level": { "base": 420000, "vol": 0.45, "beta": -1.2 } }
+      ]
+    },
+    {
+      "name": "defiStableChains",
+      "description": "A stablecoin's supply by chain (USD)",
+      "unit": "USD",
+      "cols": [
+        { "name": "chainA", "level": { "base": 21000000000, "vol": 0.05, "growth": 0.12 } },
+        { "name": "chainB", "level": { "base": 9500000000, "vol": 0.08, "growth": 0.35 } },
+        { "name": "chainC", "level": { "base": 4200000000, "vol": 0.12, "growth": 0.9 } },
+        { "name": "chainD", "level": { "base": 2600000000, "vol": 0.1, "growth": -0.25 } },
+        { "name": "chainE", "level": { "base": 1300000000, "vol": 0.15, "growth": 1.1 } }
+      ]
+    },
+    {
+      "name": "defiApy",
+      "description": "A pool's yield by source, in percent a year: trading fees and token rewards (rewards taper off)",
+      "unit": "%",
+      "cols": [
+        { "name": "fees", "osc": { "center": 4.2, "amp": 1.3, "beta": 0.4, "lo": 0.6 } },
+        { "name": "rewards", "level": { "base": 2.2, "vol": 0.18, "growth": -1.6 } }
+      ]
+    },
+    {
+      "name": "defiTvlSource",
+      "description": "A protocol's net deposits per bar (ETH) and the ETH price (USD)",
+      "unit": "ETH, USD",
+      "cols": [
+        { "name": "netFlow", "flow": { "scale": 14000, "beta": 0.25 } },
+        { "name": "price", "track": { "noise": 0 } }
+      ]
+    },
+    {
+      "name": "defiRevenue",
+      "description": "A protocol's revenue and the token incentives it pays, per bar (USD)",
+      "unit": "USD",
+      "cols": [
+        { "name": "revenue", "amount": { "scale": 520000, "vol": 0.3, "beta": 0.25 } },
+        { "name": "incentives", "level": { "base": 2600000, "vol": 0.12, "growth": -0.75 } }
+      ]
+    },
+    {
+      "name": "defiLpFees",
+      "description": "Swap fees earned by a $10M ETH/stablecoin LP position, per bar (USD)",
+      "unit": "USD",
+      "cols": [
+        { "name": "fees", "amount": { "scale": 2600, "vol": 0.45, "beta": 0.35 } }
+      ]
+    },
+    {
+      "name": "defiBadDebt",
+      "description": "A lending protocol's bad debt and its risk reserve (USD)",
+      "unit": "USD",
+      "cols": [
+        { "name": "badDebt", "level": { "base": 2100000, "vol": 0.45, "beta": -2.2 } },
+        { "name": "reserve", "level": { "base": 14000000, "vol": 0.06, "beta": 0.3, "growth": 0.45 } }
+      ]
+    },
+    {
+      "name": "defiLst",
+      "description": "Market price of a liquid staking token and a restaking token relative to their backing (fraction, 0 = at par)",
+      "unit": "fraction",
+      "cols": [
+        { "name": "lst", "osc": { "center": -0.0018, "amp": 0.0011, "beta": 0.6 } },
+        { "name": "lrt", "osc": { "center": -0.0065, "amp": 0.0035, "beta": 1.2 } }
+      ]
+    },
+    {
+      "name": "defiMintRedeem",
+      "description": "A stablecoin's net issuance (mints minus redemptions) per bar (USD)",
+      "unit": "USD",
+      "cols": [
+        { "name": "net", "flow": { "scale": 30000000, "beta": 1.2 } }
+      ]
+    },
+    {
+      "name": "defiAirdrop",
+      "description": "A token airdrop: tokens claimed and tokens sold per bar (claims taper off)",
+      "unit": "tokens",
+      "cols": [
+        { "name": "claimed", "level": { "base": 380000, "vol": 0.3, "growth": -9 } },
+        { "name": "sold", "level": { "base": 150000, "vol": 0.4, "beta": -0.15, "growth": -7 } }
+      ]
+    },
+    {
+      "name": "defiPools",
+      "description": "ETH price (USD) on a reference venue and on three pools that lag it",
+      "unit": "USD",
+      "cols": [
+        { "name": "ref", "track": { "noise": 0 } },
+        { "name": "pool1", "track": { "lag": 1, "noise": 0.00008 } },
+        { "name": "pool2", "track": { "lag": 3, "noise": 0.00012 } },
+        { "name": "pool3", "track": { "lag": 6, "noise": 0.0002 } }
+      ]
+    },
+    {
+      "name": "defiRwa",
+      "description": "A tokenised treasury fund: assets (USD), yield (% a year) and the token's premium to NAV (fraction)",
+      "unit": "USD, %, fraction",
+      "cols": [
+        { "name": "aum", "level": { "base": 860000000, "vol": 0.07, "growth": 0.85 } },
+        { "name": "yield", "steps": { "base": 4.35, "step": 0.055, "perYear": 5 } },
+        { "name": "premium", "osc": { "center": 0.0002, "amp": 0.0011, "lo": -0.004, "hi": 0.004 } }
+      ]
+    },
+    {
+      "name": "predYes",
+      "description": "Price of the Yes share of a binary prediction market (0-1)",
+      "unit": "probability",
+      "cols": [
+        { "name": "yes", "prob": { "center": 0.2, "amp": 0.8, "beta": 0.3 } }
+      ]
+    },
+    {
+      "name": "predOutcomes",
+      "description": "Probabilities of five outcomes of one market (sum to 1)",
+      "unit": "probability",
+      "shares": true,
+      "cols": [
+        { "name": "a", "level": { "base": 0.38, "vol": 0.35, "beta": 0.5 } },
+        { "name": "b", "level": { "base": 0.27, "vol": 0.35, "beta": -0.4 } },
+        { "name": "c", "level": { "base": 0.17, "vol": 0.4 } },
+        { "name": "d", "level": { "base": 0.11, "vol": 0.4, "beta": -0.3 } },
+        { "name": "e", "level": { "base": 0.07, "vol": 0.45 } }
+      ]
+    },
+    {
+      "name": "predLinked",
+      "description": "Yes prices of three separately traded markets on mutually exclusive outcomes (0-1); their sum should be 1",
+      "unit": "probability",
+      "cols": [
+        { "name": "a", "prob": { "center": 0.0, "amp": 0.14, "beta": 0.35 } },
+        { "name": "b", "prob": { "center": -0.85, "amp": 0.12, "beta": -0.3 } },
+        { "name": "c", "prob": { "center": -1.4, "amp": 0.12, "beta": -0.25 } }
+      ]
+    },
+    {
+      "name": "predDispute",
+      "description": "Yes price of a market whose outcome was proposed, disputed and voted on (0-1)",
+      "unit": "probability",
+      "cols": [
+        { "name": "yes", "prob": { "center": 0.9, "amp": 0.9, "beta": 0.4 } }
+      ]
+    },
+    {
+      "name": "predForecast",
+      "description": "A published forecast of a vote share (%), revised weekly, and the final result (%)",
+      "unit": "%",
+      "cols": [
+        { "name": "forecast", "osc": { "center": 52.2, "amp": 1.4 } },
+        { "name": "result", "steps": { "base": 53.1, "perYear": 0 } }
+      ]
+    }
+  ],
+  "events": [
+    { "name": "predNews", "description": "News that moved a prediction market", "when": { "move": { "z": 2.6 } }, "labels": ["Strong poll", "Weak poll"], "value": { "flow": { "scale": 1, "beta": 3 } } }
+  ]
+}

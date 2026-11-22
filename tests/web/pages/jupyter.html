@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- Browser test of the Python package's Jupyter front end: the
+     widget module with a mock anywidget model replaying messages captured
+     from Python (tests/web/jupyter_fixture.py); driven by tests/web/jupyter.mjs. -->
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<style>body { margin: 0; width: 900px; }</style>
+<div id="el"></div>
+<script type="module">
+const dir = '/tests/web/out/jupyter/';
+const results = [];
+const check = (name, ok, detail = '') => results.push({ name, ok: !!ok, detail: String(detail) });
+const frames = (n = 3) => new Promise((r) => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+const until = async (f, ms = 10_000) => { const t = performance.now(); while (!f()) { if (performance.now() - t > ms) return false; await frames(1); } return true; };
+
+async function buffers(names, misalign = false) {
+  return Promise.all(names.map(async (n) => {
+    const bytes = new Uint8Array(await (await fetch(dir + n)).arrayBuffer());
+    if (!misalign) return new DataView(bytes.buffer);
+    // Jupyter may hand buffers at any offset: test the copying path.
+    const big = new Uint8Array(bytes.length + 4);
+    big.set(bytes, 4);
+    return new DataView(big.buffer, 4, bytes.length);
+  }));
+}
+
+/** Asks jupyter.mjs to compare a screenshot of the chart with the Python
+ * reference image `name`; resolves to the share of differing pixels. */
+const compare = (name) => new Promise((r) => { window.__compareDone = r; window.__compareReq = name; });
+
+async function main() {
+  const { messages, before: range, after: rangeAfter } = await (await fetch(dir + 'messages.json')).json();
+  const [snapshot, ...live] = messages;
+  const sent = [];
+  const handlers = { 'msg:custom': [], 'change:events': [] };
+  const state = { width: 500, height: 300, theme: 'light', events: ['visible_range_changed'] };
+  const model = {
+    get: (k) => state[k],
+    on: (name, cb) => handlers[name].push(cb),
+    off: (name, cb) => { handlers[name] = handlers[name].filter((f) => f !== cb); },
+    send: (content) => sent.push(content),
+  };
+  const deliver = async (m, misalign) => {
+    const bufs = await buffers(m.buffers, misalign);
+    for (const cb of handlers['msg:custom']) cb(m.msg, bufs);
+  };
+  const errors = [];
+  const origError = console.error;
+  console.error = (...a) => { errors.push(a.map(String).join(' ')); origError(...a); };
+
+  const mod = await import(dir + 'widget.mjs');
+  const el = document.getElementById('el');
+  const cleanup = mod.default.render({ model, el });
+  const init = sent.find((m) => m.type === 'init');
+  check('view asks for the snapshot and the wasm', init && init.wasm === true && typeof init.view === 'string', JSON.stringify(init));
+  // The captured reply was addressed to "VIEW": readdress it to this view.
+  snapshot.msg.to = init.view;
+  await deliver({ msg: { ...snapshot.msg, to: 'someone-else' }, buffers: snapshot.buffers });
+  await frames(10);
+  // The chart is created only when this view's snapshot arrives.
+  check('snapshots for other views are ignored', el.querySelector('canvas').width === 300,
+    `canvas width ${el.querySelector('canvas').width}`);
+  await deliver(snapshot, true);
+  const canvas = el.querySelector('canvas');
+  const box = canvas.parentElement.getBoundingClientRect();
+  check('box sized from the model', box.width === 500 && box.height === 300, `${box.width}×${box.height}`);
+  const ranged = await until(() => sent.some((m) => m.type === 'event' && m.name === 'visible_range_changed'));
+  const ev = sent.filter((m) => m.type === 'event').pop();
+  check('events forwarded with Python names', ranged && ev && 'from' in ev.payload && 'to' in ev.payload, JSON.stringify(ev));
+  await frames(5);
+  const near = (a, b) => Math.abs(a - b) < 0.6;
+  check('same visible range as Python', ev && near(ev.payload.from, range[0]) && near(ev.payload.to, range[1]),
+    JSON.stringify([ev?.payload, range]));
+  let diff = await compare('before.png');
+  check('snapshot draws like the Python chart', diff < 0.03, `${(diff * 100).toFixed(2)}% pixels differ`);
+  for (const m of live) await deliver(m);
+  // A stale operation (seq not newer) is ignored.
+  for (const cb of handlers['msg:custom']) cb({ type: 'ops', seq: 1, ops: [{ op: 'removeSeries', series: 0 }] }, []);
+  await frames(5);
+  diff = await compare('after.png');
+  const evAfter = sent.filter((m) => m.type === 'event').pop();
+  check('same visible range as Python after live operations',
+    evAfter && near(evAfter.payload.from, rangeAfter[0]) && near(evAfter.payload.to, rangeAfter[1]),
+    JSON.stringify([evAfter?.payload, rangeAfter]));
+  check('live operations draw like the Python chart', diff < 0.03, `${(diff * 100).toFixed(2)}% pixels differ`);
+  state.events = [];
+  for (const cb of handlers['change:events']) cb();
+  const before = sent.length;
+  for (const cb of handlers['msg:custom']) cb({ type: 'ops', seq: 1e9, ops: [{ op: 'setBarSpacing', value: 4 }] }, []);
+  await frames(5);
+  check('unsubscribed events are not forwarded', sent.length === before, `${sent.length - before} sent`);
+  cleanup();
+  check('cleanup leaves no handlers', handlers['msg:custom'].length === 0 && handlers['change:events'].length === 0);
+  check('no errors', errors.length === 0, errors.join(' | '));
+}
+
+main().catch((e) => check('page', false, e && e.stack || e)).finally(() => { window.__results = results; });
+</script>

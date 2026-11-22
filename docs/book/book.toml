@@ -1,0 +1,10 @@
+[book]
+title = "FerroChart"
+description = "High-performance, cross-platform financial charts in Rust"
+authors = ["FerroChart contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/0x0077/ferrochart"
+edit-url-template = "https://github.com/0x0077/ferrochart/edit/main/docs/book/{path}"

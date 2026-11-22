@@ -1,0 +1,27 @@
+[package]
+name = "ferrochart-indicators"
+description = "Incremental technical indicators for FerroChart"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["indicators", "technical-analysis", "trading", "finance", "chart"]
+categories = ["finance", "algorithms"]
+readme = "../../README.md"
+
+[dependencies]
+ferrochart-core.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+ferrochart-core = { workspace = true, features = ["testing"] }
+proptest.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "indicators"
+harness = false

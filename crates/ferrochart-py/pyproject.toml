@@ -1,0 +1,37 @@
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "ferrochart"
+description = "Fast financial charts: candlesticks, indicators and drawings, rendered on the GPU"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE-APACHE"]
+dynamic = ["version"]
+dependencies = ["numpy>=1.23"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+[project.optional-dependencies]
+pandas = ["pandas>=1.5"]
+polars = ["polars>=0.20"]
+jupyter = ["anywidget>=0.9"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "ferrochart._native"
+# Only for the wheel: `cargo test` binaries would not link with it.
+features = ["pyo3/extension-module"]
+# Byte code of a development install is not shipped.
+exclude = ["python/ferrochart/__pycache__/**"]
+# The generated SBOM lists the build machine's paths.
+sbom = { rust = false }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

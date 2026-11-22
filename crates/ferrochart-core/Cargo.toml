@@ -1,0 +1,41 @@
+[package]
+name = "ferrochart-core"
+description = "Platform-independent core of the FerroChart financial charting engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+
+[dependencies]
+smallvec.workspace = true
+serde = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+
+[dev-dependencies]
+# Doctests and integration tests use the `testing` generators even when the
+# feature is not requested explicitly.
+ferrochart-core = { path = ".", features = ["testing"] }
+proptest.workspace = true
+criterion.workspace = true
+serde_json.workspace = true
+
+[[bench]]
+name = "core"
+harness = false
+
+[lints]
+workspace = true
+
+[features]
+# Exports deterministic test-data generators.
+testing = []
+# Full recomputation of several indicators in parallel, inside the call
+# that triggers it. Off for WASM.
+rayon = ["dep:rayon"]
+# Serialize/Deserialize for `ChartState` and the types in it.
+serde = ["dep:serde"]

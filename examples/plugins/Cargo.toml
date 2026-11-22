@@ -1,0 +1,16 @@
+[package]
+name = "example-plugins"
+description = "FerroChart plugin examples: layer plugins and a custom series (winit)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ferrochart-core = { workspace = true, features = ["testing"] }
+ferrochart-winit.workspace = true
+
+[lints]
+workspace = true

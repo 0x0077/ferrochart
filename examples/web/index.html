@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FerroChart — web demo</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: #131722; color: #d1d4dc;
+      font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 12px;
+      border-bottom: 1px solid #2a2e39; }
+    header strong { font-size: 14px; }
+    label { display: inline-flex; gap: 6px; align-items: center; }
+    select, button { background: #1e222d; color: inherit; border: 1px solid #363a45;
+      border-radius: 4px; padding: 3px 8px; font: inherit; }
+    #stats, #legend { font-variant-numeric: tabular-nums; color: #9598a1; }
+    #legend { min-width: 26em; }
+    main { position: relative; flex: 1; min-height: 0; }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    #error { position: absolute; inset: 0; display: none; place-items: center; padding: 24px;
+      text-align: center; color: #ef5350; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>FerroChart</strong>
+    <label>Bars
+      <select id="bars">
+        <option value="10000">10 k</option>
+        <option value="1000000" selected>1 M</option>
+        <option value="10000000">10 M</option>
+      </select>
+    </label>
+    <label>Theme
+      <select id="theme"><option>dark</option><option>light</option></select>
+    </label>
+    <label>Crosshair
+      <select id="crosshair"><option>normal</option><option selected>magnet</option><option>hidden</option></select>
+    </label>
+    <label><input type="checkbox" id="live" checked> Live feed (100 ticks/s)</label>
+    <button id="fit">Fit</button>
+    <button id="range" title="Click twice on the chart">Range</button>
+    <span id="stats"></span>
+    <span id="legend"></span>
+  </header>
+  <main>
+    <canvas id="chart" aria-label="Candlestick chart"></canvas>
+    <div id="error"></div>
+  </main>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -1,0 +1,305 @@
+{
+  "series": [
+    {
+      "name": "perpPremium",
+      "description": "Perpetual premium index: (perp mid - index price) / index price",
+      "unit": "fraction",
+      "cols": [{ "name": "value", "osc": { "center": 0.00008, "amp": 0.00035, "beta": 0.6 } }]
+    },
+    {
+      "name": "venueFunding",
+      "description": "Funding rate per 8 hours on three venues",
+      "unit": "fraction per 8 h",
+      "cols": [
+        { "name": "venueA", "osc": { "center": 0.0001, "amp": 0.00009, "beta": 0.5, "lo": -0.0015, "hi": 0.0015 } },
+        { "name": "venueB", "osc": { "center": 0.00006, "amp": 0.00008, "beta": 0.45, "lo": -0.0015, "hi": 0.0015 } },
+        { "name": "venueC", "osc": { "center": 0.00016, "amp": 0.00012, "beta": 0.6, "lo": -0.0015, "hi": 0.0015 } }
+      ]
+    },
+    {
+      "name": "venueOi",
+      "description": "Open interest on three venues",
+      "unit": "USD",
+      "cols": [
+        { "name": "venueA", "level": { "base": 9e9, "vol": 0.12, "beta": 0.6 } },
+        { "name": "venueB", "level": { "base": 6e9, "vol": 0.15, "beta": 0.5 } },
+        { "name": "venueC", "level": { "base": 2.5e9, "vol": 0.2, "beta": 0.8 } }
+      ]
+    },
+    {
+      "name": "traderLsr",
+      "description": "Long/short ratio of top traders (by position size) and of all accounts",
+      "unit": "ratio",
+      "cols": [
+        { "name": "top", "osc": { "center": 1.05, "amp": 0.18, "beta": -0.35, "lo": 0.5, "hi": 2.5 } },
+        { "name": "retail", "osc": { "center": 1.35, "amp": 0.25, "beta": 0.5, "lo": 0.5, "hi": 3.5 } }
+      ]
+    },
+    {
+      "name": "venueShare",
+      "description": "Share of perpetual volume by venue (rows sum to 1)",
+      "unit": "fraction",
+      "shares": true,
+      "cols": [
+        { "name": "venueA", "level": { "base": 0.36, "vol": 0.18 } },
+        { "name": "venueB", "level": { "base": 0.22, "vol": 0.22 } },
+        { "name": "venueC", "level": { "base": 0.17, "vol": 0.25 } },
+        { "name": "venueD", "level": { "base": 0.14, "vol": 0.3 } },
+        { "name": "venueE", "level": { "base": 0.11, "vol": 0.35 } }
+      ]
+    },
+    {
+      "name": "insuranceFund",
+      "description": "Balance of a venue's insurance fund",
+      "unit": "USD",
+      "cols": [{ "name": "value", "level": { "base": 1.1e9, "vol": 0.06, "beta": 0.35, "growth": 0.25 } }]
+    },
+    {
+      "name": "holderAge",
+      "description": "Share of supply by time since the coins last moved (rows sum to 1)",
+      "unit": "fraction",
+      "shares": true,
+      "cols": [
+        { "name": "lt1m", "level": { "base": 0.05, "vol": 0.25, "beta": 0.9 } },
+        { "name": "m1to3", "level": { "base": 0.07, "vol": 0.22, "beta": 0.7 } },
+        { "name": "m3to6", "level": { "base": 0.08, "vol": 0.2, "beta": 0.45 } },
+        { "name": "m6to12", "level": { "base": 0.1, "vol": 0.18, "beta": 0.2 } },
+        { "name": "y1to2", "level": { "base": 0.12, "vol": 0.15, "beta": -0.05 } },
+        { "name": "y2to3", "level": { "base": 0.1, "vol": 0.14, "beta": -0.2 } },
+        { "name": "y3to5", "level": { "base": 0.16, "vol": 0.12, "beta": -0.3 } },
+        { "name": "y5plus", "level": { "base": 0.32, "vol": 0.08, "beta": -0.35 } }
+      ]
+    },
+    {
+      "name": "sopr",
+      "description": "Spent output profit ratio: value of spent coins when sold / when acquired",
+      "unit": "ratio",
+      "cols": [{ "name": "value", "osc": { "center": 1.005, "amp": 0.018, "beta": 0.7, "lo": 0.85, "hi": 1.15 } }]
+    },
+    {
+      "name": "coinSupply",
+      "description": "Circulating supply of the coin",
+      "unit": "coins",
+      "cols": [{ "name": "value", "level": { "base": 1.99e7, "vol": 0, "growth": 0.009 } }]
+    },
+    {
+      "name": "holderSupply",
+      "description": "Supply held by long-term (coins unmoved for 155+ days) and short-term holders",
+      "unit": "coins",
+      "cols": [
+        { "name": "longTerm", "level": { "base": 1.45e7, "vol": 0.04, "beta": -0.1 } },
+        { "name": "shortTerm", "level": { "base": 3.4e6, "vol": 0.12, "beta": 0.4 } }
+      ]
+    },
+    {
+      "name": "coinDays",
+      "description": "Coin-days destroyed per bar, and supply dormant for over a year",
+      "unit": "coin-days; coins",
+      "cols": [
+        { "name": "destroyed", "amount": { "scale": 9e6, "vol": 0.7, "beta": 0.9 } },
+        { "name": "dormant", "level": { "base": 1.36e7, "vol": 0.03, "beta": -0.08, "growth": 0.04 } }
+      ]
+    },
+    {
+      "name": "balanceTiers",
+      "description": "Share of supply held by addresses in each balance tier (rows sum to 1)",
+      "unit": "fraction",
+      "shares": true,
+      "cols": [
+        { "name": "lt1", "level": { "base": 0.07, "vol": 0.06, "growth": 0.06 } },
+        { "name": "c1to10", "level": { "base": 0.12, "vol": 0.06, "growth": 0.03 } },
+        { "name": "c10to100", "level": { "base": 0.21, "vol": 0.06 } },
+        { "name": "c100to1k", "level": { "base": 0.24, "vol": 0.07, "growth": -0.02 } },
+        { "name": "c1kplus", "level": { "base": 0.36, "vol": 0.08, "growth": -0.03 } }
+      ]
+    },
+    {
+      "name": "ethIssuance",
+      "description": "New coins issued to validators and fees burned per bar",
+      "unit": "ETH",
+      "cols": [
+        { "name": "issued", "amount": { "scale": 2650, "vol": 0.04 } },
+        { "name": "burned", "amount": { "scale": 1900, "vol": 0.45, "beta": 0.3 } }
+      ]
+    },
+    {
+      "name": "chainFees",
+      "description": "Transaction fee revenue of five chains per bar",
+      "unit": "USD",
+      "cols": [
+        { "name": "chainA", "amount": { "scale": 3.2e6, "vol": 0.35, "beta": 0.3 } },
+        { "name": "chainB", "amount": { "scale": 1.6e6, "vol": 0.4, "beta": 0.3 } },
+        { "name": "chainC", "amount": { "scale": 7e5, "vol": 0.5, "beta": 0.3 } },
+        { "name": "chainD", "amount": { "scale": 3.5e5, "vol": 0.6, "beta": 0.3 } },
+        { "name": "chainE", "amount": { "scale": 1.2e5, "vol": 0.7, "beta": 0.3 } }
+      ]
+    },
+    {
+      "name": "minerFlows",
+      "description": "Coins held by miner addresses, and coins they send out per bar",
+      "unit": "coins",
+      "cols": [
+        { "name": "balance", "level": { "base": 1.81e6, "vol": 0.025, "beta": -0.03 } },
+        { "name": "outflow", "amount": { "scale": 750, "vol": 0.55, "beta": 0.6 } }
+      ]
+    },
+    {
+      "name": "hashRate",
+      "description": "Network hash rate",
+      "unit": "EH/s",
+      "cols": [{ "name": "value", "level": { "base": 780, "vol": 0.09, "beta": 0.3, "growth": 0.45 } }]
+    },
+    {
+      "name": "minerRevenue",
+      "description": "Miner revenue (subsidy plus fees) per bar",
+      "unit": "USD",
+      "cols": [{ "name": "value", "level": { "base": 4.2e7, "vol": 0.07, "beta": 1 } }]
+    },
+    {
+      "name": "onchainVolume",
+      "description": "Value transferred on chain per bar, excluding change outputs",
+      "unit": "USD",
+      "cols": [{ "name": "value", "amount": { "scale": 1.6e10, "vol": 0.35, "beta": 0.4 } }]
+    },
+    {
+      "name": "ethStaking",
+      "description": "Share of supply staked, and the annual staking yield",
+      "unit": "fraction",
+      "cols": [
+        { "name": "ratio", "level": { "base": 0.29, "vol": 0.04, "growth": 0.12 } },
+        { "name": "yield", "osc": { "center": 0.031, "amp": 0.0035, "lo": 0.02, "hi": 0.06 } }
+      ]
+    },
+    {
+      "name": "bridgeFlows",
+      "description": "Net value bridged into two chains per bar (out is negative)",
+      "unit": "USD",
+      "cols": [
+        { "name": "chainA", "flow": { "scale": 6e7, "beta": 0.4 } },
+        { "name": "chainB", "flow": { "scale": 3e7, "beta": -0.2 } }
+      ]
+    },
+    {
+      "name": "transferSizes",
+      "description": "Number of transfers per bar by value: under $1k, $1k–$100k, over $100k",
+      "unit": "count",
+      "cols": [
+        { "name": "small", "amount": { "scale": 2.6e5, "vol": 0.18, "beta": 0.2 } },
+        { "name": "medium", "amount": { "scale": 1.1e5, "vol": 0.22, "beta": 0.3 } },
+        { "name": "large", "amount": { "scale": 1.4e4, "vol": 0.3, "beta": 0.5 } }
+      ]
+    },
+    {
+      "name": "memeSupply",
+      "description": "Circulating supply of the memecoin; burns reduce it in steps",
+      "unit": "tokens",
+      "cols": [{ "name": "value", "steps": { "base": 9.6e8, "step": -0.012, "perYear": 24 } }]
+    },
+    {
+      "name": "memeHolders",
+      "description": "Share of supply held by the largest wallets: the top one, the next four and the next five",
+      "unit": "fraction",
+      "cols": [
+        { "name": "top1", "level": { "base": 0.062, "vol": 0.12, "beta": -0.12 } },
+        { "name": "top2to5", "level": { "base": 0.118, "vol": 0.1, "beta": -0.08 } },
+        { "name": "top6to10", "level": { "base": 0.071, "vol": 0.1, "beta": -0.05 } }
+      ]
+    },
+    {
+      "name": "memeSocial",
+      "description": "Social mentions of the memecoin per bar, and average sentiment from -1 to 1",
+      "unit": "count; score",
+      "cols": [
+        { "name": "mentions", "amount": { "scale": 48000, "vol": 0.5, "beta": 0.3 } },
+        { "name": "sentiment", "osc": { "center": 0.12, "amp": 0.28, "beta": 0.6, "lo": -1, "hi": 1 } }
+      ]
+    },
+    {
+      "name": "memeWash",
+      "description": "Share of the memecoin's volume flagged as likely wash trading",
+      "unit": "fraction",
+      "cols": [{ "name": "value", "prob": { "center": -1.6, "amp": 0.9, "beta": 0.3 } }]
+    },
+    {
+      "name": "memeVenueSpread",
+      "description": "Price gap of the memecoin between two pools: (pool B - pool A) / pool A",
+      "unit": "basis points",
+      "cols": [{ "name": "value", "osc": { "center": 0, "amp": 18, "beta": 0.2 } }]
+    },
+    {
+      "name": "memeGroups",
+      "description": "Net tokens bought per bar by three wallet groups: smart money, whales and retail",
+      "unit": "tokens",
+      "cols": [
+        { "name": "smart", "flow": { "scale": 6e6, "beta": 0.35 } },
+        { "name": "whales", "flow": { "scale": 1.4e7, "beta": -0.15 } },
+        { "name": "retail", "flow": { "scale": 9e6, "beta": 0.6 } }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "adlEvents",
+      "description": "Auto-deleveraging rounds after large moves; value: positions closed, USD",
+      "when": { "move": { "z": 3.4 } },
+      "labels": ["ADL"],
+      "value": { "amount": { "scale": 1.2e9, "vol": 0.6 } }
+    },
+    {
+      "name": "memeNews",
+      "description": "Memecoin headlines; the label follows the direction of the bar",
+      "when": { "random": { "perDay": 0.5 } },
+      "labels": ["Listing", "Whale dump"],
+      "value": { "flow": { "scale": 1, "beta": 3 } }
+    },
+    {
+      "name": "memeFills",
+      "description": "A trader's fills in the memecoin; value: tokens, positive buys",
+      "when": { "random": { "perDay": 2.5 } },
+      "labels": ["Buy", "Sell"],
+      "value": { "flow": { "scale": 1.4e8, "beta": -0.5 } }
+    },
+    {
+      "name": "devTrades",
+      "description": "Swaps by the developer wallet; value: tokens, positive buys",
+      "when": { "random": { "perDay": 0.6 } },
+      "labels": ["Dev buy", "Dev sell"],
+      "value": { "flow": { "scale": 2.9e8, "beta": 0.6 } }
+    },
+    {
+      "name": "devTransfers",
+      "description": "Transfers out of the developer wallet; value: tokens",
+      "when": { "random": { "perDay": 0.25 } },
+      "labels": ["Transfer"],
+      "value": { "amount": { "scale": 1.4e8, "vol": 0.5 } }
+    },
+    {
+      "name": "lpChanges",
+      "description": "Liquidity-pool tokens locked or unlocked; value: percent of the pool",
+      "when": { "random": { "perDay": 0.12 } },
+      "labels": ["Lock", "Unlock"],
+      "value": { "flow": { "scale": 30, "beta": 0.3 } }
+    },
+    {
+      "name": "lpBurns",
+      "description": "Liquidity-pool tokens burned for good; value: percent of the pool",
+      "when": { "every": { "days": 21 } },
+      "labels": ["LP burn"],
+      "value": { "amount": { "scale": 18, "vol": 0.3 } }
+    },
+    {
+      "name": "washFlags",
+      "description": "Trades flagged as likely wash trades; value: notional, USD",
+      "when": { "random": { "perDay": 3 } },
+      "labels": ["Wash"],
+      "value": { "amount": { "scale": 3.8e7, "vol": 0.6 } }
+    },
+    {
+      "name": "memeUnlocks",
+      "description": "Scheduled token unlocks of the memecoin's team and investor allocation; value: tokens",
+      "when": { "every": { "days": 30 } },
+      "labels": ["Unlock"],
+      "value": { "amount": { "scale": 3.5e7, "vol": 0.25 } }
+    }
+  ]
+}

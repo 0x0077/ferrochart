@@ -1,0 +1,39 @@
+[package]
+name = "ferrochart-bench"
+description = "Cross-crate end-to-end benchmarks for FerroChart"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ferrochart-core = { workspace = true, features = ["testing"] }
+ferrochart-render-wgpu.workspace = true
+ferrochart-orderflow = { workspace = true, features = ["gpu", "testing"] }
+ferrochart-plot.workspace = true
+wgpu.workspace = true
+
+[[bench]]
+name = "memory"
+harness = false
+
+[[bench]]
+name = "frame_time"
+harness = false
+
+[[bench]]
+name = "sync"
+harness = false
+
+[[bench]]
+name = "orderflow"
+harness = false
+
+[[bench]]
+name = "plot"
+harness = false
+
+[lints]
+workspace = true

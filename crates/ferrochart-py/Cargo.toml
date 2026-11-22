@@ -1,0 +1,30 @@
+[package]
+name = "ferrochart-py"
+description = "Python bindings for FerroChart"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+# Published to PyPI, not crates.io.
+publish = false
+
+[lib]
+name = "ferrochart_py"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# `testing`: `random_walk` (as in the JS binding).
+ferrochart-core = { workspace = true, features = ["testing"] }
+ferrochart-indicators.workspace = true
+ferrochart-plot.workspace = true
+ferrochart-text.workspace = true
+ferrochart-render-cpu.workspace = true
+ferrochart-render-wgpu.workspace = true
+ferrochart-winit.workspace = true
+tiny-skia.workspace = true
+pyo3 = { workspace = true, features = ["abi3-py310"] }
+numpy.workspace = true
+
+[lints]
+workspace = true
