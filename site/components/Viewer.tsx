@@ -223,9 +223,9 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
     // Runs once per request.
   }, [phase === 'entering', request]);
 
-  // The address follows the chart.
+  // The address follows the chart: the example's own page (app/charts).
   useEffect(() => {
-    if (phase === 'open' || phase === 'entering') history.replaceState(null, '', `#/${cat.id}/${demo.id}`);
+    if (phase === 'open' || phase === 'entering') history.replaceState(null, '', `/charts/${cat.id}/${demo.id}${location.search}`);
   }, [phase, cat, demo]);
 
   const close = useCallback(() => {
@@ -236,7 +236,7 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
     setDetails(false);
     setAll(false);
     setCode(false);
-    history.replaceState(null, '', location.pathname + location.search);
+    history.replaceState(null, '', `/${location.search}`); // back to the homepage's address
     const p = panel.current as HTMLDivElement;
     const from = card.current;
     // Back into the current category's top card (the category may have changed).

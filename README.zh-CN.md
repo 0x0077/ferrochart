@@ -147,12 +147,12 @@ C、C# 和 C++ 通过 C ABI 调用，见 [C, C++ and C#](https://ferrochart.com/
 
 <table>
   <tr>
-    <td width="50%"><a href="https://ferrochart.com/#/orderflow/bookmap"><img src="assets/readme/bookmap.jpg" alt="流动性热力图与成交"></a><br><sub><b>流动性热力图</b>与成交</sub></td>
-    <td width="50%"><a href="https://ferrochart.com/#/orderflow/footprint"><img src="assets/readme/footprint.jpg" alt="足迹图"></a><br><sub><b>足迹图</b>：每根 K 线每个价位的成交量</sub></td>
+    <td width="50%"><a href="https://ferrochart.com/charts/orderflow/bookmap"><img src="assets/readme/bookmap.jpg" alt="流动性热力图与成交"></a><br><sub><b>流动性热力图</b>与成交</sub></td>
+    <td width="50%"><a href="https://ferrochart.com/charts/orderflow/footprint"><img src="assets/readme/footprint.jpg" alt="足迹图"></a><br><sub><b>足迹图</b>：每根 K 线每个价位的成交量</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="https://ferrochart.com/#/indicators/ichimoku"><img src="assets/readme/ichimoku.jpg" alt="一目均衡表"></a><br><sub><b>一目均衡表</b>，30 个内置指标之一</sub></td>
-    <td width="50%"><a href="https://ferrochart.com/#/options/smile"><img src="assets/readme/smile.jpg" alt="波动率微笑"></a><br><sub><b>波动率微笑</b>，用 <code>FerroPlot</code> 绘制</sub></td>
+    <td width="50%"><a href="https://ferrochart.com/charts/indicators/ichimoku"><img src="assets/readme/ichimoku.jpg" alt="一目均衡表"></a><br><sub><b>一目均衡表</b>，30 个内置指标之一</sub></td>
+    <td width="50%"><a href="https://ferrochart.com/charts/options/smile"><img src="assets/readme/smile.jpg" alt="波动率微笑"></a><br><sub><b>波动率微笑</b>，用 <code>FerroPlot</code> 绘制</sub></td>
   </tr>
 </table>
 

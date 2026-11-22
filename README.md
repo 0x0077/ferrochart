@@ -151,12 +151,12 @@ with its source code.
 
 <table>
   <tr>
-    <td width="50%"><a href="https://ferrochart.com/#/orderflow/bookmap"><img src="assets/readme/bookmap.jpg" alt="Liquidity heatmap with trades"></a><br><sub><b>Liquidity heatmap</b> with trades</sub></td>
-    <td width="50%"><a href="https://ferrochart.com/#/orderflow/footprint"><img src="assets/readme/footprint.jpg" alt="Footprint chart"></a><br><sub><b>Footprint</b>: volume at every price of every bar</sub></td>
+    <td width="50%"><a href="https://ferrochart.com/charts/orderflow/bookmap"><img src="assets/readme/bookmap.jpg" alt="Liquidity heatmap with trades"></a><br><sub><b>Liquidity heatmap</b> with trades</sub></td>
+    <td width="50%"><a href="https://ferrochart.com/charts/orderflow/footprint"><img src="assets/readme/footprint.jpg" alt="Footprint chart"></a><br><sub><b>Footprint</b>: volume at every price of every bar</sub></td>
   </tr>
   <tr>
-    <td width="50%"><a href="https://ferrochart.com/#/indicators/ichimoku"><img src="assets/readme/ichimoku.jpg" alt="Ichimoku cloud"></a><br><sub><b>Ichimoku cloud</b>, one of 30 indicators</sub></td>
-    <td width="50%"><a href="https://ferrochart.com/#/options/smile"><img src="assets/readme/smile.jpg" alt="Volatility smile"></a><br><sub><b>Volatility smile</b>, drawn with <code>FerroPlot</code></sub></td>
+    <td width="50%"><a href="https://ferrochart.com/charts/indicators/ichimoku"><img src="assets/readme/ichimoku.jpg" alt="Ichimoku cloud"></a><br><sub><b>Ichimoku cloud</b>, one of 30 indicators</sub></td>
+    <td width="50%"><a href="https://ferrochart.com/charts/options/smile"><img src="assets/readme/smile.jpg" alt="Volatility smile"></a><br><sub><b>Volatility smile</b>, drawn with <code>FerroPlot</code></sub></td>
   </tr>
 </table>
 

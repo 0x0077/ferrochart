@@ -71,21 +71,41 @@ function Stack({ cat, onOpen }: { cat: Category; onOpen: (card: HTMLElement | nu
  * them, and the viewer that opens over the page instead of a second-level
  * page.
  */
-export function Library() {
+export function Library({ initial }: { initial?: { cat: string; demo: string } }) {
   const [request, setRequest] = useState<OpenRequest | null>(null);
   const featured = FEATURED.map((id) => categories.find((c) => c.id === id)).filter((c): c is Category => !!c);
   const openCat = (cat: Category, card: HTMLElement | null = null) => setRequest({ cat, demo: cat.demos[0], card });
 
-  // Deep links: #/<category>/<chart>, on load and when a link on the page sets one.
+  // Deep links. The page of an example (/charts/<category>/<chart>) opens it
+  // on load; so does the old address form, #/<category>/<chart>, which the
+  // viewer then replaces with the page's address. Links to an example on
+  // this page open it in place instead of loading its page.
   useEffect(() => {
-    const open = () => {
-      const [, catId, demoId] = location.hash.match(/^#\/([\w-]+)\/([\w-]+)/) ?? [];
+    const show = (catId?: string, demoId?: string) => {
       const cat = categories.find((c) => c.id === catId);
-      if (cat) setRequest({ cat, demo: cat.demos.find((d) => d.id === demoId) ?? cat.demos[0], card: null });
+      if (!cat) return false;
+      setRequest({ cat, demo: cat.demos.find((d) => d.id === demoId) ?? cat.demos[0], card: null });
+      return true;
     };
-    open();
-    window.addEventListener('hashchange', open);
-    return () => window.removeEventListener('hashchange', open);
+    const fromHash = () => {
+      const [, catId, demoId] = location.hash.match(/^#\/([\w-]+)\/([\w-]+)/) ?? [];
+      return show(catId, demoId);
+    };
+    if (!fromHash() && initial) show(initial.cat, initial.demo);
+    const click = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as Element | null)?.closest?.('a[href]');
+      const [, catId, demoId] = a?.getAttribute('href')?.match(/^\/charts\/([\w-]+)\/([\w-]+)$/) ?? [];
+      if (a && !a.hasAttribute('target') && show(catId, demoId)) e.preventDefault();
+    };
+    window.addEventListener('hashchange', fromHash);
+    document.addEventListener('click', click);
+    return () => {
+      window.removeEventListener('hashchange', fromHash);
+      document.removeEventListener('click', click);
+    };
+    // Once: `initial` is the page's example and does not change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

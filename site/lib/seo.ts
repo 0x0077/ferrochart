@@ -8,6 +8,9 @@ export const REPO_URL = 'https://github.com/0x0077/ferrochart';
 /** The share image (1200×630, public/og.png). */
 const OG_IMAGE = { url: '/og.png', width: 1200, height: 630, alt: 'FerroChart: GPU-rendered financial charts' };
 
+/** A share image other than the default. */
+export type OgImage = { url: string; width: number; height: number; alt: string };
+
 /**
  * Metadata of one page: title, description, canonical URL and the Open
  * Graph / Twitter cards. Next.js replaces `openGraph` of the layout instead of
@@ -18,18 +21,20 @@ export function pageMeta({
   description,
   path,
   type = 'website',
+  image = OG_IMAGE,
 }: {
   title: string;
   description: string;
   path: string;
   type?: 'website' | 'article';
+  image?: OgImage;
 }): Metadata {
   return {
     title,
     description,
     alternates: { canonical: path },
-    openGraph: { type, url: path, siteName: SITE_NAME, title, description, images: [OG_IMAGE], locale: 'en_US' },
-    twitter: { card: 'summary_large_image', title, description, images: [OG_IMAGE.url] },
+    openGraph: { type, url: path, siteName: SITE_NAME, title, description, images: [image], locale: 'en_US' },
+    twitter: { card: 'summary_large_image', title, description, images: [image.url] },
   };
 }
 
