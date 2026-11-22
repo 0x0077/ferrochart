@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { DocArticle } from '@/components/DocArticle';
 import { apiItems } from '@/lib/apiref';
+import { pageMeta } from '@/lib/seo';
 
 export const dynamicParams = false;
 
@@ -12,7 +13,13 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ name: string }> }): Promise<Metadata> {
   const { name } = await params;
   const item = apiItems().find((i) => i.name === name);
-  return item ? { title: `${item.name} — FerroChart API`, description: item.summary.replace(/`/g, '') } : {};
+  if (!item) return {};
+  return pageMeta({
+    title: `${item.name} — FerroChart API`,
+    description: `${item.name} (${item.kind}) in @ferrochart/core, the FerroChart JavaScript API.${item.summary ? ` ${item.summary.replace(/`/g, '')}` : ''}`,
+    path: `/docs/api/${name}`,
+    type: 'article',
+  });
 }
 
 export default async function ApiItemPage({ params }: { params: Promise<{ name: string }> }) {

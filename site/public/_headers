@@ -1,0 +1,29 @@
+# Cloudflare Pages response headers (https://developers.cloudflare.com/pages/configuration/headers/).
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: SAMEORIGIN
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+
+# Content-hashed build output.
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The engine: stable file names, so a short cache that both files share.
+/wasm/*
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/pro/*
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/thumbs/*
+  Cache-Control: public, max-age=86400
+
+/og.png
+  Cache-Control: public, max-age=86400
+
+# The card-image renderer is not a page for people or search engines.
+/thumb
+  X-Robots-Tag: noindex
+/thumb.html
+  X-Robots-Tag: noindex

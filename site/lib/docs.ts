@@ -1,13 +1,15 @@
 // The documentation pages: the user guide in docs/book/src (also an mdBook),
 // read and rendered at build time. SUMMARY.md gives the order and the
 // groups; introduction.md is /docs, every other chapter /docs/<name>.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Marked, type Tokens } from 'marked';
 import { highlight } from './highlight';
 import { CLASS_ORDER, apiIndexHtml, apiPage } from './apiref';
 
-const ROOT = path.join(process.cwd(), '..', 'docs', 'book', 'src');
+// In the site's own repository the guide is a copy in vendor/docs.
+const VENDORED = path.join(process.cwd(), 'vendor', 'docs');
+const ROOT = existsSync(VENDORED) ? VENDORED : path.join(process.cwd(), '..', 'docs', 'book', 'src');
 /** Source files linked from the book, shown on GitHub. */
 const REPO = 'https://github.com/0x0077/ferrochart/blob/main/';
 
@@ -57,6 +59,11 @@ const LANG: Record<string, string> = {
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const plain = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 const slugify = (text: string) => text.toLowerCase().replace(/[`'"]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+/** The Markdown source of chapter `file`. */
+export function docSource(file: string): string {
+  return readFileSync(path.join(ROOT, file), 'utf8');
+}
 
 /** Renders chapter `file`: its HTML, title and h2/h3 outline. */
 export function renderDoc(file: string): { html: string; title: string; headings: Heading[] } {

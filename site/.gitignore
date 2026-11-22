@@ -5,3 +5,6 @@ next-env.d.ts
 *.tsbuildinfo
 # Copied from crates/ferrochart-wasm/pkg by scripts/copy-wasm.mjs
 public/wasm/
+
+# Copies of the engine build, the guide and the Pro build (the site repository commits them).
+vendor/

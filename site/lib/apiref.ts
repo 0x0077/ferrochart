@@ -3,14 +3,16 @@
 // made by wasm-bindgen from the Rust doc comments). Every class, interface,
 // type and function gets a page under /docs/api/<Name>; type names in
 // signatures link to their pages.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Marked } from 'marked';
 import ts from 'typescript';
 import { highlight } from './highlight';
 import type { Heading } from './docs';
 
-const DTS = path.join(process.cwd(), '..', 'crates', 'ferrochart-wasm', 'pkg', 'ferrochart_wasm.d.ts');
+// In the site's own repository the types are a copy in vendor/wasm.
+const VENDORED = path.join(process.cwd(), 'vendor', 'wasm', 'ferrochart_wasm.d.ts');
+const DTS = existsSync(VENDORED) ? VENDORED : path.join(process.cwd(), '..', 'crates', 'ferrochart-wasm', 'pkg', 'ferrochart_wasm.d.ts');
 
 /** wasm-bindgen's loader internals: not part of the documented API. */
 const HIDDEN = new Set(['InitInput', 'InitOutput', 'SyncInitInput', '__wbg_init']);

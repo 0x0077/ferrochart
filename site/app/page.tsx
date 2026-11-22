@@ -6,6 +6,7 @@ import { SiteFooter } from '@/components/SiteFooter';
 import { SiteHeader } from '@/components/SiteHeader';
 import { Thumb } from '@/components/Thumb';
 import { allDemos, categories } from '@/catalog';
+import { REPO_URL, SITE_NAME, SITE_URL } from '@/lib/seo';
 
 const pad = 'px-[clamp(20px,6vw,96px)]';
 const eyebrow = 'mb-[18px] font-mono text-xs font-medium uppercase tracking-[0.16em] text-muted';
@@ -41,9 +42,32 @@ const features = [
 
 const langs = ['JavaScript & TypeScript', 'Rust', 'Python & Jupyter', 'C, C#, C++'];
 
+/** Structured data for search engines: the project and the site. */
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareSourceCode',
+    name: SITE_NAME,
+    description: 'Open-source, GPU-rendered financial charting engine written in Rust, for the web, desktop, Python and C.',
+    url: SITE_URL,
+    codeRepository: REPO_URL,
+    programmingLanguage: ['Rust', 'TypeScript', 'Python'],
+    runtimePlatform: ['Web browser (WebGPU, WebGL2)', 'Windows', 'macOS', 'Linux'],
+    license: 'https://www.apache.org/licenses/LICENSE-2.0',
+    version: '0.3.0',
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: SITE_NAME,
+    url: SITE_URL,
+  },
+];
+
 export default function Home() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }} />
       <SiteHeader floating />
 
       <main id="top">

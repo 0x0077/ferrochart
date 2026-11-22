@@ -6,6 +6,12 @@ import { join } from 'node:path';
 import { brotliCompressSync, gzipSync, constants } from 'node:zlib';
 
 const OUT = new URL('../out/', import.meta.url).pathname;
+
+// Cloudflare Pages compresses responses itself and would serve these as files.
+if (process.env.CF_PAGES) {
+  console.log('Cloudflare Pages: not precompressing');
+  process.exit(0);
+}
 const TYPES = /\.(html|js|css|json|txt|svg|xml|wasm|map)$/;
 
 async function* files(dir) {
