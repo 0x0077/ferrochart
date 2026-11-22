@@ -18,6 +18,13 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
 ]
 
+[project.urls]
+Homepage = "https://ferrochart.com"
+Documentation = "https://ferrochart.com/docs/python"
+Repository = "https://github.com/0x0077/ferrochart"
+Issues = "https://github.com/0x0077/ferrochart/issues"
+Changelog = "https://github.com/0x0077/ferrochart/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 pandas = ["pandas>=1.5"]
 polars = ["polars>=0.20"]
