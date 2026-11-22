@@ -29,7 +29,7 @@ const out = {
   description: 'High-performance financial charts (WebGPU/WebGL2) compiled from Rust',
   license: p.license,
   repository: p.repository,
-  homepage: 'https://github.com/0x0077/ferrochart',
+  homepage: 'https://ferrochart.com',
   bugs: 'https://github.com/0x0077/ferrochart/issues',
   keywords: ['chart', 'candlestick', 'financial', 'trading', 'webgpu', 'webgl', 'wasm'],
   type: 'module',
