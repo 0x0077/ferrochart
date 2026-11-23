@@ -6,7 +6,10 @@
 //!
 //! Glyphs are drawn in white and read back: pixels that are not gray mark a
 //! color glyph (emoji), drawn as is; the others become coverage drawn in the
-//! text color. Advances come from `measureText`. The output depends on the
+//! text color. Advances come from `measureText`. The engine passes whole
+//! grapheme clusters, so a skin-tone or ZWJ emoji sequence, a flag or
+//! a letter with a combining accent is drawn by the browser as one glyph,
+//! when the system's fonts have it. The output depends on the
 //! system's fonts, so it is checked by browser tests, not goldens.
 //!
 
@@ -37,7 +40,9 @@ struct Canvas {
     /// Bits of the font size set on `ctx`, in pixels (0 after a resize,
     /// which resets the context).
     font_px: u32,
-    advances: HashMap<(char, u32), f32>,
+    /// Advances by size bits, then cluster (looked up by `&str`, so a hit
+    /// does not allocate).
+    advances: HashMap<u32, HashMap<Box<str>, f32>>,
 }
 
 thread_local! {
@@ -77,22 +82,27 @@ impl Canvas {
         }
     }
 
-    fn advance(&mut self, c: char, size: f32) -> f32 {
-        if let Some(&a) = self.advances.get(&(c, size.to_bits())) {
+    fn advance(&mut self, cluster: &str, size: f32) -> f32 {
+        if let Some(&a) = self
+            .advances
+            .get(&size.to_bits())
+            .and_then(|m| m.get(cluster))
+        {
             return a;
         }
         self.set_font(size);
         let a = self
             .ctx
-            .measure_text(c.encode_utf8(&mut [0; 4]))
+            .measure_text(cluster)
             .map_or(0.0, |m| m.width() as f32);
-        self.advances.insert((c, size.to_bits()), a);
+        self.advances
+            .entry(size.to_bits())
+            .or_default()
+            .insert(cluster.into(), a);
         a
     }
 
-    fn rasterize(&mut self, c: char, size: f32) -> Option<GlyphBitmap> {
-        let mut buf = [0; 4];
-        let s = c.encode_utf8(&mut buf);
+    fn rasterize(&mut self, s: &str, size: f32) -> Option<GlyphBitmap> {
         self.set_font(size);
         let m = self.ctx.measure_text(s).ok()?;
         // The ink box around the pen at (0, baseline), one pixel of margin
@@ -162,11 +172,11 @@ fn with_canvas<R>(f: impl FnOnce(&mut Canvas) -> Option<R>) -> Option<R> {
 }
 
 impl GlyphSource for BrowserGlyphs {
-    fn advance(&self, c: char, size: f32) -> f32 {
-        with_canvas(|canvas| Some(canvas.advance(c, size))).unwrap_or(0.0)
+    fn advance(&self, cluster: &str, size: f32) -> f32 {
+        with_canvas(|canvas| Some(canvas.advance(cluster, size))).unwrap_or(0.0)
     }
 
-    fn rasterize(&self, c: char, size: f32) -> Option<GlyphBitmap> {
-        with_canvas(|canvas| canvas.rasterize(c, size))
+    fn rasterize(&self, cluster: &str, size: f32) -> Option<GlyphBitmap> {
+        with_canvas(|canvas| canvas.rasterize(cluster, size))
     }
 }

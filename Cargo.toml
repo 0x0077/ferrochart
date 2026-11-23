@@ -65,6 +65,7 @@ rayon = "1"
 
 # backends
 ab_glyph = "0.2"
+unicode-segmentation = "1.12"
 tiny-skia = "0.12"
 wgpu = "30"
 bytemuck = { version = "1", features = ["derive"] }

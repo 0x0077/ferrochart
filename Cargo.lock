@@ -1035,6 +1035,7 @@ name = "ferrochart-text"
 version = "0.4.0"
 dependencies = [
  "ab_glyph",
+ "unicode-segmentation",
 ]
 
 [[package]]

@@ -135,7 +135,8 @@ impl Atlas {
         }
     }
 
-    /// The slot of `c`, rasterizing and uploading it on first use. `None` for
+    /// The slot of the glyph `glyph` (from `TextEngine::glyphs`), rasterizing
+    /// and uploading it on first use. `None` for
     /// glyphs without pixels. When an atlas is full it starts over; glyphs
     /// placed earlier in the same frame stay valid until overwritten, which
     /// only happens with more than ~10 000 distinct glyphs in use.
@@ -143,11 +144,9 @@ impl Atlas {
         &mut self,
         queue: &wgpu::Queue,
         engine: &TextEngine,
-        font: u16,
-        c: char,
+        glyph: GlyphKey,
         size: f32,
     ) -> Option<Slot> {
-        let glyph = engine.glyph_key(font, c)?;
         let key = (glyph, size.to_bits());
         if let Some(slot) = self.map.get(&key) {
             return *slot;

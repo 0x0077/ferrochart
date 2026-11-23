@@ -16,12 +16,21 @@
 //! browser on the web, color emoji included), otherwise as `□` (U+25A1 of the
 //! bundled font) instead of being dropped.
 //!
+//! Text is laid out by extended grapheme cluster (UAX #29). A cluster of
+//! several code points (an emoji with a skin tone or joined by ZWJ, a flag, a
+//! letter with a combining accent) goes to the [`GlyphSource`] whole, which
+//! draws it as one glyph; without a source its code points are looked up one
+//! by one. [`TextEngine::glyphs`] is that layout.
+//!
 #![forbid(unsafe_code)]
 
 use std::collections::HashMap;
 use std::fmt;
+use std::str::Chars;
+use std::sync::Mutex;
 
 use ab_glyph::{Font, FontArc, FontVec, GlyphId, PxScale, ScaleFont, point};
+use unicode_segmentation::{Graphemes, UnicodeSegmentation};
 
 /// The bundled font: JetBrains Mono Regular, subset to ASCII and
 /// `\u{a0} ° ± · × ÷ – — … ₀-₉ ← ↑ → ↓ − ≈ ≠ ≤ ≥ □ ▲ ▼`.
@@ -174,26 +183,116 @@ pub const SOURCE_FONT: u16 = u16::MAX;
 pub struct GlyphKey {
     /// Index of the font holding the glyph, or [`SOURCE_FONT`].
     pub font: u16,
-    /// Glyph id in that font; the character (`char as u32`) for
-    /// [`SOURCE_FONT`].
+    /// Glyph id in that font. For [`SOURCE_FONT`]: the character
+    /// (`char as u32`), or [`CLUSTER_BIT`] plus the number the engine gave a
+    /// grapheme cluster of several code points.
     pub glyph: u32,
 }
 
-/// Draws the characters no loaded font has: the last link of the fallback
-/// chain, before `□`. The web build sets one that rasterizes with the
+/// Set in [`GlyphKey::glyph`] for a grapheme cluster of several code points
+/// drawn by the [`GlyphSource`] (characters are below `0x11_0000`).
+pub const CLUSTER_BIT: u32 = 1 << 31;
+
+/// Most clusters of several code points the engine numbers; later ones are
+/// drawn code point by code point, as without a [`GlyphSource`].
+pub const MAX_CLUSTERS: usize = 4096;
+
+/// Draws what no loaded font has: the last link of the fallback chain,
+/// before `□`. The web build sets one that rasterizes with the
 /// browser (`text-browser`), so system CJK fonts and color emoji work
 /// without shipping fonts.
 ///
-/// Both methods take the size in pixels. Renderers cache the bitmaps but not
-/// the advances, so `advance` should be cheap.
+/// Both methods take one grapheme cluster: a single character the fonts
+/// lack, or a cluster of several code points (`"👍🏽"`, `"🇨🇳"`, `"e\u{301}"`),
+/// which should come out as one glyph. Sizes are in pixels. Renderers cache
+/// the bitmaps but not the advances, so `advance` should be cheap.
+///
+/// # Examples
+///
+/// ```
+/// use ferrochart_text::{GlyphBitmap, GlyphSource, TextEngine};
+///
+/// /// Every cluster is an empty box one em wide.
+/// struct Wide;
+///
+/// impl GlyphSource for Wide {
+///     fn advance(&self, _cluster: &str, size: f32) -> f32 {
+///         size
+///     }
+///     fn rasterize(&self, _cluster: &str, _size: f32) -> Option<GlyphBitmap> {
+///         None
+///     }
+/// }
+///
+/// let mut engine = TextEngine::new();
+/// engine.set_glyph_source(Some(Box::new(Wide)));
+/// // A thumbs-up with a skin tone is one cluster: one em.
+/// assert_eq!(engine.width(0, "\u{1F44D}\u{1F3FD}", 10.0), 10.0);
+/// ```
 pub trait GlyphSource: Send + Sync {
-    /// Advance of `c` at `size` px.
-    fn advance(&self, c: char, size: f32) -> f32;
+    /// Advance of `cluster` at `size` px.
+    fn advance(&self, cluster: &str, size: f32) -> f32;
 
-    /// The bitmap of `c` at `size` px, positioned like
+    /// The bitmap of `cluster` at `size` px, positioned like
     /// [`TextEngine::rasterize`]'s; `None` when it has no pixels. A color
     /// glyph sets [`GlyphBitmap::rgba`].
-    fn rasterize(&self, c: char, size: f32) -> Option<GlyphBitmap>;
+    fn rasterize(&self, cluster: &str, size: f32) -> Option<GlyphBitmap>;
+}
+
+/// One glyph of laid-out text ([`TextEngine::glyphs`]): how far it moves
+/// the pen, in pixels, and what to draw (`None`: nothing, as for an ignorable
+/// character).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Glyph {
+    /// Advance in pixels.
+    pub advance: f32,
+    /// The glyph to draw, for [`TextEngine::rasterize_key`] and the caches.
+    pub key: Option<GlyphKey>,
+}
+
+/// Iterator of [`TextEngine::glyphs`].
+#[derive(Debug)]
+pub struct Glyphs<'a> {
+    engine: &'a TextEngine,
+    id: u16,
+    size: f32,
+    /// `None` for ASCII text, which is not segmented.
+    clusters: Option<Graphemes<'a>>,
+    /// Code points still to lay out one by one.
+    pending: Chars<'a>,
+}
+
+impl Iterator for Glyphs<'_> {
+    type Item = Glyph;
+
+    fn next(&mut self) -> Option<Glyph> {
+        loop {
+            if let Some(c) = self.pending.next() {
+                return Some(Glyph {
+                    advance: self.engine.advance(self.id, c, self.size),
+                    key: self.engine.glyph_key(self.id, c),
+                });
+            }
+            let cluster = self.clusters.as_mut()?.next()?;
+            if let Some(source) = self.engine.source.as_deref()
+                && let Some(key) = self.engine.cluster_key(cluster)
+            {
+                return Some(Glyph {
+                    advance: source.advance(cluster, self.size),
+                    key: Some(key),
+                });
+            }
+            self.pending = cluster.chars();
+        }
+    }
+}
+
+/// The grapheme clusters the source draws whole, numbered in the order they
+/// were first seen.
+#[derive(Debug, Default)]
+struct ClusterTable {
+    ids: HashMap<Box<str>, u32>,
+    text: Vec<Box<str>>,
 }
 
 /// Characters drawn as nothing, with no advance: zero-width spaces and
@@ -230,6 +329,9 @@ pub struct TextEngine {
     /// Indices into `fonts`, in lookup order after the bundled font.
     fallbacks: Vec<u16>,
     source: Option<Box<dyn GlyphSource>>,
+    /// Clusters of several code points given to `source`. Behind a lock
+    /// because layout takes `&self`; numbering allocates once per cluster.
+    clusters: Mutex<ClusterTable>,
 }
 
 impl Default for TextEngine {
@@ -244,6 +346,10 @@ impl fmt::Debug for TextEngine {
             .field("fonts", &self.fonts.len())
             .field("fallbacks", &self.fallbacks)
             .field("source", &self.source.is_some())
+            .field(
+                "clusters",
+                &self.clusters.lock().map_or(0, |t| t.text.len()),
+            )
             .finish()
     }
 }
@@ -258,6 +364,7 @@ impl TextEngine {
             fonts,
             fallbacks: Vec::new(),
             source: None,
+            clusters: Mutex::new(ClusterTable::default()),
         }
     }
 
@@ -308,6 +415,9 @@ impl TextEngine {
     /// Renderers cache glyph bitmaps; set the source before the first frame.
     pub fn set_glyph_source(&mut self, source: Option<Box<dyn GlyphSource>>) {
         self.source = source;
+        if let Ok(t) = self.clusters.get_mut() {
+            *t = ClusterTable::default();
+        }
     }
 
     /// Number of loaded fonts.
@@ -371,6 +481,60 @@ impl TextEngine {
         })
     }
 
+    /// The key of `cluster` when the [`GlyphSource`] draws it whole: it has
+    /// several code points, a source is set and fewer than [`MAX_CLUSTERS`]
+    /// other clusters were numbered. Numbering a new cluster allocates.
+    fn cluster_key(&self, cluster: &str) -> Option<GlyphKey> {
+        let mut chars = cluster.chars();
+        chars.next()?;
+        chars.next()?;
+        self.source.as_ref()?;
+        let mut table = self.clusters.lock().ok()?;
+        let n = if let Some(&n) = table.ids.get(cluster) {
+            n
+        } else {
+            let n = u32::try_from(table.text.len())
+                .ok()
+                .filter(|_| table.text.len() < MAX_CLUSTERS)?;
+            table.ids.insert(cluster.into(), n);
+            table.text.push(cluster.into());
+            n
+        };
+        Some(GlyphKey {
+            font: SOURCE_FONT,
+            glyph: CLUSTER_BIT | n,
+        })
+    }
+
+    /// Lays out `text` at `size` px with font `id`: one [`Glyph`] per
+    /// grapheme cluster the [`GlyphSource`] draws whole, otherwise one per
+    /// code point. The pen advances by each glyph's `advance`; the sum
+    /// is [`TextEngine::width`]. ASCII text is not segmented.
+    ///
+    /// The first use of a cluster may allocate; later ones do not.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrochart_text::TextEngine;
+    ///
+    /// let engine = TextEngine::new();
+    /// // No glyph source: the flag's two regional indicators are two boxes.
+    /// assert_eq!(engine.glyphs(0, "\u{1F1E8}\u{1F1F3}", 12.0).count(), 2);
+    /// let pen: f32 = engine.glyphs(0, "a中", 10.0).map(|g| g.advance).sum();
+    /// assert_eq!(pen, engine.width(0, "a中", 10.0));
+    /// ```
+    pub fn glyphs<'a>(&'a self, id: u16, text: &'a str, size: f32) -> Glyphs<'a> {
+        let ascii = text.is_ascii();
+        Glyphs {
+            engine: self,
+            id,
+            size,
+            clusters: (!ascii).then(|| text.graphemes(true)),
+            pending: if ascii { text.chars() } else { "".chars() },
+        }
+    }
+
     /// Whether some loaded font in the chain of font `id` has `c` (it is not
     /// left to the [`GlyphSource`] or drawn as `□`).
     pub fn has_glyph(&self, id: u16, c: char) -> bool {
@@ -419,7 +583,10 @@ impl TextEngine {
             return 0.0;
         };
         if key.font == SOURCE_FONT {
-            return self.source.as_ref().map_or(0.0, |s| s.advance(c, size));
+            return self
+                .source
+                .as_ref()
+                .map_or(0.0, |s| s.advance(c.encode_utf8(&mut [0; 4]), size));
         }
         let (Some(f), Ok(glyph)) = (
             self.fonts.get(usize::from(key.font)),
@@ -432,14 +599,15 @@ impl TextEngine {
             .h_advance(GlyphId(glyph))
     }
 
-    /// Width of `text` at `size` px: the sum of the advances, without kerning,
-    /// exactly as the core's ASCII fast path measures it.
+    /// Width of `text` at `size` px: the sum of the advances of
+    /// [`TextEngine::glyphs`], without kerning, exactly as the core's ASCII
+    /// fast path measures it.
     pub fn width(&self, id: u16, text: &str, size: f32) -> f32 {
         if text.is_ascii() {
             let table = self.ascii_advances(id);
             return text.bytes().map(|b| table[usize::from(b)]).sum::<f32>() * size;
         }
-        text.chars().map(|c| self.advance(id, c, size)).sum()
+        self.glyphs(id, text, size).map(|g| g.advance).sum()
     }
 
     /// Rasterizes `c` at `size` px with the pen on an integer pixel, from the
@@ -450,14 +618,19 @@ impl TextEngine {
         self.rasterize_key(key, size)
     }
 
-    /// Rasterizes the glyph `key` (from [`TextEngine::glyph_key`]) at `size`
-    /// px. `None` for glyphs without an outline.
+    /// Rasterizes the glyph `key` (from [`TextEngine::glyph_key`] or
+    /// [`TextEngine::glyphs`]) at `size` px. `None` for glyphs without an
+    /// outline.
     pub fn rasterize_key(&self, key: GlyphKey, size: f32) -> Option<GlyphBitmap> {
         if key.font == SOURCE_FONT {
-            return self
-                .source
-                .as_ref()?
-                .rasterize(char::from_u32(key.glyph)?, size);
+            let source = self.source.as_ref()?;
+            if key.glyph & CLUSTER_BIT != 0 {
+                let table = self.clusters.lock().ok()?;
+                let n = usize::try_from(key.glyph & !CLUSTER_BIT).ok()?;
+                return source.rasterize(table.text.get(n)?, size);
+            }
+            let c = char::from_u32(key.glyph)?;
+            return source.rasterize(c.encode_utf8(&mut [0; 4]), size);
         }
         let f = self.fonts.get(usize::from(key.font))?;
         let glyph = GlyphId(u16::try_from(key.glyph).ok()?)
@@ -522,6 +695,17 @@ impl GlyphCache {
         size: f32,
     ) -> Option<&GlyphBitmap> {
         let key = engine.glyph_key(id, c)?;
+        self.get_key(engine, key, size)
+    }
+
+    /// The bitmap of the glyph `key` (from [`TextEngine::glyphs`]),
+    /// rasterizing it on first use.
+    pub fn get_key(
+        &mut self,
+        engine: &TextEngine,
+        key: GlyphKey,
+        size: f32,
+    ) -> Option<&GlyphBitmap> {
         self.map
             .entry((key, size.to_bits()))
             .or_insert_with(|| engine.rasterize_key(key, size))
@@ -622,11 +806,11 @@ mod tests {
     struct Blocks;
 
     impl GlyphSource for Blocks {
-        fn advance(&self, _: char, _: f32) -> f32 {
+        fn advance(&self, _: &str, _: f32) -> f32 {
             5.0
         }
 
-        fn rasterize(&self, _: char, _: f32) -> Option<GlyphBitmap> {
+        fn rasterize(&self, _: &str, _: f32) -> Option<GlyphBitmap> {
             let px = [
                 [255, 0, 0, 255],
                 [255, 0, 0, 255],
@@ -667,6 +851,120 @@ mod tests {
         assert_eq!(e.glyph_key(0, '\u{FE0F}'), None);
         e.set_glyph_source(None);
         assert_eq!(e.glyph_key(0, '😀'), e.glyph_key(0, MISSING_GLYPH));
+    }
+
+    /// Records the clusters it is asked for; advance = 10 per code point.
+    #[derive(Default)]
+    struct Recorder(std::sync::Arc<Mutex<Vec<String>>>);
+
+    impl GlyphSource for Recorder {
+        fn advance(&self, cluster: &str, _: f32) -> f32 {
+            cluster.chars().count() as f32 * 10.0
+        }
+
+        fn rasterize(&self, cluster: &str, _: f32) -> Option<GlyphBitmap> {
+            self.0.lock().unwrap().push(cluster.to_owned());
+            Some(GlyphBitmap {
+                width: 1,
+                height: 1,
+                left: 0,
+                top: -1,
+                coverage: vec![255],
+                rgba: None,
+            })
+        }
+    }
+
+    #[test]
+    fn clusters_go_to_the_source_whole() {
+        let seen = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let mut e = TextEngine::new();
+        e.set_glyph_source(Some(Box::new(Recorder(seen.clone()))));
+        let thumbs = "\u{1F44D}\u{1F3FD}"; // 👍🏽
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}"; // 👨‍👩‍👧
+        let flag = "\u{1F1E8}\u{1F1F3}"; // 🇨🇳
+        let accent = "e\u{301}"; // é, decomposed
+        let text = format!("a{thumbs}{family}{flag}{accent}中");
+        let glyphs: Vec<Glyph> = e.glyphs(0, &text, 12.0).collect();
+        // a, four clusters, 中: six glyphs.
+        assert_eq!(glyphs.len(), 6);
+        let keys: Vec<GlyphKey> = glyphs.iter().filter_map(|g| g.key).collect();
+        assert_eq!(keys[0].font, 0);
+        for (k, n) in keys[1..5].iter().zip(0..) {
+            assert_eq!(
+                *k,
+                GlyphKey {
+                    font: SOURCE_FONT,
+                    glyph: CLUSTER_BIT | n
+                }
+            );
+        }
+        assert_eq!(
+            keys[5],
+            GlyphKey {
+                font: SOURCE_FONT,
+                glyph: u32::from('中')
+            }
+        );
+        // Advances: the source's per cluster.
+        assert!((glyphs[2].advance - 50.0).abs() < 1e-6);
+        let total: f32 = glyphs.iter().map(|g| g.advance).sum();
+        assert!((e.width(0, &text, 12.0) - total).abs() < 1e-4);
+        // Rasterizing hands the source the whole cluster.
+        for k in &keys[1..] {
+            e.rasterize_key(*k, 12.0).unwrap();
+        }
+        assert_eq!(*seen.lock().unwrap(), [thumbs, family, flag, accent, "中"]);
+        // The same cluster again keeps its number.
+        assert_eq!(
+            e.glyphs(0, flag, 12.0).next().and_then(|g| g.key),
+            Some(keys[3])
+        );
+        // An unknown number draws nothing instead of failing.
+        let bogus = GlyphKey {
+            font: SOURCE_FONT,
+            glyph: CLUSTER_BIT | 0x3E7,
+        };
+        assert!(e.rasterize_key(bogus, 12.0).is_none());
+    }
+
+    #[test]
+    fn without_a_source_clusters_are_code_points() {
+        let e = TextEngine::new();
+        let flag = "\u{1F1E8}\u{1F1F3}";
+        let tofu = e.glyph_key(0, MISSING_GLYPH);
+        let glyphs: Vec<Glyph> = e.glyphs(0, flag, 10.0).collect();
+        assert_eq!(glyphs.len(), 2);
+        assert!(glyphs.iter().all(|g| g.key == tofu));
+        // Same as before clusters: per-character width.
+        let per_char: f32 = flag.chars().map(|c| e.advance(0, c, 10.0)).sum();
+        assert!((e.width(0, flag, 10.0) - per_char).abs() < 1e-6);
+        // Joiners and variation selectors still take no room.
+        let family = "\u{1F468}\u{200D}\u{1F469}";
+        assert_eq!(
+            e.glyphs(0, family, 10.0)
+                .filter(|g| g.key.is_some())
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn the_cluster_table_is_bounded() {
+        let mut e = TextEngine::new();
+        e.set_glyph_source(Some(Box::new(Blocks)));
+        let mut s = String::new();
+        for i in 0..=MAX_CLUSTERS as u32 {
+            s.clear();
+            s.push(char::from_u32(0x4E00 + i).unwrap());
+            s.push('\u{301}');
+            let n = e.glyphs(0, &s, 10.0).count();
+            // Numbered while there is room, then two code points.
+            assert_eq!(n, if (i as usize) < MAX_CLUSTERS { 1 } else { 2 }, "{i}");
+        }
+        // Setting a source again forgets the numbers.
+        e.set_glyph_source(Some(Box::new(Blocks)));
+        assert_eq!(e.glyphs(0, &s, 10.0).count(), 1);
     }
 
     #[test]

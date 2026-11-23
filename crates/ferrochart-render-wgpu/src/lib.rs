@@ -1037,10 +1037,15 @@ impl WgpuRenderer {
             );
         }
         let mut pen = 0.0_f32;
-        for ch in text.chars() {
+        // One glyph per grapheme cluster the glyph source draws whole, else
+        // per character.
+        for glyph in self.text.glyphs(font, text, size) {
             let gx = (x0 + pen).round() as i32;
-            pen += self.text.advance(font, ch, size);
-            let Some(slot) = self.atlas.get(&self.queue, &self.text, font, ch, size) else {
+            pen += glyph.advance;
+            let Some(slot) = glyph
+                .key
+                .and_then(|key| self.atlas.get(&self.queue, &self.text, key, size))
+            else {
                 continue;
             };
             let start = u32::try_from(self.glyphs.len()).unwrap_or(u32::MAX);

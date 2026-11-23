@@ -519,10 +519,15 @@ impl CpuRenderer {
             return;
         };
         let mut pen = 0.0_f32;
-        for ch in text.chars() {
+        // One glyph per grapheme cluster the glyph source draws whole, else
+        // per character.
+        for glyph in self.text.glyphs(font, text, size) {
             let gx = (x0 + pen).round() as i32;
-            pen += self.text.advance(font, ch, size);
-            let Some(g) = self.glyphs.get(&self.text, font, ch, size) else {
+            pen += glyph.advance;
+            let Some(g) = glyph
+                .key
+                .and_then(|key| self.glyphs.get_key(&self.text, key, size))
+            else {
                 continue;
             };
             let (left, top) = (gx + g.left, baseline as i32 + g.top);

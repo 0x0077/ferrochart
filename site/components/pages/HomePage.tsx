@@ -17,7 +17,7 @@ export function HomePage({ locale }: { locale: Locale }) {
       programmingLanguage: ['Rust', 'TypeScript', 'Python'],
       runtimePlatform: ['Web browser (WebGPU, WebGL2)', 'Windows', 'macOS', 'Linux'],
       license: 'https://www.apache.org/licenses/LICENSE-2.0',
-      version: '0.3.0',
+      version: '0.4.0',
     },
     { '@context': 'https://schema.org', '@type': 'WebSite', name: SITE_NAME, url },
   ];

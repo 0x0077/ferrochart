@@ -86,16 +86,16 @@ enum Density {
 }
 
 /// A deterministic stand-in for the browser's color glyphs: every
-/// character is a gradient disc 1.1 em wide, its colors kept as is. Must
+/// glyph (character or grapheme cluster) is a gradient disc 1.1 em wide, its colors kept as is. Must
 /// match the copy in the other backend's golden tests.
 struct DiscGlyphs;
 
 impl GlyphSource for DiscGlyphs {
-    fn advance(&self, _: char, size: f32) -> f32 {
+    fn advance(&self, _: &str, size: f32) -> f32 {
         (size * 1.1).round() + 1.0
     }
 
-    fn rasterize(&self, _: char, size: f32) -> Option<GlyphBitmap> {
+    fn rasterize(&self, _: &str, size: f32) -> Option<GlyphBitmap> {
         let n = (size * 1.1).round() as u32;
         let r = n as f32 * 0.5;
         let mut rgba = Vec::new();

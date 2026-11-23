@@ -1135,8 +1135,9 @@ pub const CJK_SCENE_CHARS: &str = "买入卖出狙聪明钱开发者加仓止盈
 
 /// Fills an empty, sized chart with non-ASCII text (r21): Chinese
 /// marker texts, one-character Chinese badges, and a price line title that
-/// ends in an emoji no test font has (drawn as `□`). Rendered with a CJK
-/// fallback font holding [`CJK_SCENE_CHARS`].
+/// ends in emoji no test font has: a rocket and a thumbs-up with a skin tone
+/// (`□` per code point; with a glyph source one glyph per cluster). Rendered
+/// with a CJK fallback font holding [`CJK_SCENE_CHARS`].
 ///
 /// # Errors
 ///
@@ -1200,7 +1201,8 @@ pub fn cjk_text_scene(chart: &mut Chart, start_time: Timestamp) -> Result<()> {
         candles,
         PriceLineOptions {
             price: last + 1.5,
-            title: "聪明钱 🚀".into(),
+            // 👍🏽: one grapheme cluster of two code points.
+            title: "聪明钱 🚀\u{1F44D}\u{1F3FD}".into(),
             ..PriceLineOptions::default()
         },
     )?;

@@ -29,6 +29,10 @@ Image markers, badges and text in any script.
   the web from the browser's own fonts, including color emoji (feature
   `text-browser`, on by default; no fonts are added to the package). A
   character no font has is drawn as `□`.
+- **Grapheme clusters.** Text is laid out by grapheme cluster: on the web, an
+  emoji with a skin tone, a ZWJ sequence (families, professions), a flag or a
+  letter with a combining accent is drawn as one glyph. Rust:
+  `TextEngine::glyphs`, and `GlyphSource` is called with a cluster (`&str`).
 - **C ABI.** `ferrochart_set_markers` with `FerroChartMarker`;
   `FerroChartSeriesOptions.marker_stack_limit`.
 - Layer plugins' `icon` command takes the same `image`, `label`, `border` and
@@ -48,8 +52,9 @@ Image markers, badges and text in any script.
 
 ### Known limitations
 
-- Text is drawn character by character: no shaping, so right-to-left scripts
-  and emoji sequences (skin tones, ZWJ families, flags) do not come out right.
+- No shaping or right-to-left layout: Arabic and Hebrew do not come out
+  right. Natively (without the browser), emoji sequences are drawn character
+  by character.
 
 ## [0.3.0] - 2026-11-23
 

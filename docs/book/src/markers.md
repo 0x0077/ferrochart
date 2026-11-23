@@ -179,9 +179,11 @@ Latin letters, digits and common symbols; other characters come from:
 
 A character that no font has is drawn as `□`. Natively, color emoji fonts are
 not supported: an outline emoji font (Noto Emoji) draws in the text color.
-Text is drawn character by character, without shaping: right-to-left scripts
-(Arabic, Hebrew) and emoji built from several characters (skin tones, family
-and flag sequences) do not come out right.
+Text is laid out by grapheme cluster: on the web, an emoji with a skin tone,
+a family or other ZWJ sequence, a flag, or a letter with a combining accent is
+measured and drawn by the browser as one glyph. Natively, such sequences are
+drawn character by character (the fonts are not shaped). There is no shaping
+or right-to-left layout, so Arabic and Hebrew do not come out right.
 
 ### Python, C and Rust
 

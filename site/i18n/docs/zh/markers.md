@@ -1,4 +1,4 @@
-<!-- source: a85278941b -->
+<!-- source: 325f16fb0e -->
 # 标记与价格线
 
 标记是附着在 K 线上的小图形，可带文字，例如买卖信号或新闻。标记也可以显示一张图片（钱包或账户头像）或 `DB` 这样的简短徽标，K 线上的标记过多时还可以折叠成一个“+k”徽标。价格线是位于固定价格处的水平线，例如委托单、止损或目标价。两者都属于某个系列。每个系列还有一个最新值标签和一条最新值线，通过系列选项开启或关闭。
@@ -121,7 +121,7 @@ chart.on('markerHover', (e) => {
 - **Web**：浏览器自身的字体（系统的 CJK 字体和彩色 emoji），无需任何配置，也不会增加包体积。
 - **桌面、Python 和 C**：你添加的字体，按顺序查找：winit 中用 `WindowOptions { fonts, .. }`，Python 中用 `fc.Chart(fonts=[...])`，C 中用 `ferrochart_add_font`。不会扫描系统字体。通常存在的字体：`/System/Library/Fonts/Hiragino Sans GB.ttc`（macOS）、`C:/Windows/Fonts/msyh.ttc`（Windows）、`/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`（Linux，需安装 Noto CJK 包）；也可以随应用附带 Noto Sans SC/JP/KR。
 
-所有字体都没有的字符会画成 `□`。原生端不支持彩色 emoji 字体：轮廓 emoji 字体（Noto Emoji）会以文字颜色绘制。文字逐字符绘制，不做字形整形（shaping）：从右到左书写的文字（阿拉伯文、希伯来文）以及由多个字符组成的 emoji（肤色、家庭和旗帜序列）无法正确显示。
+所有字体都没有的字符会画成 `□`。原生端不支持彩色 emoji 字体：轮廓 emoji 字体（Noto Emoji）会以文字颜色绘制。文字按字素簇排版：在网页端，带肤色的 emoji、家庭等 ZWJ 序列、国旗以及带组合音标的字母，都由浏览器作为一个字形测量和绘制。原生端仍逐字符绘制这些序列（字体不做整形）。不支持字形整形（shaping）和从右到左排版，所以阿拉伯文、希伯来文无法正确显示。
 
 ### Python、C 与 Rust
 

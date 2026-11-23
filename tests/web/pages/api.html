@@ -936,7 +936,9 @@ async function imageMarkers() {
 
 // text-browser: characters the bundled font lacks are measured and
 // drawn by the browser; emoji keep their colors, CJK text takes the text
-// color. Without it they would be 0.6 em boxes.
+// color. Without it they would be 0.6 em boxes. Grapheme clusters of several
+// code points (skin tone, ZWJ family, flag, combining accent) are measured
+// and drawn whole.
 async function browserText() {
   const el = document.getElementById('a');
   const chart = await FerroChart.create(el, { renderer, theme: 'light' });
@@ -947,12 +949,19 @@ async function browserText() {
     position: 'overlay',
     build(ctx) {
       rect = ctx.rect;
-      widths = { a: ctx.textWidth('a'), rocket: ctx.textWidth('🚀'), zhong: ctx.textWidth('中'), box: ctx.textWidth('□') };
+      widths = {
+        a: ctx.textWidth('a'), rocket: ctx.textWidth('🚀'), zhong: ctx.textWidth('中'), box: ctx.textWidth('□'),
+        thumbs: ctx.textWidth('\u{1F44D}'), toned: ctx.textWidth('\u{1F44D}\u{1F3FD}'),
+        man: ctx.textWidth('\u{1F468}'), family: ctx.textWidth('\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'),
+        ri: ctx.textWidth('\u{1F1E8}'), flag: ctx.textWidth('\u{1F1E8}\u{1F1F3}'),
+        eAcute: ctx.textWidth('\u00E9'), eCombining: ctx.textWidth('e\u0301'),
+      };
       if (snap) { snap = false; queueMicrotask(() => { shot = createImageBitmap(el); }); }
       return [
-        { type: 'rect', x: rect.x, y: rect.y, width: 200, height: 120, color: '#ffffff' },
+        { type: 'rect', x: rect.x, y: rect.y, width: 280, height: 120, color: '#ffffff' },
         { type: 'text', x: rect.x + 40, y: rect.y + 40, text: '🚀', size: 28, color: '#000000', align: 'center' },
         { type: 'text', x: rect.x + 120, y: rect.y + 40, text: '中', size: 28, color: '#000000', align: 'center' },
+        { type: 'text', x: rect.x + 200, y: rect.y + 40, text: '\u{1F44D}\u{1F3FD}', size: 28, color: '#000000', align: 'center' },
       ];
     },
   });
@@ -960,6 +969,10 @@ async function browserText() {
   check('text-browser: emoji wider than the box', widths && widths.rocket > widths.a * 1.3, JSON.stringify(widths));
   check('text-browser: CJK wider than the box', widths && widths.zhong > widths.a * 1.3, JSON.stringify(widths));
   check('text-browser: the box itself is 0.6 em', widths && near(widths.box, widths.a, 1e-3), JSON.stringify(widths));
+  check('clusters: a skin tone does not widen the emoji', widths && near(widths.toned, widths.thumbs, 0.5), JSON.stringify(widths));
+  check('clusters: a ZWJ family is one glyph', widths && widths.family < widths.man * 1.5, JSON.stringify(widths));
+  check('clusters: a flag is one glyph', widths && widths.flag < widths.ri * 1.5, JSON.stringify(widths));
+  check('clusters: e + combining acute measures as é', widths && near(widths.eCombining, widths.eAcute, 0.5), JSON.stringify(widths));
   let stats = null;
   try {
     snap = true;
@@ -980,10 +993,11 @@ async function browserText() {
       }
       return { color, dark };
     };
-    stats = { rocket: region(40), zhong: region(120) };
+    stats = { rocket: region(40), zhong: region(120), toned: region(200) };
   } catch (e) { stats = String(e); }
   check('text-browser: emoji drawn in color', stats?.rocket?.color > 20, JSON.stringify(stats));
   check('text-browser: CJK drawn in the text color', stats?.zhong?.dark > 20 && stats.zhong.color < 5, JSON.stringify(stats));
+  check('clusters: a skin-tone emoji drawn in color', stats?.toned?.color > 20, JSON.stringify(stats));
   chart.destroy();
   await frames();
 }
