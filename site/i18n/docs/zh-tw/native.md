@@ -1,0 +1,78 @@
+<!-- source: d61f00164d -->
+# C、C++ 與 C#
+
+`ferrochart-ffi` 是一個只有單一標頭檔 `ferrochart.h` 的 C 函式庫。可以直接從 C 與 C++ 使用，也可以從 C#、Swift、Go、Qt、Flutter 或任何能呼叫 C 的語言使用。此函式庫可以繪製到你擁有的原生視窗中，或繪製到 RGBA 緩衝區。
+
+```bash
+cargo build -p ferrochart-ffi --release
+# target/release/libferrochart.{so,dylib} or ferrochart.dll, plus a static
+# library; the header is crates/ferrochart-ffi/include/ferrochart.h
+```
+
+## 慣例
+
+- 函式傳回 `FERROCHART_OK`（0）或負數的 `FERROCHART_ERR_*` 代碼。`ferrochart_last_error()` 會說明呼叫端執行緒上最近一次的失敗。
+- 結構以 `size` 欄位開頭：無論傳入或傳出，都請先把它設為該結構的 `sizeof`。這讓較新的函式庫能夠讀取較舊的結構。
+- id 為 `uint64_t`，時間為 UTC 毫秒，尺寸為 CSS 像素，顏色為 `0xRRGGBBAA`。
+- 圖表不是執行緒安全的：請只在一個執行緒上使用它（在 macOS 上，繪製到視窗時必須是主執行緒）。
+- 函式庫傳回的字串以 `ferrochart_free_string` 釋放。
+
+## 一個圖表
+
+```c
+#include "ferrochart.h"
+
+FerroChartOptions o = { .size = sizeof o };
+ferrochart_options_default(&o);
+o.theme = FERROCHART_THEME_DARK;
+o.width = 1200; o.height = 700; o.dpr = 2;
+
+FerroChart *chart;
+if (ferrochart_create(&o, &chart) != FERROCHART_OK) {
+    fprintf(stderr, "%s\n", ferrochart_last_error());
+    return 1;
+}
+
+uint64_t candles, volume, ema;
+ferrochart_add_series(chart, FERROCHART_MAIN_PANE, "candlestick", NULL, &candles);
+ferrochart_add_volume_series(chart, FERROCHART_MAIN_PANE, candles, &volume);
+ferrochart_set_data_ohlc(chart, candles, time, open, high, low, close, vol, n);
+ferrochart_add_indicator(chart, candles, "ema", "{\"n\": 20}", FERROCHART_PLACEMENT_DEFAULT, &ema);
+```
+
+指標名稱與參數與其他語言相同（`ferrochart_indicator_names()` 會列出它們）；參數是一個 JSON 物件，傳入 `NULL` 則使用預設值。
+
+## 繪製
+
+繪製到緩衝區，例如用於儲存影像或在 UI 工具組中顯示：
+
+```c
+uint32_t w, h;
+ferrochart_pixel_size(chart, &w, &h);            // device pixels
+uint8_t *pixels = malloc((size_t)w * h * 4);
+ferrochart_render_rgba(chart, now_ms, pixels, (size_t)w * 4, (size_t)w * h * 4);
+```
+
+繪製到視窗：把視窗的原生控制代碼傳給 `ferrochart_attach_window`（`FERROCHART_PLATFORM_WIN32` 搭配 `HWND` 與 `HINSTANCE`，或 `FERROCHART_PLATFORM_APPKIT` 搭配 `NSView*`），在視窗調整大小時呼叫 `ferrochart_resize`，並在 `ferrochart_needs_redraw` 傳回 1 時呼叫 `ferrochart_render`。
+
+## 輸入與事件
+
+以 `ferrochart_handle_input` 轉發滑鼠、滾輪與按鍵輸入（`FERROCHART_INPUT_*` 事件，以 CSS 像素表示）；圖表會平移、縮放、移動十字游標，並以啟用中的工具繪圖。接著讀取發生了什麼：
+
+```c
+FerroChartEvent ev = { .size = sizeof ev };
+while (ferrochart_poll_event(chart, &ev) == 1) {
+    if (ev.type == FERROCHART_EVENT_CLICK) printf("click at %f\n", ev.price);
+}
+```
+
+以 `ferrochart_destroy(chart)` 銷毀圖表。
+
+## C#
+
+儲存庫中的 `examples/csharp` 包含整個標頭檔的 P/Invoke 宣告（`Native.cs`）、一個把狀態碼轉為例外的小型包裝（`Chart.cs`），以及一個含有指標、繪圖、事件與即時資料源的示範：
+
+```bash
+cargo build -p ferrochart-ffi --release
+dotnet run --project examples/csharp -- out/
+```

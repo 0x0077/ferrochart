@@ -1,0 +1,1399 @@
+{
+  "categories": {
+    "price": {
+      "title": "Price action",
+      "blurb": "Candles, bars and lines for any market, streaming in real time."
+    },
+    "transforms": {
+      "title": "Bar types & transforms",
+      "blurb": "Bars cut by price, trades, volume or notional instead of the clock: Renko, Kagi, point & figure, line break, tick, volume and dollar bars, delta candles, spreads and continuous contracts."
+    },
+    "indicators": {
+      "title": "Technical analysis",
+      "blurb": "30 incremental indicators in panes or on price, checked against reference data, plus patterns, events and projections."
+    },
+    "orderflow": {
+      "title": "Order flow",
+      "blurb": "Footprint, depth heatmap and market profile, on a compute-shader path."
+    },
+    "execution": {
+      "title": "Execution & trade review",
+      "blurb": "Fills against plans, slippage, queue position and the trades you made, on the price they met."
+    },
+    "perps": {
+      "title": "Crypto derivatives",
+      "blurb": "Funding, open interest, liquidations and basis in panes under price."
+    },
+    "onchain": {
+      "title": "On-chain",
+      "blurb": "Valuation, supply, holder cohorts and network activity under price."
+    },
+    "defi": {
+      "title": "DeFi & AMMs",
+      "blurb": "Pools, liquidity ranges, lending, stablecoins and staking over time."
+    },
+    "meme": {
+      "title": "Memecoins & wallets",
+      "blurb": "Launches, holders, developer wallets and social heat around a volatile token."
+    },
+    "equities": {
+      "title": "Equities & fundamentals",
+      "blurb": "Earnings, estimates, valuation bands and corporate actions on the price chart."
+    },
+    "ashares": {
+      "title": "China A-shares",
+      "blurb": "Intraday tick charts, money flow, limit-up statistics and chip distribution, red for up."
+    },
+    "options": {
+      "title": "Options & volatility",
+      "blurb": "Implied against realised, skew, expected moves and dealer exposure in time."
+    },
+    "rates": {
+      "title": "Rates, FX & macro",
+      "blurb": "Curves, spreads, auctions, central banks, carry and macro surprises."
+    },
+    "commodities": {
+      "title": "Futures & commodities",
+      "blurb": "Spreads, crack and crush margins, positioning, inventories and weather."
+    },
+    "funds": {
+      "title": "Funds & ETFs",
+      "blurb": "Premium to NAV, tracking, flows, fees and the managers behind the returns."
+    },
+    "quant": {
+      "title": "Portfolio, risk & quant",
+      "blurb": "Equity curves, drawdowns, rolling statistics, factor research and risk checks."
+    },
+    "finance": {
+      "title": "Private markets & personal finance",
+      "blurb": "J-curves, runways, valuations, mortgages and retirement paths."
+    },
+    "prediction": {
+      "title": "Prediction markets",
+      "blurb": "Outcome probabilities, their consistency and how they resolved."
+    },
+    "custom": {
+      "title": "Custom series & plugins",
+      "blurb": "Stacked, grouped, box and brushed series: layer plugins on the same GPU frame."
+    },
+    "labs": {
+      "title": "Labs & flagships",
+      "blurb": "Experimental examples and stress tests: a decade of bars, dense order books, latency and look-ahead audits."
+    }
+  },
+  "groups": {
+    "Candles & bars": "Candles & bars",
+    "Candle styles": "Candle styles",
+    "Lines & columns": "Lines & columns",
+    "Overlays & context": "Overlays & context",
+    "Price-driven": "Price-driven",
+    "Activity-driven": "Activity-driven",
+    "Derived series": "Derived series",
+    "Panes & oscillators": "Panes & oscillators",
+    "Overlays": "Overlays",
+    "Price structure": "Price structure",
+    "Events & annotation": "Events & annotation",
+    "Projections": "Projections",
+    "Footprint & profile": "Footprint & profile",
+    "Order book": "Order book",
+    "Trades": "Trades",
+    "Liquidity events": "Liquidity events",
+    "Order execution": "Order execution",
+    "Costs & slippage": "Costs & slippage",
+    "Trade review": "Trade review",
+    "Derivatives": "Derivatives",
+    "Positioning": "Positioning",
+    "Liquidations": "Liquidations",
+    "Funding & basis": "Funding & basis",
+    "Venues": "Venues",
+    "Market structure": "Market structure",
+    "Valuation": "Valuation",
+    "Holders": "Holders",
+    "Miners & issuance": "Miners & issuance",
+    "Network & flows": "Network & flows",
+    "Liquidity": "Liquidity",
+    "Pools & yield": "Pools & yield",
+    "Lending": "Lending",
+    "Stablecoins & staking": "Stablecoins & staking",
+    "Prices & tokens": "Prices & tokens",
+    "Price": "Price",
+    "Activity": "Activity",
+    "Earnings": "Earnings",
+    "Estimates & valuation": "Estimates & valuation",
+    "Capital returns": "Capital returns",
+    "Quality & breadth": "Quality & breadth",
+    "Seasonality": "Seasonality",
+    "Intraday": "Intraday",
+    "Money flow": "Money flow",
+    "Market sentiment": "Market sentiment",
+    "Corporate & derivatives": "Corporate & derivatives",
+    "Volatility": "Volatility",
+    "Flow & positioning": "Flow & positioning",
+    "Exposure": "Exposure",
+    "Strategies": "Strategies",
+    "Smile & surface": "Smile & surface",
+    "Curves & spreads": "Curves & spreads",
+    "Credit & issuance": "Credit & issuance",
+    "Central banks & auctions": "Central banks & auctions",
+    "FX": "FX",
+    "Curves": "Curves",
+    "Curves & positioning": "Curves & positioning",
+    "Spreads & margins": "Spreads & margins",
+    "Energy & environment": "Energy & environment",
+    "Pricing & tracking": "Pricing & tracking",
+    "Investor returns": "Investor returns",
+    "Holdings & flows": "Holdings & flows",
+    "Attribution": "Attribution",
+    "Backtests": "Backtests",
+    "Risk": "Risk",
+    "Portfolio": "Portfolio",
+    "Factor research": "Factor research",
+    "Private funds": "Private funds",
+    "Companies": "Companies",
+    "Personal finance": "Personal finance",
+    "Probabilities": "Probabilities",
+    "Resolution": "Resolution",
+    "Stacked & grouped": "Stacked & grouped",
+    "Histograms": "Histograms",
+    "Points & distributions": "Points & distributions",
+    "Interactive": "Interactive",
+    "Flagships": "Flagships",
+    "Data quality": "Data quality",
+    "Context": "Context",
+    "Market quality": "Market quality"
+  },
+  "demos": {
+    "candles": {
+      "title": "Candlesticks + volume",
+      "about": "The classic view. Five thousand one-minute bars on a GPU-rendered price scale with a volume histogram below. Drag to pan, scroll or pinch to zoom."
+    },
+    "live": {
+      "title": "Real-time stream",
+      "about": "`update` replaces the last bar or appends a new one. Indicators update incrementally with it, so a tick costs microseconds, not a redraw of history."
+    },
+    "replay": {
+      "title": "Bar replay",
+      "about": "History played back bar by bar with `update`, the way a live feed would arrive, with an EMA keeping pace incrementally. Play, pause and speed are a few lines of page code around a timer."
+    },
+    "ohlc": {
+      "title": "OHLC bars",
+      "about": "Open and close ticks on a high–low bar: the denser alternative to candles, common for futures and FX."
+    },
+    "heikin": {
+      "title": "Heikin-Ashi",
+      "about": "Averaged candles that make trends easier to read. Computed from the same OHLC columns; the crosshair still reports real prices."
+    },
+    "hollow": {
+      "title": "Hollow candles",
+      "about": "Rising bars (close above open) are hollow, falling ones filled; the color compares the close with the previous close. A layer plugin draws the candles over an invisible candlestick series that keeps the scale and crosshair."
+    },
+    "volcandles": {
+      "title": "Volume-width candles",
+      "about": "Each body's width is its volume against the busiest bar on screen, so heavy bars stand out from thin ones. A layer plugin draws the candles; slots stay evenly spaced on the time axis."
+    },
+    "hlc": {
+      "title": "HLC bars",
+      "about": "High–low bars with only a close tick, colored by the change from the previous close. The engine's OHLC bars always carry the open tick, so a layer plugin draws these."
+    },
+    "roundcandles": {
+      "title": "Rounded candles",
+      "about": "Candles with rounded bodies and round-capped wicks, for dashboards and consumer apps. A layer plugin draws each one as a polygon."
+    },
+    "highlow": {
+      "title": "High–low range bars",
+      "about": "Each day as one bar from its low to its high, with both prices printed when zoomed in. A layer plugin draws the bars and labels with `formatPrice`, so the numbers match the axis."
+    },
+    "line": {
+      "title": "Line",
+      "about": "Closing prices as a single line: the cleanest view of a trend."
+    },
+    "linemarkers": {
+      "title": "Line with points",
+      "about": "A line series with a points series on the same data, so each daily close is a visible dot."
+    },
+    "step": {
+      "title": "Step line",
+      "about": "A yield (in percent) held flat until the next print and then stepping to it, as rates and fixings are usually drawn. `step: true` on a line series."
+    },
+    "hlcarea": {
+      "title": "HLC area",
+      "about": "The close as a line, with the room up to the high filled green and down to the low filled red: the range of every bar without candle bodies. Two `addBand` fills between three line series."
+    },
+    "columns": {
+      "title": "Columns",
+      "about": "Closing prices as columns rising from the lowest low, each colored by whether it closed up or down. A histogram series with `baseValue` and per-point colors."
+    },
+    "histogram": {
+      "title": "Returns histogram",
+      "about": "The close above and each bar's percent return below as a histogram around zero, colored by sign. Large bars mark the volatile sessions."
+    },
+    "area": {
+      "title": "Area",
+      "about": "Twenty thousand points, all on screen. Level-of-detail keeps dense line and area series smooth and free of aliasing at any zoom."
+    },
+    "baseline": {
+      "title": "Baseline",
+      "about": "Above and below a reference price in two colors: performance since the open, P&L against an entry. Gaps where the market was closed stay out of the time axis."
+    },
+    "compare": {
+      "title": "Compare (% change)",
+      "about": "Three markets on one percentage scale, rebased to the first visible bar as you pan."
+    },
+    "overlaycandles": {
+      "title": "Two markets as candles",
+      "about": "Two markets' candles on one time axis, in their own colors. A pane has a single price scale, so the percentage mode puts both on a common footing."
+    },
+    "htfcandles": {
+      "title": "Higher-timeframe candles",
+      "about": "Fifteen-minute candles with the four-hour candle each belongs to drawn behind them: body as a tinted box, wicks dotted. The four-hour bars are aggregated in a few lines of JS and a layer plugin draws them."
+    },
+    "extsession": {
+      "title": "Trading sessions",
+      "about": "Fifteen-minute bars of a currency pair with the Asia, London and New York sessions shaded and labelled. A background layer plugin draws the bands from session times in UTC."
+    },
+    "drawings": {
+      "title": "Drawing tools",
+      "about": "29 built-in tools: lines, channels, Fibonacci, pitchforks, Gann, patterns and positions. Undo/redo, save and load, sync across charts, and custom tools in JavaScript."
+    },
+    "renko": {
+      "title": "Renko",
+      "about": "Bricks of a fixed (or ATR-based) size, built from your bars as they arrive. The forming brick updates live with `update`."
+    },
+    "range": {
+      "title": "Range bars",
+      "about": "Every bar spans the same price range, so quiet periods shrink and busy ones expand."
+    },
+    "kagi": {
+      "title": "Kagi",
+      "about": "A line that changes direction on reversals and thickness when it breaks the previous shoulder or waist."
+    },
+    "pnf": {
+      "title": "Point & figure",
+      "about": "Columns of X and O boxes with a three-box reversal: supply and demand without the noise of time."
+    },
+    "linebreak": {
+      "title": "Three-line break",
+      "about": "A new block only when the close beats the previous block; a reversal has to break the extreme of the last three. The server computes the blocks and a candlestick series shows them in order, one slot each."
+    },
+    "tickbars": {
+      "title": "Tick bars",
+      "about": "Every bar holds the same number of trades, so the volume pane below shows how much each batch of 150 trades moved: large prints stand out. Times are those of each bar's last trade."
+    },
+    "volbars": {
+      "title": "Volume bars",
+      "about": "A bar closes every 40 BTC of volume, so each carries the same weight. The pane below shows the seconds each bar took: short when the market is busy, long when it is quiet."
+    },
+    "dollarbars": {
+      "title": "Dollar bars",
+      "about": "Bars of equal notional (price × size), which stay comparable when the price level moves a lot. The pane below shows the seconds each bar took to fill."
+    },
+    "deltacandles": {
+      "title": "Delta candles",
+      "about": "One-minute candles above; below, cumulative volume delta (buy minus sell volume, in BTC) drawn as a candle per minute: open where the last minute ended, wicks at the extremes the delta reached inside the minute. Two candlestick series in two panes."
+    },
+    "spread": {
+      "title": "Ratio with bands",
+      "about": "ETH priced in BTC: the ratio of two markets' closes, with its 100-bar mean and a two-standard-deviation band. Stretches outside the band are where pairs traders look. The ratio and bands are a few lines of JS; `addBand` fills between them."
+    },
+    "rollover": {
+      "title": "Continuous futures",
+      "about": "A continuous futures contract as back-adjusted candles, with the unadjusted front-month close in amber. At each quarterly roll (marked) the unadjusted price jumps by the gap between contracts; back-adjusting shifts history by the step series in the lower pane, so returns stay true."
+    },
+    "macd-rsi": {
+      "title": "Bollinger · MACD · RSI",
+      "about": "Each indicator keeps its own state and updates with the last bar in O(1). Panes resize by dragging their separators."
+    },
+    "oscillators": {
+      "title": "Oscillators",
+      "about": "Stochastic, ADX and CCI in their own panes, sharing the time axis and the crosshair."
+    },
+    "ichimoku": {
+      "title": "Ichimoku cloud",
+      "about": "Five lines and the cloud between them, displaced forward in time. The cloud is a band fill drawn by the core, identical on every backend."
+    },
+    "trend": {
+      "title": "Supertrend · SAR",
+      "about": "Trend-following stops on the price pane. Parabolic SAR is drawn as dots with the points series."
+    },
+    "supertrend": {
+      "title": "Supertrend signals",
+      "about": "The SuperTrend stop in green under longs and red over shorts, with a marker wherever it flips. The flips are read back from the indicator's output series with `dataAt`."
+    },
+    "psar": {
+      "title": "Parabolic SAR + Keltner",
+      "about": "A Keltner channel (EMA 20 ± 2 ATR) as the volatility envelope and Parabolic SAR dots as the trailing stop. Both are built-in indicators on the price pane."
+    },
+    "donchian": {
+      "title": "Donchian breakouts",
+      "about": "The 20-bar Donchian channel (highest high, lowest low and their midpoint), with arrows where the close first breaks out of the previous channel: the classic turtle entry."
+    },
+    "patterns": {
+      "title": "Zigzag & swing labels",
+      "about": "A 2.5% zigzag drawn as a line series through the swing pivots, each pivot labelled HH, LH, HL or LL against the previous one of its kind: the market structure at a glance. Computed in a few lines of JS."
+    },
+    "pivots": {
+      "title": "Daily pivot points",
+      "about": "Classic floor pivots (P, R1–R2, S1–S2) from each previous session, drawn as line series that start fresh every day. A layer plugin adds the session separators and level names."
+    },
+    "gaps": {
+      "title": "Gaps and gap fills",
+      "about": "Every opening gap of 4% or more as a box from the previous close to the open, running until a later bar trades back through it; open gaps run to the edge. A layer plugin draws the boxes and the summary statistics."
+    },
+    "shaded": {
+      "title": "Regime shading",
+      "about": "The background turns green while price closes above its 50-bar average and red while below, making trend regimes visible at a glance. The SMA is a built-in indicator; a background layer plugin shades the runs."
+    },
+    "events": {
+      "title": "Corporate events",
+      "about": "Earnings (with the EPS surprise, green for a beat), dividends and a stock split as markers on daily candles. Each event type is its own feed; `setMarkers` takes them merged and sorted by time."
+    },
+    "eventline": {
+      "title": "Event timeline",
+      "about": "A year of daily closes with the events that moved them: rate decisions, inflation and jobs data, upgrades, outages and regulation. Markers sit above the line for rallies and below for sell-offs."
+    },
+    "teaching": {
+      "title": "Annotated lesson",
+      "about": "A teaching chart: the last big swing traced with a trend line, Fibonacci levels on it, numbered markers and a callout, over candles and an EMA. Pages step through it by showing drawings one at a time with `drawings.setVisible`."
+    },
+    "analog": {
+      "title": "Historical analog",
+      "about": "Searches the history for the 60-bar window most correlated with the latest 60 and lays it, scaled, over the last bars as an amber line that runs on into the future with what followed. A layer plugin shades the matched window and names the match. An illustration of analog search, not a prediction."
+    },
+    "forecast": {
+      "title": "Forecast band",
+      "about": "A median path extended 72 hours past the last candle, with the 25–75% range as a filled band and the 5% and 95% paths dotted. Future timestamps simply add slots to the time axis."
+    },
+    "fan": {
+      "title": "Fan chart",
+      "about": "A fan of nested quantile bands, 5–95% outermost and 35–65% innermost, widening with the horizon. Four `addBand` fills between invisible quantile lines, darker toward the median."
+    },
+    "footprint": {
+      "title": "Footprint",
+      "about": "Sell and buy volume at every price inside each candle (in $5 rows), with diagonal imbalances and the point of control. Zoom out for shaded cells, in for numbers."
+    },
+    "delta": {
+      "title": "Delta footprint",
+      "about": "Net aggression per price level: buyers minus sellers, colored by sign."
+    },
+    "heatmap": {
+      "title": "Depth heatmap",
+      "about": "Resting liquidity over time under one-minute candles; walls sit at fixed prices for a while. On WebGPU a compute shader aggregates the cells per pixel."
+    },
+    "tpo": {
+      "title": "Market profile (TPO)",
+      "about": "One profile per session: letters per 30-minute period, point of control, value area and initial balance. Histograms when zoomed out."
+    },
+    "volheat": {
+      "title": "Volume heat candles",
+      "about": "Each one-minute bar is split into $10 cells shaded by the volume traded there, with the busiest cell outlined; thin OHLC bars on top keep the direction. It is the footprint series in `volume` mode at a spacing too narrow for numbers."
+    },
+    "svp": {
+      "title": "Session volume profile",
+      "about": "A horizontal volume profile behind every session of five-minute futures candles: the point of control in amber, the 70% value area brighter. A layer plugin draws the profiles, computed once from the bar volumes."
+    },
+    "profile": {
+      "title": "Visible-range volume profile",
+      "about": "The volume profile of whatever is on screen, at the right edge, with the point of control and the value area high and low across the chart. A layer plugin finds the visible bars with `timeToX` and rebuilds the profile every frame."
+    },
+    "anchoredfixedran": {
+      "title": "Anchored & fixed-range profile",
+      "about": "Two volume profiles drawn inside their own time ranges: one over a fixed stretch of bars and one anchored at a swing high and running to the latest bar. A layer plugin draws them; clicking a bar moves the anchor and `invalidateLayer` redraws."
+    },
+    "obi": {
+      "title": "Order-book imbalance",
+      "about": "Where the book leans: at each distance from the touch, the excess of bids over asks is painted green below the price and the excess of asks red above it, as two `addHeatmap` series. The pane shows the imbalance of the top 10 levels from -1 to 1."
+    },
+    "bookmap": {
+      "title": "Liquidity heatmap with trades",
+      "about": "Eight minutes of a one-second order-book heatmap with the last price, buy and sell volume as bubbles every five seconds, and the current walls labelled at the right. A layer plugin draws the bubbles and labels."
+    },
+    "tape-bubbles": {
+      "title": "Block trade bubbles",
+      "about": "Every trade of $100k or more as a bubble on one-minute candles, sized by notional and colored by the aggressor side, with the five largest labelled. A layer plugin draws the bubbles from the raw trades."
+    },
+    "iceberg": {
+      "title": "Icebergs & large fills",
+      "about": "Prices where aggressive trades took more than twice the size the order book displayed there, a sign of a hidden or refilled order. Trades are grouped into runs at one price and side and compared with one-second book snapshots; a layer plugin marks each run with its size."
+    },
+    "spoof": {
+      "title": "Pulled-order patterns",
+      "about": "Large resting orders that appeared away from the price, sat for 10 to 40 seconds and vanished before trading, boxed on a one-second depth heatmap under the last price. Such quick placements and cancellations can be spoofing, though this simple screen also catches ordinary cancellations. A layer plugin draws the boxes."
+    },
+    "tradesize": {
+      "title": "Trade size distribution",
+      "about": "BTC volume per minute split into four notional tiers, from small orders at the bottom to block trades on top, under one-minute candles. The stack is four `histogram` series of running totals, drawn tallest first."
+    },
+    "orderevents": {
+      "title": "Adds, cancels, fills & OFI",
+      "about": "Book activity per minute in BTC: size added by new orders above zero, cancelled and filled size stacked below it, and order flow imbalance (positive when bids build or asks are taken) in its own pane. Fills are the bar volume; the other columns come from the `microBookEvents` series."
+    },
+    "bidask": {
+      "title": "Bid/ask band & spread",
+      "about": "The best ask (red) and bid (green) as step lines with the spread filled between them by `addBand`, and the spread itself in basis points below. Bid and ask are the mid price plus and minus half the quoted spread."
+    },
+    "terrain": {
+      "title": "Liquidity terrain candles",
+      "about": "Candles over a terrain of the liquidity that rested near the price while each one formed: amber columns where the book was thinnest, blue where it was deepest. The pane shows the depth within $50 in BTC, colored the same way; a layer plugin draws the columns from order-book snapshots."
+    },
+    "pullshock": {
+      "title": "Liquidity withdrawal shocks",
+      "about": "Moments when liquidity near the touch was pulled. The lower pane shows the depth within three levels of the touch in BTC against half its two-minute median (dashed); spans below it are shaded across both panes and labelled with the deepest drop. A layer plugin per pane draws the spans."
+    },
+    "depthrecovery": {
+      "title": "Depth recovery",
+      "about": "Resting size near the touch in ten-second averages, against its median. Each shock where depth falls under 70% of the median gets a marker with the drop and the seconds until it was back; the baseline series shades the shortfall in red."
+    },
+    "depth": {
+      "title": "Depth chart beside the candles",
+      "about": "The order book as a depth chart beside one-minute candles: cumulative bid size (green) below the mid and ask size (red) above, as horizontal bars in a FerroPlot that shares the chart's price axis through `attachSidePlot`. Pan or zoom the candles and the depth follows."
+    },
+    "parentprogress": {
+      "title": "Parent order progress",
+      "about": "A five-hour buy order of 750 BTC, three hours in: cumulative fills against a VWAP schedule built from yesterday's volume curve and a straight TWAP line, both running to the end time. `addBand` shades green while the order is ahead of the VWAP schedule and red while behind."
+    },
+    "participation": {
+      "title": "Participation rate",
+      "about": "A volume-participation algorithm aiming at 10% of the market: its share of volume over a rolling 20 minutes, against a 7 to 13% tolerance band filled with `addBand`. A second line with gaps (`NaN`) traces the stretches outside the band in amber."
+    },
+    "queuepos": {
+      "title": "Queue position",
+      "about": "Where a resting bid stands in the queue at its price: the BTC ahead of it, worked out from one-second order-book snapshots and the trades at that price, shrinks step by step until the price trades through and the order fills. The limit price is a `createPriceLine` and markers show when it was placed and filled."
+    },
+    "slippageband": {
+      "title": "Slippage quantile band",
+      "about": "Every fill's slippage against the arrival mid in basis points, as red (cost) and green (improvement) points, with the rolling median and a 10th to 90th percentile band over the last 50 fills. The time axis has one slot per fill."
+    },
+    "fillvs": {
+      "title": "Reference, quote & fill",
+      "about": "A taker algorithm's buy fills on five-second data: the mid as the reference price, the best ask it was quoted as a step line, and each fill as a point, green when it was at or inside the quote and red when it paid more. The pane shows each fill against the quote in basis points."
+    },
+    "sizeband": {
+      "title": "Price for your size",
+      "about": "What you would pay or receive for a market order of 25 or 250 BTC, worked out by sweeping each order-book snapshot from the touch: two nested bands around the mid, filled with `addBand`. The pane shows the round-trip cost of 250 BTC in basis points."
+    },
+    "tradeplot": {
+      "title": "Trades on the chart",
+      "about": "The trades of a simple moving-average cross on 15-minute candles: buy and sell markers with each trade's result, and a layer plugin that shades every holding period from entry to exit price, green for winners and red for losers."
+    },
+    "signallatency": {
+      "title": "Signal-to-fill latency",
+      "about": "Buy signals (violet arrows) and their fills (circles labelled with the slippage in bps) on one-second prices. The panes show each fill's delay in seconds and the price move it cost; slower fills tend to pay more when the market runs."
+    },
+    "feeerosion": {
+      "title": "Fee erosion",
+      "about": "One year of a strategy indexed to 100, before and after trading fees of 6 bps per unit of turnover: `addBand` fills the widening gap in amber, and the pane shows the cumulative fees in percent of starting capital."
+    },
+    "xexspread": {
+      "title": "Cross-exchange spread",
+      "about": "One market quoted on three venues: the prices overlaid, and below them Exchange B and C against Exchange A in basis points, where a steady premium and a lagging venue stand out. Each venue is a `line` series on the shared time axis."
+    },
+    "derivs": {
+      "title": "Funding · open interest · liquidations",
+      "about": "Three derived series under one-hour candles: funding per 8 h in percent, colored by sign, open interest, and liquidated longs (down) and shorts (up). All share the time axis and crosshair."
+    },
+    "positioning": {
+      "title": "Long/short ratio · CVD",
+      "about": "Account positioning against the move: the long/short ratio around 1 as a baseline series, and cumulative volume delta."
+    },
+    "volatility": {
+      "title": "Implied volatility · basis",
+      "about": "At-the-money implied volatility and the annualised futures basis, both in percent, under four-hour candles."
+    },
+    "lsr": {
+      "title": "Long/short ratio · liquidations",
+      "about": "The ratio of long to short accounts as a `baseline` series around 1, and liquidated longs (down) and shorts (up) in $M as two histograms on one pane. Pane titles come from a one-line layer plugin."
+    },
+    "oiquad": {
+      "title": "Open interest × price quadrants",
+      "about": "The hourly change in open interest, colored by which of the four price/OI quadrants the bar falls in, with open interest itself below. The legend is drawn by a small layer plugin."
+    },
+    "liqtimeline": {
+      "title": "Liquidation bubbles",
+      "about": "A layer plugin draws a bubble for every hour with over $10M liquidated, sized by the amount: longs under the candle (red) and shorts above it (green). The largest are labeled."
+    },
+    "liqheat": {
+      "title": "Liquidation heatmap",
+      "about": "Estimated liquidation levels per hour as an `addHeatmap` fed with `appendDepth`: each hour's new open interest is spread over 10–100× leverage, and a level disappears once price trades through it. Bright bands are clusters that price is drawn to."
+    },
+    "premium": {
+      "title": "Premium index",
+      "about": "The perpetual's premium over the index price in percent, as a `baseline` series: green when the perp trades rich (longs pay), red when it trades at a discount."
+    },
+    "fundcum": {
+      "title": "Cumulative funding by venue",
+      "about": "What holding a long perpetual for a year cost on three venues: the per-8-hour funding rate summed into a running total in percent. The legend is drawn by a layer plugin."
+    },
+    "toptrader": {
+      "title": "Top traders vs all accounts",
+      "about": "The long/short ratio of the largest traders against that of all accounts. The crowd tends to chase moves while top traders lean against them. The legend is drawn by a layer plugin."
+    },
+    "cmegap": {
+      "title": "Futures weekend gaps",
+      "about": "A layer plugin shades each weekend and draws the gap between a futures market's Friday close and its Sunday reopen, both taken from round-the-clock spot candles here. A gap is grey once price trades back to the Friday close and amber while it is still open."
+    },
+    "exshare": {
+      "title": "Volume share by venue",
+      "about": "Each venue's share of perpetual volume, stacked to 100% with `area` series drawn from the top total down on a fixed 0–100 scale. A layer plugin labels the bands with their latest share."
+    },
+    "insfund": {
+      "title": "Insurance fund · auto-deleveraging",
+      "about": "The insurance fund balance in $B under four-hour candles. Markers flag auto-deleveraging rounds after violent moves, with the notional closed."
+    },
+    "oiweighted": {
+      "title": "OI-weighted funding",
+      "about": "One funding rate for the market: the venues' per-8-hour rates averaged with their open interest as weights, as a `baseline` series that turns red when shorts pay."
+    },
+    "hourheat": {
+      "title": "Activity by hour and weekday",
+      "about": "When BTC trades: average hourly volume over twelve weeks by hour of day and weekday, as a heat map with a sequential colour scale whose range ignores the top and bottom 2% (`quantile`). The US and European sessions show as bright columns, weekends as dim rows."
+    },
+    "mvrv": {
+      "title": "MVRV · realised price",
+      "about": "Price against the average cost of all holders on a log scale; MVRV above 1 means holders are in profit on average."
+    },
+    "mvrvband": {
+      "title": "Realised price bands",
+      "about": "Price on a log scale over bands at 0.75×, 1×, 1.25× and 1.5× the realised price, filled with `addBand`; below, MVRV (price over realised price). Green is below the holders' cost."
+    },
+    "hodlwaves": {
+      "title": "HODL waves",
+      "about": "Weekly supply by time since the coins last moved, stacked to 100% under the price: young coins (warm) swell in rallies as old coins are spent. The stack is built from cumulative sums of the shares; a layer plugin labels the bands."
+    },
+    "sopr": {
+      "title": "SOPR-colored price",
+      "about": "The price is drawn green while the 7-day SOPR is above 1 (coins being spent are sold at a profit) and red below, as two line series with `NaN` gaps. The ratio itself is a `baseline` series around 1."
+    },
+    "nupl": {
+      "title": "NUPL cycle zones",
+      "about": "NUPL, computed from MVRV as 1 − 1/MVRV, as a histogram colored by cycle zone, with dotted price lines at the zone edges and a legend drawn by a layer plugin. Price sits above on a log scale."
+    },
+    "realizedcap": {
+      "title": "Market cap vs realised cap",
+      "about": "Market cap against realised cap (every coin valued at the price it last moved) on a log scale. `addBand` fills green while the market is above cost and red when it falls below."
+    },
+    "lthsupply": {
+      "title": "Long- and short-term holders",
+      "about": "Supply held by long-term holders (coins unmoved for 155+ days) and by short-term holders, each in its own pane: long-term holders sell into rallies, which hands coins to the short-term cohort."
+    },
+    "cdd": {
+      "title": "Coin-days destroyed · dormant supply",
+      "about": "Coin-days destroyed per day, with the top 5% of days highlighted by per-point color: old coins waking up. Below, the supply that has not moved for a year."
+    },
+    "balbands": {
+      "title": "Supply by balance tier",
+      "about": "Five years of weekly data: the share of supply held by addresses in each balance tier, in percent. Large wallets slowly distribute to small ones. The legend is drawn by a layer plugin."
+    },
+    "burnnet": {
+      "title": "Issuance minus burn",
+      "about": "New coins issued minus fees burned, per day, colored by sign; when activity spikes, the burn outruns issuance. The running total below is the net change in supply."
+    },
+    "chainfees": {
+      "title": "Fee revenue by chain",
+      "about": "Two years of weekly fee revenue on five chains, in $M on a log scale so the small chains stay readable next to the large ones. The legend is drawn by a layer plugin."
+    },
+    "supplyprofit": {
+      "title": "Supply in profit",
+      "about": "The share of supply that last moved below today's price, from a small cost-basis model built from daily volume in the example, on a fixed percent scale (`range` turns auto-scaling off) with price lines at 50% and 95%."
+    },
+    "minerflow": {
+      "title": "Miner balance · outflows",
+      "about": "Coins held by miner addresses and what they send out each day: outflows jump on big moves as miners sell into strength or cover costs in drawdowns."
+    },
+    "hashribbon": {
+      "title": "Hash ribbons",
+      "about": "Hash rate (EH/s) with its 30- and 60-day averages; `addBand` fills red while the fast one is below (miner capitulation) and markers flag the recoveries on the price."
+    },
+    "puell": {
+      "title": "Puell multiple",
+      "about": "Miner revenue against its own one-year average: low readings mark miner stress, high ones overheated markets. The rolling mean is computed in a few lines; the view starts after the warm-up year."
+    },
+    "nvt": {
+      "title": "NVT signal",
+      "about": "The network's price-to-earnings: market cap over the 90-day average of value moved on chain, as a `baseline` around 70. High readings mean the price runs ahead of usage."
+    },
+    "stakeyield": {
+      "title": "Staking ratio · yield",
+      "about": "The share of supply staked keeps climbing while the annual staking yield drifts: two panes in percent under the price."
+    },
+    "rainbow": {
+      "title": "Log regression rainbow",
+      "about": "A power-law fit of price against time since the first block, with nine bands of ±2.2 standard deviations filled by `addBand` on a log scale. The bands run a year past the last bar: future times add slots to the axis."
+    },
+    "exflow": {
+      "title": "Exchange and bridge net flows",
+      "about": "Coins moved onto exchanges (red, potential selling) or off them (green), and the net value bridged into a chain, each a histogram with per-point colors in its own pane."
+    },
+    "activity": {
+      "title": "Active addresses · transfer sizes",
+      "about": "Three years of weekly data: active addresses, and the number of transfers stacked by size: three histograms drawn tallest first so each layer shows its own bucket."
+    },
+    "costbasis": {
+      "title": "Cost basis distribution",
+      "about": "A layer plugin draws, to the right of the candles, how much supply last moved at each price ($1,000 rows), from a simple model built from daily volume: green below the last price (in profit), red above."
+    },
+    "lprange": {
+      "title": "LP range on pool candles",
+      "about": "One-hour pool candles with a liquidity position: two dashed lines from the entry bar with `addBand` between them mark the range, and markers show where the price left it and came back."
+    },
+    "lanes": {
+      "title": "LP positions",
+      "about": "Six liquidity positions of one pool over a month of one-hour candles. A layer plugin draws each one as a rectangle from its open to its close time, between its lower and upper price."
+    },
+    "ammheat": {
+      "title": "AMM liquidity history",
+      "about": "Where the liquidity of a pool sat over a month: a depth heatmap with one column per hour and one row per $10 level, under the candles. The shape is modelled in the example from the pool’s value locked: a tight band that follows the price slowly plus wide ranges."
+    },
+    "lpreplay": {
+      "title": "LP position replay",
+      "about": "A month of a rebalancing LP strategy replayed on one-hour candles: the range is ±5% and moves to the price after eight hours outside it. A layer plugin draws each range as a rectangle; arrows mark the rebalances."
+    },
+    "poolstats": {
+      "title": "Pool TVL · volume · fees",
+      "about": "A year of one pool: value locked in USD millions, daily swap volume, and the fee APR, a day’s fees annualised over the value locked. Three panes share one time axis and crosshair."
+    },
+    "apybreak": {
+      "title": "Yield by source",
+      "about": "A pool’s yield in percent a year, split by source: trading fees (blue) and token rewards (violet) stacked on top. The rewards taper off over the year. The stack is two `area` series, the total behind the fees."
+    },
+    "tvlbreak": {
+      "title": "TVL change: price vs flows",
+      "about": "Value locked in USD billions and where each day’s change came from: the price effect on the tokens already deposited (middle) and net deposits or withdrawals at today’s price (bottom), in USD millions. The two add up to the change exactly."
+    },
+    "revincentive": {
+      "title": "Revenue vs incentives",
+      "about": "Two years of a protocol’s weekly revenue (up) against the token incentives it paid out (down), in USD millions, and the net as a `baseline` series around zero: the protocol turns profitable as the incentives taper."
+    },
+    "lvrdecomp": {
+      "title": "LP P&L: fees vs LVR",
+      "about": "Two months of an LP position’s cumulative P&L in USD thousands: fees earned (green), loss-versus-rebalancing computed from hourly returns (red, negative) and the net as a `baseline` series. Big moves show as steps in the LVR line."
+    },
+    "rwa": {
+      "title": "Tokenised treasury fund",
+      "about": "A year of a tokenised money-market fund: assets in USD millions, the yield it pays (a step line that follows the policy rate) and the token’s premium or discount to NAV in basis points."
+    },
+    "lendrates": {
+      "title": "Lending rates",
+      "about": "Borrow (amber) and supply (green) APR of a stablecoin market in percent, with the spread filled by `addBand`. Both come from utilisation (bottom) through a kinked rate model in the example: rates jump when utilisation passes the 90% kink."
+    },
+    "baddebt": {
+      "title": "Bad debt vs reserve",
+      "about": "Two years of a lending protocol’s bad debt (red area) against the reserve set aside to cover it (green), in USD millions, with the collateral price below: bad debt builds up in sell-offs."
+    },
+    "auctionpath": {
+      "title": "Liquidation auction",
+      "about": "One collateral auction on 15-second data: the auction price (amber steps) starts above the market (blue) and falls 1% a minute until keepers buy, marked where they take the lot. Below, the auction price against the market in percent."
+    },
+    "depeg": {
+      "title": "Stablecoin depeg",
+      "about": "Four months of a stablecoin’s price every four hours as basis points from $1, as a `baseline` series around the peg, with a −50 bp alert line. Below, the circulating supply in USD billions: holders redeem during the depegs."
+    },
+    "mintredeem": {
+      "title": "Mint & redeem flows",
+      "about": "A stablecoin’s daily net issuance in USD millions, mints up and redemptions down, and the supply it adds up to in USD billions. The supply is a running sum in the example."
+    },
+    "stablesupply": {
+      "title": "Stablecoin supply by chain",
+      "about": "Two years of one stablecoin’s supply in USD billions, stacked by chain: Chain A at the bottom, Chain E on top. Each layer is an `area` series of a cumulative sum, added from the top down so the lower ones cover the higher."
+    },
+    "unstakeq": {
+      "title": "Staking queues",
+      "about": "A year of the staking queues in thousand ETH: waiting to exit (red) and to enter (green). Below, the wait in days, the queue over the daily churn limit. Exits pile up when the price falls."
+    },
+    "lstpeg": {
+      "title": "LST · LRT discount",
+      "about": "Market price of a liquid staking token (top) and a restaking token (bottom) against the ETH backing them, in percent, as `baseline` series around par. The restaking token trades at wider discounts in sell-offs."
+    },
+    "oraclelag": {
+      "title": "Oracle deviation",
+      "about": "Twelve hours of one-minute prices: the market (blue) and an oracle (amber steps) that updates on a 0.5% move or an hourly heartbeat. Below, the market’s deviation from the oracle in basis points, against the ±50 bp trigger."
+    },
+    "airdrop": {
+      "title": "Airdrop claims & selling",
+      "about": "The three months after a token airdrop: tokens claimed (green) and sold (red), cumulative in millions against the 200 M allocation, with the token’s daily candles below. Claims are front-loaded; selling follows them."
+    },
+    "xpool": {
+      "title": "Cross-pool spreads",
+      "about": "Six hours of one-minute ETH prices: the reference venue on top and, below, each pool’s deviation from it in basis points. Pools that update more slowly fall further behind in fast moves until arbitrage closes the gap."
+    },
+    "liqdist": {
+      "title": "Concentrated liquidity by price",
+      "about": "How an ETH pool's liquidity is spread over $10 price ticks, beside two weeks of hourly candles: a FerroPlot of horizontal bars attached with `attachSidePlot`, so ticks line up with prices. The active tick is amber; walls at round numbers stand out."
+    },
+    "meme": {
+      "title": "Market-cap chart with trade labels",
+      "about": "Fifteen-minute candles quoted in market cap ($M, price times supply), with a trader's buys and sells and the headlines as markers, and price lines for the average entry, take-profit and stop."
+    },
+    "meme-bubbles": {
+      "title": "Trade bubbles",
+      "about": "A layer plugin draws a bubble at the time and price of each of the 80 largest trades of the last two hours, sized by its notional and colored by the aggressor: buys green, sells red. The top ten are labeled."
+    },
+    "meme-line": {
+      "title": "Market cap step line",
+      "about": "Market cap as a step line: the hourly close times the circulating supply, which changes in steps as tokens are burned or minted (second pane). A dashed price line marks the high of the window."
+    },
+    "topholders": {
+      "title": "Top-holder concentration",
+      "about": "How much of the supply the ten largest wallets hold, stacked in percent under four-hour candles: concentration falls as the token rallies and spreads to new holders. The axis label is the top-10 total."
+    },
+    "devwallet": {
+      "title": "Developer wallet timeline",
+      "about": "Every swap and transfer of the developer wallet as a marker on hourly candles, and the wallet's balance replayed from those events as a step area below."
+    },
+    "lplock": {
+      "title": "LP lock and burn",
+      "about": "Liquidity-pool locks, unlocks and burns as markers, and the share of LP tokens that cannot be pulled, replayed from those events as stacked step areas on a fixed 0–100% scale."
+    },
+    "social": {
+      "title": "Social heat and price",
+      "about": "Mentions per hour as a histogram colored by the mood of the posts, and average sentiment from −1 to 1 as a `baseline` series: hype peaks with the price."
+    },
+    "washtrade": {
+      "title": "Suspected wash trading",
+      "about": "The share of each bar's volume flagged as likely wash trading, pink above a 30% threshold, with markers on single flagged trades and their notional."
+    },
+    "arblifetime": {
+      "title": "Arbitrage window lifetimes",
+      "about": "The price gap between two pools every 5 seconds. Runs beyond ±25 bp are arbitrage windows: a layer plugin boxes each one from open to close and up to its peak, and the histogram below shows how many seconds it lived."
+    },
+    "lifecycle": {
+      "title": "Launch, graduation, listing",
+      "about": "A token's first year on a log scale. The stages are set by market cap in the example: a layer plugin shades the bonding curve, the migration, the DEX pool and the exchange-listed phase, and markers flag the transitions."
+    },
+    "groupflow": {
+      "title": "Wallet group flows",
+      "about": "Net buying by labeled wallet groups: smart money's hourly flow as a signed histogram, and every group's running total since the start of the window as lines. The legend is drawn by a layer plugin."
+    },
+    "unlock": {
+      "title": "Unlock schedule and supply",
+      "about": "Monthly token unlocks over the last half year and the next one: the circulating supply steps up at each unlock (markers, future ones in amber) inside the fixed 1B total. Future times extend the axis past the last candle."
+    },
+    "financials": {
+      "title": "Revenue · profit · free cash flow",
+      "about": "Six years of quarterly results on quarterly timestamps: revenue with net income drawn over it as two `histogram` series, free cash flow as a line, and both margins in a pane below. A small layer plugin writes the legends."
+    },
+    "surprise": {
+      "title": "EPS: actual vs estimate",
+      "about": "Reported EPS as two `points` series (sized with `lineWidth`), beats and misses, against the consensus estimate (dashed), with the surprise in percent as a `histogram` below."
+    },
+    "margins": {
+      "title": "Margin trends",
+      "about": "Gross, operating and net margin per quarter, each a `line` with `points` on the reported quarters, on one percent scale."
+    },
+    "guidance": {
+      "title": "Guidance vs actual",
+      "about": "Quarterly revenue against the range guided a quarter earlier, filled with `addBand`. Markers give the miss or beat versus the edge of the range; the current quarter shows the guidance only."
+    },
+    "earnreplay": {
+      "title": "Earnings reaction replay",
+      "about": "Daily candles played back with `update`, the way a host app drives a replay; each report marker (beat or miss, with the EPS surprise) appears when the replay reaches its day, so the reaction unfolds bar by bar."
+    },
+    "revisions": {
+      "title": "Estimate revisions",
+      "about": "Weekly candles over the next-year EPS consensus as a step line, and the number of analysts raising (up) and cutting (down) their estimate each week."
+    },
+    "valband": {
+      "title": "Valuation percentile bands",
+      "about": "Five years of weekly trailing P/E (price over trailing EPS) against its own history: `addBand` shades the most expensive and cheapest 20% of readings, with the median dashed. The P/E and its percentiles are computed in a few lines."
+    },
+    "targets": {
+      "title": "Analyst price targets",
+      "about": "The history of the high, mean and low 12-month targets around daily candles, with the high–low range filled by `addBand`, and today's three targets as labelled price lines."
+    },
+    "range52": {
+      "title": "52-week range position",
+      "about": "Rolling 52-week high and low as dotted step lines on daily candles, today's levels as price lines, and the close's position in the range (0–100%) as a `baseline` series around the midpoint."
+    },
+    "shortint": {
+      "title": "Short interest · borrow fee",
+      "about": "A growth stock with short interest as a percent of free float and the annualised borrow fee in their own panes: both climb into sell-offs and ease in rallies."
+    },
+    "dividendsbuyback": {
+      "title": "Dividends, buybacks & splits",
+      "about": "Corporate actions from three event feeds as markers on split-adjusted daily candles: quarterly dividends with the amount per share, buyback authorisations and a stock split."
+    },
+    "dividend": {
+      "title": "Dividend history & coverage",
+      "about": "Quarterly dividend per share as a `histogram`, and its earnings coverage below as a `baseline` series around 2x with a price line at the threshold."
+    },
+    "buyback": {
+      "title": "Buybacks & share count",
+      "about": "Money spent on repurchases each quarter as a `histogram` and the shares outstanding as a step line: the share count shrinks as the buybacks retire stock."
+    },
+    "insider": {
+      "title": "Insider trades",
+      "about": "Insider open-market buys (B) and sells (S) as markers on daily candles, labelled in USD millions, with the signed value of each trade as a `histogram` on the same time axis."
+    },
+    "segments": {
+      "title": "Revenue by segment",
+      "about": "Quarterly revenue of four business lines as a stacked bar chart: the example sums the segments and draws each running total as a `histogram`, tallest first."
+    },
+    "accrual": {
+      "title": "Earnings quality",
+      "about": "Net income against operating cash flow with `addBand` filling the gap, green where cash covers earnings and red (`fillCrossed`) where it does not, and the accrual ratio as a `histogram`."
+    },
+    "breadth": {
+      "title": "Market breadth",
+      "about": "Index futures over daily net advancing issues as a `histogram` and the advance–decline line, their running sum. Divergences between the A/D line and the index show a narrowing rally."
+    },
+    "incomewf": {
+      "title": "Income statement waterfall",
+      "about": "One quarter of a company's income statement from revenue down to net income as a waterfall: costs step down in red, subtotals and the total are full bars computed by the mark (`step`: delta, subtotal, total)."
+    },
+    "seasonality": {
+      "title": "Seasonality by month",
+      "about": "A stock's return since the first trading day of January for each year, month by month: past years in grey, their average dashed and this year in blue. Lines on a category axis; a NaN for months not traded yet leaves a gap."
+    },
+    "seasonheat": {
+      "title": "Monthly returns heat map",
+      "about": "Every month's return of a stock over ten years, one row per year: a cells mark on two category axes with a diverging colour scale (green up, red down) and the return in each cell, so strong and weak months show as columns."
+    },
+    "calendar": {
+      "title": "Daily returns calendar",
+      "about": "A year of BTC daily returns as a calendar: one cell per day, a column per week and a row per weekday, green for up days and red for down days. Hover a cell for its return. Cells on a date x axis (one column per week) against a category y axis."
+    },
+    "rrg": {
+      "title": "Relative rotation graph",
+      "about": "Five markets against the equity index on a relative rotation graph: relative strength (x) against its momentum (y), each with a ten-week tail. Lines whose x goes back and forth follow the data order; rules split the four quadrants a market rotates through."
+    },
+    "intraday": {
+      "title": "Intraday tick chart",
+      "about": "One session of one-minute closes as a `baseline` series around the previous close, the running average price and volume. The 11:30–13:00 lunch break leaves no gap because the time axis is index based; times are shifted to Beijing time for the axis."
+    },
+    "intraday5": {
+      "title": "Five-day tick chart",
+      "about": "Five sessions of one-minute closes against the close before them, with the average price restarting each day. A layer plugin draws the session separators and dates."
+    },
+    "auction": {
+      "title": "Opening call auction",
+      "about": "The ten-minute opening call auction: the indicative match price as a step line, matched volume building up, and the unmatched buy or sell surplus. A marker flags 09:20, after which orders can no longer be cancelled."
+    },
+    "chips": {
+      "title": "Chip distribution (CYQ)",
+      "about": "Where the float last changed hands: a turnover-decay model in a few lines spreads each day's turnover over its range. A layer plugin draws the distribution beside the candles, red for chips in profit at the last close and blue for trapped ones, with the average cost as a price line."
+    },
+    "moneyflow": {
+      "title": "Main-force money flow",
+      "about": "Daily net inflow of extra-large and large orders (the \"main force\") as a red/green `histogram`, and the cumulative net inflow of each order size below: big orders lean with the price, small ones against it."
+    },
+    "connect": {
+      "title": "Cross-border connect flows",
+      "about": "Net buying of A-shares through the cross-border stock connect under the index: daily flows as a `histogram` and their running total as an `area` series."
+    },
+    "margin": {
+      "title": "Margin financing balance",
+      "about": "Two years of the market-wide margin financing balance (leveraged longs) and securities lending balance (shorts) on the index's time axis, each in its own pane and unit."
+    },
+    "blocktrade": {
+      "title": "Block trades",
+      "about": "Off-exchange block trades from an event feed: markers name the buying branch, and the pane below gives each block's premium or discount to the day's close. Deep discounts usually mean a large holder selling."
+    },
+    "limitstats": {
+      "title": "Limit-up statistics",
+      "about": "Market-wide counts of stocks closing at the daily price limit, up and down, and the share of limit-ups that failed to hold into the close, a gauge of speculative appetite."
+    },
+    "sentiment": {
+      "title": "Market sentiment gauge",
+      "about": "A composite \"money-making effect\" score as a `baseline` series, built from advancing stocks (a `histogram` around half the market, using `baseValue`), the limit-up count and the highest consecutive limit-up streak."
+    },
+    "ipo": {
+      "title": "IPO first-day returns",
+      "about": "Each new listing's first-day return as a point on its listing date, red for gains and green for breaks below the offer price, and the rolling break rate of the last 20 listings below."
+    },
+    "alift": {
+      "title": "Lock-up expiry calendar",
+      "about": "Lock-up expiries of restricted shares under the stock: past ones in grey, the schedule for the next six months in amber. Data in the future extends the time axis, so the calendar continues past the last candle."
+    },
+    "cbpremium": {
+      "title": "Convertible bond premiums",
+      "about": "A convertible bond's premium over its conversion value and over its straight-bond floor, with `addBand` coloring which one dominates: bond-like when the stock is weak, equity-like after rallies."
+    },
+    "cbcall": {
+      "title": "Convertible call countdown",
+      "about": "The stock under a convertible bond with its conversion price and 130% call trigger as price lines, the count of qualifying days in the last 30 as a `histogram`, and a marker where the 15-of-30 call clause is met."
+    },
+    "ahpremium": {
+      "title": "A/H share premium",
+      "about": "The same company listed in two markets: the A share and the H share converted to CNY, and the premium of A over H as a `baseline` series around zero."
+    },
+    "warrantcn": {
+      "title": "Warehouse receipts",
+      "about": "A futures contract with its registered warehouse receipts, deliverable stock in exchange warehouses, and their daily change in red and green: receipts pile up as the price falls."
+    },
+    "ivrv": {
+      "title": "Implied vs realised vol · IV rank",
+      "about": "At-the-money implied volatility against 20-day realised volatility, with `addBand` shading the gap: violet while options price more movement than the stock delivers. The bottom pane is IV rank, where today's IV sits in its one-year range."
+    },
+    "expmove": {
+      "title": "Expected move to expiry",
+      "about": "The move options price in by an expiry 21 trading days out: the stock price ± spot × IV × √t for one (filled with `addBand`) and two standard deviations (dashed). The lines run into the future; data after the last bar adds slots to the time axis."
+    },
+    "rrfly": {
+      "title": "Risk reversal · butterfly",
+      "about": "The 25-delta risk reversal (call minus put implied volatility) as a baseline series: red while puts trade over calls. The violet line is the butterfly, how much the wings cost over at-the-money. Both in volatility points."
+    },
+    "pcr": {
+      "title": "Put/call ratio",
+      "about": "Daily put volume over call volume as a baseline series around 1, red when puts dominate, with its 10-day average in amber. Spikes tend to come with sell-offs."
+    },
+    "optflow": {
+      "title": "Large option prints",
+      "about": "Large option trades on one-hour candles: a layer plugin draws a bubble per print at the stock price when it traded, its area proportional to the premium, green for calls and red for puts. The five largest are labelled."
+    },
+    "earnmove": {
+      "title": "Earnings: implied vs actual move",
+      "about": "One slot per earnings report: the actual one-day move as a histogram and the move options implied as violet points at ± that size. Amber bars beat the implied move; the time axis holds only the report dates."
+    },
+    "oitime": {
+      "title": "Open interest by strike",
+      "about": "Calls plus puts open at each strike, day by day, as an `addHeatmap` fed with one column per day: rows are strikes and brighter cells hold more contracts. Calls build above a rising price and puts below a falling one."
+    },
+    "dex": {
+      "title": "Dealer gamma exposure",
+      "about": "Dealer gamma at every price, day by day, from open interest by strike and implied volatility: green where dealers are long gamma and damp moves, red where they are short and chase them. Two `addHeatmap` series hold the two signs; the amber line is the gamma flip level."
+    },
+    "pnlheat": {
+      "title": "Strategy P&L by price and date",
+      "about": "What an iron condor on BTC opened today is worth on each future day at each price, priced with Black–Scholes at today's implied volatility: green for profit, red for loss. Two `addHeatmap` series hold the two signs; dashed lines are the 5–95% price range."
+    },
+    "hedgereplay": {
+      "title": "Delta hedge replay",
+      "about": "Delta hedging a short call position, replayed: markers are the daily stock trades that keep it delta neutral, the middle pane the shares held (step line) and the bottom pane the hedge's running P&L. Deltas come from Black–Scholes in a few lines of JavaScript."
+    },
+    "gammapnl": {
+      "title": "Gamma P&L attribution",
+      "about": "A delta-hedged long call position's daily P&L split by Greek: what gamma earns (green) against what theta costs (red) in one pane, vega (violet) in the next, and the running totals at the bottom. The Greeks are a few lines of Black–Scholes."
+    },
+    "smile": {
+      "title": "Volatility smile",
+      "about": "Implied volatility across strikes for 30-day BTC options, built from at-the-money vol, the 25-delta risk reversal and the butterfly: today in violet, a month ago dashed. A numeric x axis (strike as a percentage of spot) and line marks, with a labelled scatter point at the money."
+    },
+    "payoff": {
+      "title": "Option payoff · long straddle",
+      "about": "Profit and loss of a 30-day at-the-money BTC straddle against the price: at expiry as an area that is green above zero and red below (`downColor` under `baseValue`), and halfway to expiry in amber, priced with Black–Scholes. Rules mark the spot price and zero."
+    },
+    "greeks": {
+      "title": "Greeks across the price",
+      "about": "Delta, gamma and theta of a three-week BTC call against the underlying price. Delta (blue) and scaled theta (dotted) use the left axis; gamma (violet area) uses the right one: two y axes on one plot."
+    },
+    "volcone": {
+      "title": "Volatility cone",
+      "about": "How volatile BTC has been over windows of 10 to 252 days: bands from the 5th to 95th and 25th to 75th percentiles of four years of history (areas with a lower edge, `y0`), the median dashed and today in amber. The rule is current 30-day implied vol, to compare with what has been realised."
+    },
+    "impliedpdf": {
+      "title": "Implied price distribution",
+      "about": "Where options say BTC will be in 30 days: the risk-neutral density from the smile (Breeden–Litzenberger), as horizontal bars in a FerroPlot beside the candles. `attachSidePlot` keeps its price axis lined up with the chart's while you pan and zoom."
+    },
+    "gex": {
+      "title": "Gamma exposure by strike",
+      "about": "Dealer gamma exposure at each of nine BTC strikes: positive (green) where dealers are long gamma and damp moves, negative (red) where they chase them. Bars on a category axis with per-bar colours and value labels; a vertical rule marks the spot price between strikes."
+    },
+    "oichain": {
+      "title": "Open interest by strike",
+      "about": "Call and put open interest at each BTC strike as grouped bars (marks with the same `group` sit side by side), with the max-pain strike, where option buyers would lose the most at expiry, as a rule."
+    },
+    "curveshape": {
+      "title": "Curve level · slope · curvature",
+      "about": "A yield curve in three numbers: the level (the 10-year yield, percent), the slope (10s minus 2s, bp) as a baseline series that turns red when the curve inverts, and the curvature of the belly (2 × 5y − 2y − 10y, bp)."
+    },
+    "breakeven": {
+      "title": "Real yield · breakeven inflation",
+      "about": "The 10-year nominal yield (blue) and the real yield of inflation-linked bonds (violet). The gap between them, shaded with `addBand` and plotted below, is breakeven inflation: what the market expects inflation to average."
+    },
+    "swapspread": {
+      "title": "Swap spread",
+      "about": "The 10-year swap rate (amber) against the treasury yield (blue), and their difference in basis points as a baseline series. A negative swap spread, swaps yielding less than treasuries, shows in red."
+    },
+    "spreadpct": {
+      "title": "Credit spread percentiles",
+      "about": "A high-yield credit spread over five years against its own distribution: the 10th–90th percentile range shaded with `addBand`, the median dotted, and today's percentile rank as a price line."
+    },
+    "maturitywall": {
+      "title": "Maturity wall",
+      "about": "Corporate bonds coming due per year, in USD bn: investment grade (blue) stacked on high yield (amber). One bar per calendar year from the `1y` interval with `ahead`, so the time axis runs ten years into the future."
+    },
+    "cashflowladder": {
+      "title": "Bond cash-flow ladder",
+      "about": "Ten years of cash flows from a five-bond portfolio, one slot per semi-annual payment date: coupons stacked by bond above, steps down as each bond matures, and principal repayments below. The schedule is built in a few lines of JavaScript; every timestamp is in the future."
+    },
+    "tsyauction": {
+      "title": "Treasury auction results",
+      "about": "Two years of monthly 10-year auctions on an axis of auction dates only: the stop-out yield, the bid-to-cover ratio against its average, and the tail in basis points, red when the auction cleared above the when-issued yield."
+    },
+    "cbbs": {
+      "title": "Central bank balance sheets",
+      "about": "Total assets of four central banks in USD tn over ten years of month-end values, stacked: each area is a running sum, and the largest is drawn first so the smaller ones sit in front."
+    },
+    "macroev": {
+      "title": "Macro data surprises",
+      "about": "Each data release as a bar of its surprise, actual minus consensus in standard deviations, under daily EUR/USD candles. The biggest surprises are also markers on the candles, labelled with the release."
+    },
+    "carry": {
+      "title": "FX carry · drawdown",
+      "about": "Total return of an FX carry basket, long high-yielding currencies against low-yielding funders, and its drawdown from the running peak below: carry earns slowly and gives back fast."
+    },
+    "ratediff": {
+      "title": "Rate differential vs FX",
+      "about": "USD/JPY (blue) against the two-year yield gap between the two countries (amber), both rebased to 100 with `indexedTo100` so a percent and an exchange rate share one scale. The lower pane shows the gap itself, in percent."
+    },
+    "reer": {
+      "title": "Real effective exchange rate",
+      "about": "EUR/USD (blue) against the euro's nominal (amber) and inflation-adjusted real (violet) effective exchange rates, trade-weighted against many currencies. `indexedTo100` rebases all three to the first visible bar as you pan."
+    },
+    "ppp": {
+      "title": "Purchasing power parity gap",
+      "about": "EUR/USD against its purchasing-power-parity fair value. `addBand` with `fillCrossed` shades the gap red where the euro is overvalued and green where it is undervalued; the lower pane is the gap in percent."
+    },
+    "fxsessions": {
+      "title": "FX trading sessions",
+      "about": "Fifteen-minute EUR/USD candles over the Asian, European and US sessions. A background layer plugin shades each session and draws its span and name along the top; the overlaps, when two centres trade at once, show as mixed bands."
+    },
+    "bop": {
+      "title": "Balance of payments",
+      "about": "Ten years of quarterly flows in USD bn: the current account (goods, services, income) above and the financial account (direct, portfolio, other investment) below. The components are stacked by sign in JavaScript; the white lines are the balances."
+    },
+    "yield": {
+      "title": "Treasury yield curve",
+      "about": "The Treasury curve today and three months ago, fitted with Nelson–Siegel through the 2-, 5- and 10-year yields. Maturities sit on a log axis, so the short end gets room; the quoted tenors are labelled scatter points."
+    },
+    "krd": {
+      "title": "Key rate durations",
+      "about": "How a bond portfolio's interest-rate risk is spread along the curve against its benchmark: the duration attributed to each key rate, as horizontal grouped bars on a category axis (`orientation: 'horizontal'`)."
+    },
+    "dotplot": {
+      "title": "Policy rate projections (dot plot)",
+      "about": "A dot plot of nineteen policy makers' rate projections per year. Each scatter point is one rate, sized and labelled by how many chose it; the amber line is the median path. Scatter on a category x axis with per-point sizes (`size`) and labels."
+    },
+    "basis": {
+      "title": "Futures basis",
+      "about": "Daily crude oil candles over the basis, front-month futures minus spot in USD per barrel, as a baseline series: red while the market is in backwardation. The bottom pane annualises it as a percent of the price."
+    },
+    "cot": {
+      "title": "Positioning report",
+      "about": "Weekly crude oil candles over the weekly positioning report: net positions of managed money (amber), swap dealers (blue) and other reportables (violet) in thousands of contracts, and managed money's weekly change as a signed histogram."
+    },
+    "invprice": {
+      "title": "Inventories vs price",
+      "about": "Weekly crude oil candles over commercial inventories in million barrels and the weekly change: builds in red, draws in green. Falling stocks tend to come with a rising price."
+    },
+    "crack": {
+      "title": "3-2-1 crack spread",
+      "about": "A refiner's margin from three futures: crude (white), gasoline (amber) and heating oil (blue) in USD per barrel above, and the 3-2-1 crack spread below as a baseline series around its average, computed in JavaScript from the closes."
+    },
+    "crush": {
+      "title": "Soybean crush margin",
+      "about": "The board crush, what a processor earns turning a bushel of soybeans into meal and oil, in USD per bushel as a baseline series around its average. Below, soybeans (amber), meal (violet) and oil (blue) rebased to 100 with `indexedTo100` on that pane only."
+    },
+    "freight": {
+      "title": "Freight and origin spread",
+      "about": "A dry bulk freight index (points), the export price spread between two soybean origins in USD per tonne as a baseline series, and soybean futures below, all on one time axis and crosshair."
+    },
+    "residualload": {
+      "title": "Residual load",
+      "about": "A year of grid demand (white) with solar (amber) and wind (blue) taken off it as `addBand` fills, leaving the residual load (red) that gas and coal plants must supply. Natural gas futures below move with it."
+    },
+    "carbon": {
+      "title": "Carbon price · allowance balance",
+      "about": "Weekly carbon allowance candles over the market's balance: allowances issued minus verified emissions each week (red: a deficit), and the running surplus as a baseline series. Deficits tend to lift the price."
+    },
+    "weatherdd": {
+      "title": "Heating and cooling degree days",
+      "about": "Natural gas candles over daily heating (blue) and cooling (amber) degree days, the gap between the mean temperature and 65 °F, with the seasonal normal dashed. Colder-than-normal winters lift heating demand and the price."
+    },
+    "term": {
+      "title": "Futures term structure",
+      "about": "Crude oil futures by expiry month today (amber) and a month ago (dashed): downward sloping in backwardation, upward in contango. The x axis holds dates (UTC milliseconds with a `date` format) but is not a time series: each point is a different contract."
+    },
+    "premdisc": {
+      "title": "Premium / discount to NAV",
+      "about": "A listed fund's market price against its net asset value, and the premium or discount of the price to NAV as a `baseline` series around zero: positive in green, negative in red."
+    },
+    "trackerr": {
+      "title": "Tracking difference & error",
+      "about": "An index fund against its index rebased to 100 (`indexedTo100`), the daily tracking difference in basis points and the rolling 60-day tracking error, computed in a few lines."
+    },
+    "feedrag": {
+      "title": "Fee drag",
+      "about": "Ten years of growth of 10,000 in a total-return index before fees, and after a 0.10% and a 1.50% annual fee. `addBand` fills what the higher fee takes, which compounds into a wide gap."
+    },
+    "dca": {
+      "title": "Dollar-cost averaging",
+      "about": "Five years of a monthly investment plan against investing the same total on day one: the plan's value as an `area`, the money paid in as a step line, and the lump sum as a line."
+    },
+    "managertenure": {
+      "title": "Returns by manager tenure",
+      "about": "Eight years of an active fund's NAV on a log scale. A layer plugin shades each portfolio manager's tenure, taken from an event feed of manager changes, and labels it with the return over it."
+    },
+    "topholdings": {
+      "title": "Top holdings over time",
+      "about": "Portfolio weights of a fund's five largest holdings from quarterly disclosures, stacked: each segment is one holding and the height of the bar is the top-5 concentration."
+    },
+    "fundshares": {
+      "title": "Fund shares & net creations",
+      "about": "An index fund's shares outstanding and the daily net creations and redemptions under its index: investors redeem into rallies and buy the dips."
+    },
+    "brinson": {
+      "title": "Brinson attribution",
+      "about": "Why a fund beat its benchmark last quarter: a waterfall from the benchmark return through each sector's Brinson–Fachler effect (allocation, selection and interaction combined) to the fund's return. The label splits the total into the three effects."
+    },
+    "equity": {
+      "title": "Equity curve · drawdown",
+      "about": "A strategy against its benchmark on a `percentage` price scale, so both read as return since the first visible day, with the drawdown from the running peak in a pane below. The drawdown is computed in a few lines from the equity series."
+    },
+    "ddepth": {
+      "title": "Underwater curve · worst drawdown",
+      "about": "The underwater curve, the percentage below the running peak, as a `baseline` series under the equity. Markers show where the worst drawdown starts, how deep it gets and how many trading days it takes to recover."
+    },
+    "jointdd": {
+      "title": "Joint drawdowns",
+      "about": "Drawdowns of three strategies (trend, carry, value), one `baseline` pane each, and a histogram counting how many are more than 10% under water on the same day. Amber (two) and red (all three) bars show when diversification failed."
+    },
+    "walkfwd": {
+      "title": "Walk-forward windows",
+      "about": "A walk-forward test: the model is fitted on 250 days and traded on the next 60, then the window rolls on. A layer plugin draws one row per fold under the equity (grey in-sample, green out-of-sample) and shades the out-of-sample stretches."
+    },
+    "isos": {
+      "title": "In-sample vs out-of-sample",
+      "about": "One equity curve split into the period the strategy was designed on and the held-out period. A layer plugin shades both, draws the split line and labels each side with its annualised Sharpe ratio, computed in the example."
+    },
+    "livevsbt": {
+      "title": "Live vs backtest",
+      "about": "The live equity of a strategy against its backtest (grey) since launch, both rebased to 1, with the tracking gap in percent as a `baseline` series below and a review threshold at −2%."
+    },
+    "rebalcf": {
+      "title": "Rebalancing counterfactuals",
+      "about": "One portfolio rebalanced monthly (green), quarterly (blue) or never (grey), rebased to 1. `addBand` fills the gap between monthly rebalancing and buy-and-hold, and the pane below shows both rebalanced versions relative to buy-and-hold in percent: drift wins in rallies and loses in sell-offs."
+    },
+    "rolling": {
+      "title": "Rolling return · volatility · Sharpe · beta",
+      "about": "Half-year (126-day) rolling statistics of a strategy, computed in the example from its daily returns: annualised return and volatility in percent, the Sharpe ratio, and beta to the benchmark, one pane each on the same time axis, each named on its last-value line."
+    },
+    "corrtime": {
+      "title": "Rolling correlation",
+      "about": "Soybeans (amber) and soybean meal (blue) on a `percentage` scale, and below, the 40-day correlation of their daily returns as a `baseline` around the 250-day level (dashed). Red stretches are when the usual link weakens."
+    },
+    "varbt": {
+      "title": "VaR backtest exceptions",
+      "about": "Daily P&L in thousands as a histogram against a rolling 99% historical VaR (amber step line). Days that lose more than the VaR are exceptions, colored and marked with `setMarkers`; at 99% about five a year are expected."
+    },
+    "lvar": {
+      "title": "Liquidity-adjusted VaR",
+      "about": "One-day 99% VaR and liquidity-adjusted VaR in millions, with `addBand` filling the liquidity add-on between them. The pane below shows the add-on as a percentage of VaR: it widens when markets fall and spreads blow out."
+    },
+    "cashstress": {
+      "title": "Cash stress test",
+      "about": "A fund's weekly cash in millions under a base and a stress scenario, against the cash it could be asked for in margin calls and redemptions (red). `addBand` with a transparent `fillCrossed` fills only the shortfalls, where the need exceeds the stressed balance."
+    },
+    "fxhedge": {
+      "title": "Currency hedge effect",
+      "about": "Cumulative return in euros of US stocks, hedged (green) and unhedged (grey), aligned by date in the example. `addBand` shades the hedge's profit (green) or loss (red), and EUR/USD sits in the pane below: when the euro rises, the hedge pays."
+    },
+    "alloc": {
+      "title": "Allocation & drift",
+      "about": "Weekly weights of four asset classes stacked to 100%: each boundary is a running sum, and `addBand` fills between neighbouring lines. Dashed price lines mark the target boundaries (60/25/10/5), so the distance to them is the drift to rebalance away."
+    },
+    "bump": {
+      "title": "Factor ranking (bump chart)",
+      "about": "The monthly rank of six equity factors by trailing score: one `line` and `points` series per factor, with the price scale `inverted` so rank 1 is on top. A marker at the last month names each line."
+    },
+    "quantile": {
+      "title": "Quintile backtest",
+      "about": "Cumulative return in percent of five portfolios sorted on a factor, from the bottom quintile (red) to the top (green). A clean fan with Q5 on top means the factor ranks returns; the pane below is the long Q5, short Q1 spread."
+    },
+    "ic": {
+      "title": "IC · Rank IC",
+      "about": "A factor's weekly information coefficient as a histogram colored by sign, the rank IC (blue) and its 26-week rolling mean (amber), with a zero price line. A mean that stays above zero is what a usable factor looks like."
+    },
+    "factorturn": {
+      "title": "Factor turnover",
+      "about": "The share of a monthly-rebalanced factor portfolio traded at each rebalance, in percent, with the average as a dashed price line. Months well above it are highlighted: turnover is what trading costs scale with."
+    },
+    "regime": {
+      "title": "Market regimes",
+      "about": "Daily candles over shaded market regimes: bull above a 50-day average, bear below it, and stress when 20-day volatility runs well above its median. The regimes are classified in the example and a layer plugin draws them as background bands with a legend."
+    },
+    "distrib": {
+      "title": "Return distribution",
+      "about": "Four years of BTC daily returns: a histogram, a kernel density estimate (white) and the normal distribution with the same mean and deviation (dashed). The fat tails and the taller peak are where the two curves part; the rule is the one-day 95% value at risk."
+    },
+    "riskret": {
+      "title": "Risk vs return",
+      "about": "Eleven markets by one-year return against annualised volatility, coloured by return per unit of risk on a diverging colour scale (red below zero, green above) and labelled with their symbols."
+    },
+    "frontier": {
+      "title": "Efficient frontier",
+      "about": "Random long-only mixes of stocks, gold, bitcoin and the euro, from three years of daily returns, coloured by Sharpe ratio, with the efficient frontier (the best return for each level of risk) in amber and the single assets as squares."
+    },
+    "correlation": {
+      "title": "Correlation matrix",
+      "about": "Correlations of six months of daily returns between ten markets as a heat map: cells on two category axes with a diverging colour scale centred on zero (blue together, red opposite) and the coefficient written in each cell."
+    },
+    "factors": {
+      "title": "Factor exposures by month",
+      "about": "Six equity factor scores of a portfolio month by month as stacked bars (marks with the same `stack` add up, positives above zero and negatives below), with the net exposure as a line."
+    },
+    "jcurve": {
+      "title": "Private fund J-curve",
+      "about": "Net cash flow to investors per year in millions (calls red, distributions green) and the cumulative net cash flow in amber: the J. The schedule is projected in the example with a simple pacing model, so it runs years into the future; markers show the trough and the break-even year."
+    },
+    "capitalcalls": {
+      "title": "Capital calls & distributions",
+      "about": "Seven years of quarterly capital calls (down) and distributions (up) of one fund commitment in millions, and below, the cumulative net cash flow as a `baseline` series: deep in the red while the fund invests, climbing back as it exits."
+    },
+    "tvpi": {
+      "title": "DPI · TVPI",
+      "about": "A fund's quarterly multiples: total value to paid-in (TVPI) and distributed to paid-in (DPI). `addBand` fills the gap, the residual value still held (RVPI), which turns into cash as DPI catches up."
+    },
+    "aummix": {
+      "title": "Platform AUM by business",
+      "about": "Ten years of assets under management in billions by business line, stacked: each line is a running total and `addBand` fills between neighbours. Each layer is named at its top edge by a price line with a `title`."
+    },
+    "cashrunway": {
+      "title": "Cash runway scenarios",
+      "about": "A startup's cash in millions: 18 months of history, then three burn scenarios projected 30 months ahead from the last balance and burn. The series reaches into the future with `ahead`; markers show the month each scenario runs out of cash."
+    },
+    "rounds": {
+      "title": "Funding rounds & valuation",
+      "about": "A startup's post-money valuation in millions as a step `area` on a `logarithmic` scale, one step per funding round, with the amount raised per round below. The rounds come from an events endpoint; the valuation assumes each round sells 20% of the company."
+    },
+    "covenantheadroom": {
+      "title": "Debt covenant headroom",
+      "about": "A borrower's quarterly net debt to EBITDA against a 4.0x maintenance covenant (red price line), and below, the headroom in percent: how far EBITDA could fall before a breach. Under 10% puts the loan on the watch list."
+    },
+    "cashcycle": {
+      "title": "Cash conversion cycle",
+      "about": "Days sales outstanding (DSO), days inventory outstanding (DIO) and days payables outstanding (DPO) by quarter, and below, the cash conversion cycle DSO + DIO − DPO. Red quarters tie up cash for longer than average."
+    },
+    "amortization": {
+      "title": "Mortgage amortization",
+      "about": "Each year's payments on a 30-year fixed mortgage, in thousands, split into interest (amber) and principal (blue) by drawing two histograms over each other, with the remaining balance below. Interest dominates for the first half; the schedule is computed in the example and runs into the future."
+    },
+    "prepay": {
+      "title": "Prepayment vs standard",
+      "about": "Remaining balance in thousands of a 30-year mortgage paid as scheduled (grey) or with $500 extra a month (green), with `addBand` between them and the cumulative interest saved below. Both schedules are computed in the example."
+    },
+    "debtplan": {
+      "title": "Debt payoff: snowball vs avalanche",
+      "about": "Total debt left in thousands under two payoff plans with the same monthly budget: snowball (smallest balance first, amber) and avalanche (highest rate first, blue). Both are simulated in the example; the band is the extra debt the snowball carries, and markers show each debt-free month."
+    },
+    "networth": {
+      "title": "Net worth breakdown",
+      "about": "Ten years of a household balance sheet in thousands: home (slate), investments (blue) and cash (amber) stacked up, mortgage (dark red) and other debt (red) stacked down, as overlaid `histogram` series, with net worth as a white line."
+    },
+    "retirement": {
+      "title": "Retirement savings fan",
+      "about": "Twenty years of weekly outcomes for a $650k portfolio: the median path and the 25–75% and 5–95% ranges filled with `addBand`, against a $2m goal. The quantile paths come from the forecast endpoint, scaled with an assumed 5% average yearly return in the example."
+    },
+    "probline": {
+      "title": "Probability with news",
+      "about": "Two months of a binary market’s Yes price as a percent chance, on a fixed 0–100 scale, with the news that moved it marked by `setMarkers`."
+    },
+    "outcomes": {
+      "title": "Multi-outcome market",
+      "about": "Three months of a five-outcome market. Each band is one outcome’s probability; together they fill 0–100%. The stack is five `area` series of running totals, with the latest odds as markers."
+    },
+    "marketconstraints": {
+      "title": "Cross-market consistency",
+      "about": "Yes prices of three markets on mutually exclusive outcomes (A amber, B blue, C violet) and, below, their sum against 100%. Above it the set is overpriced (sell all three), below it underpriced (buy all three)."
+    },
+    "resolutionpath": {
+      "title": "Resolution timeline",
+      "about": "The last ten days of a market: trading, then a proposed outcome, a dispute, a 48-hour vote and the payout. A layer plugin shades each phase and labels it; the Yes price stops at resolution, when Yes shares pay 100."
+    },
+    "forecastrevision": {
+      "title": "Forecast revisions",
+      "about": "Thirty weekly revisions of a published vote-share forecast (step line) with its uncertainty band, narrowing as the vote nears, and the final result as a price line."
+    },
+    "stackedarea": {
+      "title": "100% stacked area",
+      "about": "Portfolio weights stacked to 100% over a year. The cumulative sums are computed in JS and drawn as opaque area series, tallest first, so each band shows one asset's share."
+    },
+    "stackedbars": {
+      "title": "Stacked columns",
+      "about": "Daily spot volume by venue (USD billions) stacked into one column per day. Running totals are drawn as histogram series from the tallest down, each painting over the one before."
+    },
+    "groupedbars": {
+      "title": "Grouped columns",
+      "about": "Weekly volume per venue as side-by-side columns in each week's slot. A layer plugin offsets the four columns inside the slot; an invisible histogram keeps the price scale and crosshair."
+    },
+    "dualhist": {
+      "title": "Buy vs sell volume",
+      "about": "Under one-minute candles: aggressive buy volume up, sell volume down (BTC) and their difference as an amber line, aggregated from the trade feed in a few lines of JS. Two histogram series share a pane around zero."
+    },
+    "prettyhist": {
+      "title": "Rounded gradient columns",
+      "about": "One venue's daily volume (USD billions) as rounded columns, each shaded from sky at the foot to violet at the top. A layer plugin draws each column as gradient slices with a polygon cap over an invisible histogram."
+    },
+    "lollipop": {
+      "title": "Lollipop",
+      "about": "Daily returns as lollipops: a histogram stick from zero with a dot on its tip, colored by sign. The dots are two points series, one per color, with `NaN` gaps."
+    },
+    "scatter": {
+      "title": "Trade scatter",
+      "about": "Four minutes of trades as points at their price, green for aggressive buys and red for sells, with bigger dots for bigger trades. Six points series, one per side and size tier, on a shared trade-by-trade axis."
+    },
+    "boxwhisker": {
+      "title": "Box & whisker",
+      "about": "The spread of each day's hourly closes: box from the first to the third quartile, amber median, whiskers to the extremes. Quartiles are computed in JS; a layer plugin draws the boxes over invisible candles that span each day."
+    },
+    "brushable": {
+      "title": "Brushed range",
+      "about": "Move the pointer to brush a range from there to the latest bar: the shaded region, the rise or fall and the percent change follow it. A layer plugin draws the brush; `crosshairMove` updates it and `invalidateLayer` redraws."
+    },
+    "streamgraph": {
+      "title": "Streamgraph",
+      "about": "Social mentions by topic stacked symmetrically around zero, so the stream swells and thins with the total. The edges are cumulative sums from minus half the total, drawn as invisible lines with an `addBand` fill between each pair."
+    },
+    "gantt": {
+      "title": "Session timeline",
+      "about": "Thirty-minute BTC prices above a timeline of exchange sessions, one row per venue in UTC: Asia-Pacific in sky, Europe in violet, the US in amber. A layer plugin draws the bars in a pane whose scale is fixed to the row numbers."
+    },
+    "deepzoom": {
+      "title": "Ten years, one series",
+      "about": "A decade of hourly candles, about 87 600 bars, in one series on a log scale. The engine reduces what is on screen per pixel, so the full view stays sharp and zooming in reaches single hours without reloading anything."
+    },
+    "bookmap4k": {
+      "title": "Dense order book heatmap",
+      "about": "Ten minutes of the book at 250 ms and $2 resolution, 960 000 cells, aggregated per pixel on the GPU, with the last price and the larger trades as bubbles sized by quantity and colored by aggressor."
+    },
+    "capacityterrain": {
+      "title": "Capacity terrain",
+      "about": "How much it would cost to trade, by order size (vertical, USD millions) and time: cool where liquidity is deep, hot where an order would move the price. A heatmap series used for an estimate instead of a book, over the price it describes."
+    },
+    "trustrail": {
+      "title": "Data trust rail",
+      "about": "A rail under the candles rates every bar: green normal, amber sparse, violet nearly empty (against the median trade count), red when the price strays more than 8 bps from a reference venue (the deviation is plotted below). A histogram with per-point colors in a thin pane."
+    },
+    "narrative": {
+      "title": "Narrative timeline",
+      "about": "Price with the story around it: on-chain events above the candles, macro news below, and social activity in the pane underneath, so a move can be read against what was happening. Two event feeds merged into `setMarkers`."
+    },
+    "mirror": {
+      "title": "Execution mirror",
+      "about": "A replay mirror for a desk: our fills (sky) against the best price available within an hour either side (amber, with the gap in bps) and the fills of a well-informed account (pink dots). A layer plugin draws the comparison lines."
+    },
+    "asofaudit": {
+      "title": "Look-ahead audit",
+      "about": "For three datasets, when each record describes (grey dot) and when it became public (green tick). Data read inside the red span would not have been available yet: that is look-ahead bias in a backtest. A layer plugin draws the lanes under the price."
+    },
+    "resilience": {
+      "title": "Liquidity resilience",
+      "about": "How the market absorbs shocks: one-minute candles with the three largest moves marked, the quoted spread in bps (amber) and resting depth within 10 bps in USD millions (sky). Resilient liquidity snaps back fast after each shock."
+    },
+    "dualclock": {
+      "title": "Two clocks",
+      "about": "One-second prices on two clocks: as the exchange stamped them (sky) and what we had actually received at that moment (amber steps). A layer plugin draws each tick's delay as a link from exchange time to receive time, colored by latency; the pane below shows the delay in ms."
+    },
+    "atomicitybreak": {
+      "title": "Leg risk",
+      "about": "A two-leg trade that is meant to be flat but fills leg by leg: the lanes show each fill as it happens, and the step baseline below shows the net BTC exposure carried while one leg runs ahead of the other. A layer plugin draws the lanes."
+    },
+    "missingimpact": {
+      "title": "Gap impact lens",
+      "about": "Holes in a feed (shaded), the linear patch over each one (amber) against the true price (dotted grey) and what was received (sky), with the worst error of each patch. A background layer plugin shades the gaps."
+    },
+    "gravity": {
+      "title": "Price gravity",
+      "about": "A sideways profile of where price has spent its volume, weighted toward recent bars, drawn against the right edge: long bands pull price, gaps let it travel. The three strongest levels are labelled. A layer plugin draws the profile."
+    }
+  }
+}

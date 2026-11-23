@@ -1,7 +1,8 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import { categories, type Demo } from '@/catalog';
+import type { Demo } from '@/catalog';
+import { useCatalog } from './I18n';
 import { Thumb } from './Thumb';
 
 /**
@@ -9,6 +10,7 @@ import { Thumb } from './Thumb';
  * card images (a live chart each would need a GPU device each).
  */
 export function AllCharts({ current, onPick }: { current: Demo; onPick: (d: Demo) => void }) {
+  const { categories } = useCatalog();
   return (
     <div
       id="all-charts"

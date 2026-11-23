@@ -28,6 +28,15 @@
 }
 
 @layer base {
+  /* The CJK pages: Latin text in the site font, the rest in the language's system font. */
+  html:lang(zh-CN) { --font-sans: "Inter", "SF Pro Display", -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif; }
+  html:lang(zh-TW) { --font-sans: "Inter", "SF Pro Display", -apple-system, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
+  html:lang(ja) { --font-sans: "Inter", "SF Pro Display", -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, "Noto Sans JP", sans-serif; }
+  html:lang(ko) { --font-sans: "Inter", "SF Pro Display", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif; }
+  /* Headlines set tight for Latin read cramped in CJK. */
+  html:is(:lang(zh-CN), :lang(zh-TW), :lang(ja), :lang(ko)) :is(h1, h2) { letter-spacing: -0.01em; }
+  html:lang(ko) { word-break: keep-all; }
+
   html { scroll-behavior: smooth; }
   body {
     @apply bg-bg text-ink font-sans antialiased;
@@ -248,3 +257,7 @@
     .site-header, .site-header-bar { transition: none; }
   }
 }
+
+/* CJK glyphs are a full em wide: the hero headline is set smaller to keep its
+   two lines. Outside the layers, so it wins over the text-[…] utility. */
+html:is(:lang(zh-CN), :lang(zh-TW), :lang(ja), :lang(ko)) .hero-title { font-size: clamp(40px, 5.6vw, 84px); line-height: 1.08; }

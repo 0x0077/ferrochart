@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import type { Category, Demo } from '@/catalog';
 import { highlight } from '@/lib/highlight.js';
+import { useI18n } from './I18n';
 
 /** How the example's code makes its chart: a FerroChart, a FerroPlot or both. */
 function kindOf(d: Demo): { create: string; data: string } {
@@ -50,18 +51,16 @@ export function Details({
     return () => onSlot(null);
   }, [onSlot]);
 
+  const { t: m } = useI18n();
+  const t = m.details;
   const k = kindOf(demo);
-  const steps = [
-    { t: 'Install the package', c: 'npm install @ferrochart/core' },
-    { t: 'Create it on a canvas', c: k.create },
-    { t: 'Give it your data: this page uses a synthetic feed from its own server', c: k.data },
-    { t: 'Use the API of this example: the full code is below', c: demo.api.join(' · ') },
-  ];
+  const snippets = ['npm install @ferrochart/core', k.create, k.data, demo.api.join(' · ')];
+  const steps = t.steps.map((s, i) => ({ t: s, c: snippets[i] }));
   const facts = [
-    ['Example', demo.id],
-    ['Renderer', renderer ?? 'Starting…'],
-    ['Data', 'Synthetic market data from this site. Replace it with your own source.'],
-    ['Licence', 'Apache-2.0'],
+    [t.example, demo.id],
+    [t.renderer, renderer ?? m.viewer.starting],
+    [t.data, t.dataValue],
+    [t.licence, 'Apache-2.0'],
   ];
 
   return (
@@ -82,7 +81,7 @@ export function Details({
           <button
             ref={closeBtn}
             type="button"
-            aria-label="Close details"
+            aria-label={t.close}
             onClick={onClose}
             className="grid size-[34px] shrink-0 cursor-pointer place-items-center rounded-full border border-line hover:bg-ink/[0.06]"
           >
@@ -95,7 +94,7 @@ export function Details({
           <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,400px),1fr))] gap-9">
             <div className="flex flex-col gap-7">
               <div className="flex flex-col gap-3.5">
-                <h4 className="text-[17px] font-semibold">How to use it</h4>
+                <h4 className="text-[17px] font-semibold">{t.howTo}</h4>
                 {steps.map((s, i) => (
                   <div key={s.t} className="grid grid-cols-[28px_minmax(0,1fr)] items-start gap-3">
                     <span className="grid size-6 place-items-center rounded-full border border-line font-mono text-[11px] text-muted">{i + 1}</span>
@@ -107,7 +106,7 @@ export function Details({
                 ))}
               </div>
               <div className="flex flex-col gap-3">
-                <h4 className="text-[17px] font-semibold">API used</h4>
+                <h4 className="text-[17px] font-semibold">{t.apiUsed}</h4>
                 <div className="flex flex-wrap gap-2">
                   {demo.api.map((a) => (
                     <code key={a} className="rounded-[7px] border border-line bg-bg px-[9px] py-[5px] font-mono text-xs text-ink">{a}</code>
@@ -125,7 +124,7 @@ export function Details({
             </div>
             <div className="flex min-w-0 flex-col self-start overflow-hidden rounded-[14px] border border-line bg-chart">
               <div className="flex items-center gap-2.5 border-b border-chart-line py-2.5 pr-2.5 pl-[18px]">
-                <span className="text-[11px] tracking-[0.08em] text-on-chart-muted uppercase">Integration</span>
+                <span className="text-[11px] tracking-[0.08em] text-on-chart-muted uppercase">{m.viewer.integration}</span>
                 <button type="button" onClick={onCopy} className="ml-auto h-7 cursor-pointer rounded-lg border border-chart-line px-3 text-xs text-on-chart hover:bg-white/5">
                   {copyLabel}
                 </button>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useI18n } from './I18n';
 import { highlight } from '@/lib/highlight';
 
 type Lang = { id: string; label: string; lang: string; file: string; install: string; code: string };
@@ -169,6 +170,7 @@ const CheckIcon = () => (
 );
 
 function Copy({ text, label }: { text: string; label: string }) {
+  const { t } = useI18n();
   const [done, setDone] = useState(false);
   return (
     <button
@@ -183,17 +185,18 @@ function Copy({ text, label }: { text: string; label: string }) {
       }
     >
       {done ? <CheckIcon /> : <CopyIcon />}
-      {done ? 'Copied' : 'Copy'}
+      {done ? t.viewer.copied : t.viewer.copy}
     </button>
   );
 }
 
 /** A dark editor window with one tab per language. */
 export function CodeTabs() {
+  const { t } = useI18n();
   const [cur, setCur] = useState(LANGS[0]);
   return (
     <div id="code-tabs" className="overflow-hidden rounded-[20px] border border-chart-line bg-chart text-on-chart shadow-[0_40px_80px_-40px_rgb(13_15_20/0.6)]">
-      <div role="tablist" aria-label="Language" className="flex items-center gap-1 overflow-x-auto border-b border-chart-line px-3 pt-3 [scrollbar-width:none]">
+      <div role="tablist" aria-label={t.nav.language} className="flex items-center gap-1 overflow-x-auto border-b border-chart-line px-3 pt-3 [scrollbar-width:none]">
         {LANGS.map((l) => (
           <button
             key={l.id}
@@ -212,7 +215,7 @@ export function CodeTabs() {
         ))}
         <span className="ml-auto flex items-center gap-2 pb-2">
           <span className="font-mono text-[11px] text-on-chart-muted max-sm:hidden">{cur.file}</span>
-          <Copy text={cur.code} label="Copy the code" />
+          <Copy text={cur.code} label={t.docs.copyAria} />
         </span>
       </div>
       <div className="flex items-center justify-between gap-3 border-b border-chart-line bg-white/[0.03] px-5 py-2.5 font-mono text-[13px]">
@@ -220,7 +223,7 @@ export function CodeTabs() {
           <span className="select-none text-on-chart-muted">$ </span>
           {cur.install}
         </span>
-        <Copy text={cur.install} label="Copy the install command" />
+        <Copy text={cur.install} label={t.home.copyInstall} />
       </div>
       {/* Every snippet sits in the same grid cell, the hidden ones invisible:
           the panel always has the height of the longest, so switching tabs

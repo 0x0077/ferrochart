@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { allDemos, categories, groupsOf, preludeOf, type Category, type Demo } from '@/catalog';
+import { groupsOf, preludeOf, type Category, type Demo } from '@/catalog';
+import { fmt } from '@/lib/i18n';
+import { useCatalog, useI18n } from './I18n';
 import { highlight } from '@/lib/highlight.js';
 import { grow, shrink } from '@/lib/reveal.js';
 import { Thumb } from './Thumb';
@@ -32,7 +34,6 @@ declare global {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-const catOf = (d: Demo) => categories.find((c) => c.demos.includes(d));
 /** The example as a user would write it. */
 export const source = (d: Demo) => `${preludeOf(d)}\n${d.code}`;
 
@@ -71,6 +72,9 @@ const round =
  * chart; "All charts" and "Details" are layers.
  */
 export function Viewer({ request, onClosed }: { request: OpenRequest | null; onClosed: () => void }) {
+  const { categories, allDemos } = useCatalog();
+  const { t, path } = useI18n();
+  const catOf = (d: Demo) => categories.find((c) => c.demos.includes(d));
   const [phase, setPhase] = useState<Phase>('hidden');
   const [shell, setShell] = useState(false);
   /** 'grow': the panel grows out of the clicked card; 'fade': deep links, reduced motion. */
@@ -78,9 +82,9 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
   const [cat, setCat] = useState<Category>(categories[0]);
   const [demo, setDemo] = useState<Demo>(categories[0].demos[0]);
   const [query, setQuery] = useState('');
-  const [live, setLive] = useState('Starting…');
+  const [live, setLive] = useState(t.viewer.starting);
   const [renderer, setRenderer] = useState<string | null>(null);
-  const [copy, setCopy] = useState('Copy');
+  const [copy, setCopy] = useState(t.viewer.copy);
   const [code, setCode] = useState(false);
   const [all, setAll] = useState(false);
   const [details, setDetails] = useState(false);
@@ -108,15 +112,16 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
     stage.current = import('@/lib/stage.js').then((m) => {
       const s: Stage = m.createStage(host.current as HTMLElement, {
         onShown: (d: Demo, r: string) => {
-          setLive(`Live · ${r}`);
+          setLive(fmt(t.viewer.live, { r }));
           setRenderer(r);
           site.shown = d.id;
         },
         onError: (d: Demo, message: string) => {
-          setLive('Failed');
+          setLive(t.viewer.failed);
           site.errors.push(`${d.id}: ${message}`);
         },
         accent: () => accentRef.current,
+        couldNotStart: t.viewer.couldNotStart,
       });
       if (dead) s.destroy();
       made = s;
@@ -133,7 +138,7 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
     const c = catOf(d);
     if (c) setCat(c);
     setDemo(d);
-    setLive('Starting…');
+    setLive(t.viewer.starting);
     skip.current?.();
     stage.current?.then((s) => s.show(d, 'switch'));
   }, []);
@@ -152,7 +157,7 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
     setCat(request.cat);
     setDemo(request.demo);
     setQuery('');
-    setLive('Starting…');
+    setLive(t.viewer.starting);
     setCode(false);
     setAll(request.all ?? false);
     setDetails(false);
@@ -225,8 +230,8 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
 
   // The address follows the chart: the example's own page (app/charts).
   useEffect(() => {
-    if (phase === 'open' || phase === 'entering') history.replaceState(null, '', `/charts/${cat.id}/${demo.id}${location.search}`);
-  }, [phase, cat, demo]);
+    if (phase === 'open' || phase === 'entering') history.replaceState(null, '', `${path(`/charts/${cat.id}/${demo.id}`)}${location.search}`);
+  }, [phase, cat, demo, path]);
 
   const close = useCallback(() => {
     if (phaseRef.current === 'hidden' || phaseRef.current === 'closing') return;
@@ -236,7 +241,7 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
     setDetails(false);
     setAll(false);
     setCode(false);
-    history.replaceState(null, '', `/${location.search}`); // back to the homepage's address
+    history.replaceState(null, '', `${path('/')}${location.search}`); // back to the homepage's address
     const p = panel.current as HTMLDivElement;
     const from = card.current;
     // Back into the current category's top card (the category may have changed).
@@ -273,7 +278,7 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
     return categories
       .map((c) => ({ name: c.title, demos: c.demos.filter((d) => matches(d, q)) }))
       .filter((s) => s.demos.length);
-  }, [cat, q]);
+  }, [cat, q, categories]);
   const flat = useMemo(() => sections.flatMap((s) => s.demos), [sections]);
 
   /** Previous or next: in the search hits, or around the category. */
@@ -319,11 +324,11 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
   const onCopy = async () => {
     try {
       await navigator.clipboard.writeText(source(demo));
-      setCopy('Copied');
+      setCopy(t.viewer.copied);
     } catch {
-      setCopy('Copy failed');
+      setCopy(t.viewer.copyFailed);
     }
-    setTimeout(() => setCopy('Copy'), 1400);
+    setTimeout(() => setCopy(t.viewer.copy), 1400);
   };
 
   const moveChart = useCallback((el: HTMLElement | null) => {
@@ -355,7 +360,7 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
         <aside className="shell-rail flex min-h-0 flex-col tab:row-span-2">
           <div className="px-1 pt-1 pb-3">
             <span className="font-mono text-xs font-medium accent-ink">
-              {cat.kicker} · {cat.demos.length} charts
+              {cat.kicker} · {fmt(t.viewer.charts, { n: cat.demos.length })}
             </span>
             <h2 className="mt-1 text-[22px]">{cat.title}</h2>
           </div>
@@ -363,8 +368,8 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={`Search ${allDemos.length} charts`}
-            aria-label="Search charts"
+            placeholder={fmt(t.viewer.search, { n: allDemos.length })}
+            aria-label={t.viewer.searchAria}
             className="mb-3 h-9 rounded-[10px] border border-line bg-white px-3.5 text-[13px] text-ink outline-none placeholder:text-faint focus:border-[var(--accent)]"
           />
           <div
@@ -402,7 +407,7 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
                 </ol>
               </section>
             ))}
-            {!flat.length && <p className="px-2 text-sm text-faint">No chart matches “{query}”.</p>}
+            {!flat.length && <p className="px-2 text-sm text-faint">{fmt(t.viewer.noMatch, { q: query })}</p>}
           </div>
         </aside>
 
@@ -416,25 +421,25 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
               {pos + 1} / {cat.demos.length}
             </span>
             <div className="flex shrink-0 gap-1.5">
-              <button type="button" id="all-toggle" className={pill} aria-pressed={all} title="All charts (A)" onClick={() => setAll((v) => !v)}>
+              <button type="button" id="all-toggle" className={pill} aria-pressed={all} title={t.viewer.allChartsTitle} onClick={() => setAll((v) => !v)}>
                 <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3.5 fill-current"><path d="M1 1h6v6H1zM9 1h6v6H9zM1 9h6v6H1zM9 9h6v6H9z" /></svg>
-                <span className="hidden desk:inline">All charts</span>
+                <span className="hidden desk:inline">{t.viewer.allCharts}</span>
               </button>
-              <button type="button" id="details-open" className={pill} title="Details" onClick={() => setDetails(true)}>
-                <span className="hidden desk:inline">Details</span>
+              <button type="button" id="details-open" className={pill} title={t.viewer.details} onClick={() => setDetails(true)}>
+                <span className="hidden desk:inline">{t.viewer.details}</span>
                 <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3.5 fill-none stroke-current stroke-[1.5]"><circle cx="8" cy="8" r="6.5" /><path d="M8 7v4.5M8 4.6v.2" strokeLinecap="round" /></svg>
               </button>
-              <button type="button" id="code-toggle" className={`${pill} mr-1.5 font-mono text-xs`} aria-pressed={code} title="Integration code (C)" onClick={() => setCode((v) => !v)}>
+              <button type="button" id="code-toggle" className={`${pill} mr-1.5 font-mono text-xs`} aria-pressed={code} title={t.viewer.codeTitle} onClick={() => setCode((v) => !v)}>
                 {'</>'}
-                <span className="hidden desk:inline">Code</span>
+                <span className="hidden desk:inline">{t.viewer.code}</span>
               </button>
-              <button type="button" className={`${round} hidden tab:grid`} title="Previous (↑)" aria-label="Previous chart" onClick={() => step(-1)}>↑</button>
-              <button type="button" className={`${round} hidden tab:grid`} title="Next (↓)" aria-label="Next chart" onClick={() => step(1)}>↓</button>
+              <button type="button" className={`${round} hidden tab:grid`} title={t.viewer.previous} aria-label={t.viewer.previousAria} onClick={() => step(-1)}>↑</button>
+              <button type="button" className={`${round} hidden tab:grid`} title={t.viewer.next} aria-label={t.viewer.nextAria} onClick={() => step(1)}>↓</button>
               <button
                 ref={closeBtn}
                 type="button"
-                aria-label="Close"
-                title="Close (Esc)"
+                aria-label={t.viewer.close}
+                title={t.viewer.closeTitle}
                 onClick={close}
                 className="close ml-1.5 grid size-9 shrink-0 cursor-pointer place-items-center rounded-full border border-line text-ink transition duration-300 ease-spring hover:rotate-90 hover:bg-ink/[0.06]"
               >
@@ -457,7 +462,7 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
         <section className="chart-area relative flex min-h-0 min-w-0 flex-col tab:col-start-2">
           <div ref={host} id="canvas-host" className="canvas-host relative min-h-0 flex-1 overflow-hidden rounded-[14px] border border-line bg-chart" />
           <p className="shell-hint mx-1 mt-2.5 mb-0 flex gap-4 text-xs text-faint">
-            <span>Drag to pan · scroll or pinch to zoom · double-click to reset</span>
+            <span>{t.viewer.hint}</span>
             <span className="ml-auto hidden font-mono tab:inline">{demo.id}</span>
           </p>
 
@@ -468,7 +473,7 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
           >
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-chart-line bg-[rgb(10_12_16/0.94)] shadow-[0_24px_60px_rgb(0_0_0/0.45)] backdrop-blur-md">
               <div className="flex items-center gap-2.5 border-b border-chart-line py-2.5 pr-2.5 pl-[18px]">
-                <span className="text-[11px] tracking-[0.08em] text-on-chart-muted uppercase">Integration</span>
+                <span className="text-[11px] tracking-[0.08em] text-on-chart-muted uppercase">{t.viewer.integration}</span>
                 <span className="font-mono text-[11px] text-on-chart-muted">JavaScript</span>
                 <button
                   id="copy"
@@ -479,7 +484,7 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
                 >
                   {copy}
                 </button>
-                <button type="button" tabIndex={code ? 0 : -1} aria-label="Hide code" onClick={() => setCode(false)} className="grid size-7 cursor-pointer place-items-center rounded-lg text-on-chart-muted hover:bg-white/5 hover:text-on-chart">✕</button>
+                <button type="button" tabIndex={code ? 0 : -1} aria-label={t.viewer.hideCode} onClick={() => setCode(false)} className="grid size-7 cursor-pointer place-items-center rounded-lg text-on-chart-muted hover:bg-white/5 hover:text-on-chart">✕</button>
               </div>
               <pre className="m-0 flex-1 overflow-auto px-[18px] py-3.5 font-mono text-[12px] leading-[1.65] [overflow-wrap:anywhere] whitespace-pre-wrap text-[#c9d1dc] [scrollbar-color:#262b33_transparent] [scrollbar-width:thin]">
                 <code id="code" dangerouslySetInnerHTML={{ __html: html }} />

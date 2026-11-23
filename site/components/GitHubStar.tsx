@@ -27,7 +27,7 @@ function short(n: number) {
  * current count, fetched on the server (no request from the visitor's
  * browser, no client JavaScript).
  */
-export async function GitHubStar() {
+export async function GitHubStar({ label, labelCount }: { label: string; labelCount: string }) {
   const repo = site.githubRepo;
   const n = await stars(repo);
   return (
@@ -36,7 +36,7 @@ export async function GitHubStar() {
       href={`https://github.com/${repo}`}
       target="_blank"
       rel="noopener"
-      aria-label={n === null ? 'Star on GitHub' : `Star on GitHub, ${n.toLocaleString('en-US')} stars`}
+      aria-label={n === null ? label : labelCount.replace('{n}', n.toLocaleString('en-US'))}
       className="inline-flex h-[34px] items-center gap-2 rounded-full bg-ink pr-3 pl-[11px] text-[13.5px] font-medium text-white shadow-[0_6px_18px_-10px_rgb(13_15_20/0.6)] transition-colors duration-200 hover:bg-[#2a2b31]"
     >
       <svg viewBox="0 0 16 16" aria-hidden="true" className="size-[15px] fill-current">

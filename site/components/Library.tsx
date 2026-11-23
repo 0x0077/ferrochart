@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState, type CSSProperties } from 'react';
-import { categories, type Category, type Demo } from '@/catalog';
+import type { Category, Demo } from '@/catalog';
+import { fmt } from '@/lib/i18n';
+import { useCatalog, useI18n } from './I18n';
 import { Thumb } from './Thumb';
 import { Viewer, type OpenRequest } from './Viewer';
 
@@ -29,6 +31,7 @@ function Card({ demo, i }: { demo: Demo; i: number }) {
 }
 
 function Stack({ cat, onOpen }: { cat: Category; onOpen: (card: HTMLElement | null) => void }) {
+  const { t } = useI18n();
   const open = (el: HTMLElement) => onOpen(el.querySelector('.card.top'));
   return (
     <div
@@ -37,7 +40,7 @@ function Stack({ cat, onOpen }: { cat: Category; onOpen: (card: HTMLElement | nu
       data-cat={cat.id}
       tabIndex={0}
       role="button"
-      aria-label={`${cat.title}: ${cat.demos.length} examples`}
+      aria-label={fmt(t.library.stackAria, { title: cat.title, n: cat.demos.length })}
       style={{ '--accent': cat.accent } as CSSProperties}
       onClick={(e) => open(e.currentTarget)}
       onKeyDown={(e) => {
@@ -58,7 +61,7 @@ function Stack({ cat, onOpen }: { cat: Category; onOpen: (card: HTMLElement | nu
         <span className="font-mono text-[13px] font-medium accent-ink">{cat.kicker}</span>
         <h3 className="text-[clamp(22px,1.9vw,28px)]">{cat.title}</h3>
         <span className="text-sm text-muted transition duration-300 ease-spring group-hover:translate-x-1 group-hover:text-ink">
-          {cat.demos.length} examples →
+          {fmt(t.library.examples, { n: cat.demos.length })}
         </span>
         <p className="col-start-2 col-end-[-1] m-0 max-w-[46ch] text-muted">{cat.blurb}</p>
       </div>
@@ -72,6 +75,8 @@ function Stack({ cat, onOpen }: { cat: Category; onOpen: (card: HTMLElement | nu
  * page.
  */
 export function Library({ initial }: { initial?: { cat: string; demo: string } }) {
+  const { t } = useI18n();
+  const { categories } = useCatalog();
   const [request, setRequest] = useState<OpenRequest | null>(null);
   const featured = FEATURED.map((id) => categories.find((c) => c.id === id)).filter((c): c is Category => !!c);
   const openCat = (cat: Category, card: HTMLElement | null = null) => setRequest({ cat, demo: cat.demos[0], card });
@@ -95,7 +100,7 @@ export function Library({ initial }: { initial?: { cat: string; demo: string } }
     const click = (e: MouseEvent) => {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       const a = (e.target as Element | null)?.closest?.('a[href]');
-      const [, catId, demoId] = a?.getAttribute('href')?.match(/^\/charts\/([\w-]+)\/([\w-]+)$/) ?? [];
+      const [, catId, demoId] = a?.getAttribute('href')?.match(/^(?:\/[a-z]{2}(?:-[a-z]{2})?)?\/charts\/([\w-]+)\/([\w-]+)$/) ?? [];
       if (a && !a.hasAttribute('target') && show(catId, demoId)) e.preventDefault();
     };
     window.addEventListener('hashchange', fromHash);
@@ -110,7 +115,7 @@ export function Library({ initial }: { initial?: { cat: string; demo: string } }
 
   return (
     <>
-      <nav aria-label="Use cases" className="mt-10 flex gap-2 max-md:-mx-[clamp(20px,6vw,96px)] max-md:overflow-x-auto max-md:px-[clamp(20px,6vw,96px)] max-md:pb-1 max-md:[scrollbar-width:none] md:flex-wrap">
+      <nav aria-label={t.library.useCases} className="mt-10 flex gap-2 max-md:-mx-[clamp(20px,6vw,96px)] max-md:overflow-x-auto max-md:px-[clamp(20px,6vw,96px)] max-md:pb-1 max-md:[scrollbar-width:none] md:flex-wrap">
         {categories.map((cat) => (
           <button
             key={cat.id}
@@ -136,7 +141,7 @@ export function Library({ initial }: { initial?: { cat: string; demo: string } }
           onClick={() => setRequest({ cat: categories[0], demo: categories[0].demos[0], card: null, all: true })}
           className="group inline-flex h-12 cursor-pointer items-center gap-3 rounded-full border border-line bg-white px-6 font-medium shadow-[0_14px_40px_-24px_rgb(13_15_20/0.4)] transition duration-300 ease-spring hover:-translate-y-0.5"
         >
-          Browse all {categories.length} use cases
+          {fmt(t.library.browseAll, { n: categories.length })}
           <span className="transition duration-300 ease-spring group-hover:translate-x-1">→</span>
         </button>
       </div>

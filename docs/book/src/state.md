@@ -217,7 +217,7 @@ async function openChart(symbol: string): Promise<FerroChart> {
 await openChart('BTCUSD');
 ```
 
-Two details in this example matter in practice:
+Three details in this example matter in practice:
 
 - The indicator list is saved with the state. If the user adds or removes an
   indicator, the number of panes changes, and an old state would no longer

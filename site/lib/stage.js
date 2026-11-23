@@ -32,7 +32,8 @@ const viewsOf = (handle) => [handle?.chart, handle?.plot].filter(Boolean);
 
 /**
  * @param {HTMLElement} host positioned element the surface goes into
- * @param {{ onShown?: (demo, renderer) => void, onError?: (demo, message) => void, accent?: () => string }} hooks
+ * @param {{ onShown?: (demo, renderer) => void, onError?: (demo, message) => void, accent?: () => string, couldNotStart?: string }} hooks
+ *   (`couldNotStart`: the message of a chart that fails, `{message}` marks the error)
  */
 export function createStage(host, hooks = {}) {
   const surface = document.createElement('div');
@@ -130,7 +131,7 @@ export function createStage(host, hooks = {}) {
       hooks.onError?.(demo, message);
       const err = document.createElement('p');
       err.className = 'error';
-      err.textContent = `This chart could not start: ${message}`;
+      err.textContent = (hooks.couldNotStart ?? 'This chart could not start: {message}').replace('{message}', message);
       slot.append(err);
       slot.dataset.shown = '1';
     }
