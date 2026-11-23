@@ -216,6 +216,16 @@ pub(crate) fn series_options(base: SeriesOptions, o: &JsValue) -> Result<SeriesO
         }
         opts.price_precision = Some(v as u8);
     }
+    if get(o, "markerStackLimit").is_null() {
+        opts.marker_stack_limit = None; // no folding
+    } else if let Some(v) = opt_f64(o, "markerStackLimit")? {
+        if !(1.0..=f64::from(u16::MAX)).contains(&v) || v.fract() != 0.0 {
+            return Err(js_err(
+                "'markerStackLimit' must be an integer >= 1, or null for no limit",
+            ));
+        }
+        opts.marker_stack_limit = Some(v as u16);
+    }
     Ok(opts)
 }
 
@@ -240,6 +250,10 @@ pub(crate) fn series_options_js(o: &SeriesOptions) -> JsValue {
         .price_precision
         .map_or(JsValue::NULL, |p| f64::from(p).into());
     set(&js, "pricePrecision", &precision);
+    let limit = o
+        .marker_stack_limit
+        .map_or(JsValue::NULL, |n| f64::from(n).into());
+    set(&js, "markerStackLimit", &limit);
     js.into()
 }
 
@@ -318,7 +332,8 @@ fn array(v: &JsValue, what: &str) -> Result<Array, JsError> {
     Ok(v.clone().unchecked_into())
 }
 
-pub(crate) fn markers(v: &JsValue) -> Result<Vec<Marker>, JsError> {
+/// Markers from JS; `icon` names are looked up in chart `icon_key`'s table.
+pub(crate) fn markers(v: &JsValue, icon_key: u32) -> Result<Vec<Marker>, JsError> {
     let arr = array(v, "markers")?;
     let mut out = Vec::with_capacity(arr.length() as usize);
     for m in arr.iter() {
@@ -326,8 +341,23 @@ pub(crate) fn markers(v: &JsValue) -> Result<Vec<Marker>, JsError> {
             time: time_ms(&get(&m, "time"), "time")?,
             color: opt_color(&m, "color")?.flatten(),
             text: opt_string(&m, "text")?.unwrap_or_default(),
+            label: opt_string(&m, "label")?.unwrap_or_default(),
+            border: opt_color(&m, "border")?.flatten(),
             ..Marker::default()
         };
+        if let Some(s) = opt_f64(&m, "size")? {
+            marker.size = Some(Css(s as f32));
+        }
+        if let Some(w) = opt_f64(&m, "borderWidth")? {
+            marker.border_width = Css(w as f32);
+        }
+        if let Some(name) = opt_string(&m, "icon")? {
+            marker.icon = Some(crate::icons::lookup(icon_key, &name).ok_or_else(|| {
+                js_err(format!(
+                    "unknown icon '{name}' (register it with FerroChart.registerIcon)"
+                ))
+            })?);
+        }
         if let Some(p) = opt_string(&m, "position")? {
             marker.position = params::marker_position(&p)
                 .ok_or_else(|| js_err("'position' must be 'aboveBar' or 'belowBar'"))?;
@@ -342,7 +372,8 @@ pub(crate) fn markers(v: &JsValue) -> Result<Vec<Marker>, JsError> {
     Ok(out)
 }
 
-pub(crate) fn markers_js(markers: &[Marker]) -> JsValue {
+/// Markers for JS; icons by name (`null` for a removed image).
+pub(crate) fn markers_js(markers: &[Marker], icon_key: u32) -> JsValue {
     use ferrochart_core::chart::{MarkerPosition, MarkerShape};
     markers
         .iter()
@@ -363,6 +394,19 @@ pub(crate) fn markers_js(markers: &[Marker]) -> JsValue {
             set(&o, "shape", &JsValue::from_str(shape));
             set(&o, "color", &color_js(m.color));
             set(&o, "text", &JsValue::from_str(&m.text));
+            set(
+                &o,
+                "size",
+                &m.size.map_or(JsValue::NULL, |s| f64::from(s.0).into()),
+            );
+            let icon = m
+                .icon
+                .and_then(|id| crate::icons::name_of(icon_key, id))
+                .map_or(JsValue::NULL, |n| JsValue::from_str(&n));
+            set(&o, "icon", &icon);
+            set(&o, "label", &JsValue::from_str(&m.label));
+            set(&o, "border", &color_js(m.border));
+            set(&o, "borderWidth", &f64::from(m.border_width.0).into());
             JsValue::from(o)
         })
         .collect::<Array>()

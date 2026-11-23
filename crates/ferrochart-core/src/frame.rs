@@ -144,10 +144,12 @@ pub struct LineInst {
     pub stroke: StrokeStyle,
 }
 
-/// A marker icon from the built-in set: the `ICON_*` constants
-/// of [`crate::transform_helpers`], drawn with
-/// [`crate::transform_helpers::icon_coverage`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// A marker icon: a shape from the built-in set (the `ICON_*`
+/// constants of [`crate::transform_helpers`], drawn with
+/// [`crate::transform_helpers::icon_coverage`]), optionally with an image
+/// clipped to the shape and a border inside its edge (r21). Without image and
+/// border it draws exactly as before r21.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct IconInst {
     /// Center.
     pub pos: PointPx,
@@ -155,8 +157,14 @@ pub struct IconInst {
     pub size: Px,
     /// Icon number (`transform_helpers::ICON_*`).
     pub icon: u16,
-    /// Tint color.
+    /// Fill color.
     pub color: Rgba,
+    /// Image clipped to the shape, over the fill (circles and squares).
+    pub image: Option<crate::icon::IconId>,
+    /// Border color; transparent for none.
+    pub border: Rgba,
+    /// Border width, inside the shape's edge.
+    pub border_width: Px,
 }
 
 /// Built-in series kinds.

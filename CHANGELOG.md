@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-23
+
+Image markers, badges and text in any script.
+
+### Added
+
+- **Image markers.** Markers take a `size` (4–64 CSS px), an `icon` (an image
+  registered with the chart, clipped to a circle or square), a `label` (up to
+  8 characters inside the shape, such as `DB`) and a `border` ring.
+  `Chart::add_icon`/`remove_icon`; JavaScript `registerIcon(name, url |
+  image | bitmap | ImageData | canvas)` and `unregisterIcon`; Python
+  `Chart.add_icon(array)`; C `ferrochart_add_icon`/`ferrochart_remove_icon`.
+- **Folding.** A per-series `markerStackLimit`: crowded bars show the first
+  markers and a "+k" badge for the rest. Clicking the badge reports a
+  `markerOverflow` target.
+- **Marker hover.** A `markerHover` event (Rust `ChartEvent::MarkerHover`,
+  Python `marker_hover`, C `FERROCHART_EVENT_MARKER_HOVER`) with the marker or
+  badge under the pointer, its center and size, for tooltips.
+- **Text in any script.** Characters the bundled font lacks come from fallback
+  fonts (`WindowOptions::fonts` in winit, `Chart(fonts=[...])` in Python,
+  `ferrochart_add_font` in C, `TextEngine::add_fallback_font` in Rust), or on
+  the web from the browser's own fonts, including color emoji (feature
+  `text-browser`, on by default; no fonts are added to the package). A
+  character no font has is drawn as `□`.
+- **C ABI.** `ferrochart_set_markers` with `FerroChartMarker`;
+  `FerroChartSeriesOptions.marker_stack_limit`.
+- Layer plugins' `icon` command takes the same `image`, `label`, `border` and
+  `borderWidth`. The lightweight-charts compatibility layer honors marker
+  `size`.
+
+### Changed
+
+- Breaking for Rust struct literals (hence 0.4.0): new fields in `Marker`,
+  `SeriesOptions`, `IconInst`, `GlyphBitmap` (`rgba`, for color glyphs) and
+  `WindowOptions` (`fonts`). The JavaScript, Python and C APIs only add.
+
+### Fixed
+
+- A canvas hidden with `display: none` (CSS size 0) no longer logs "invalid
+  render target size" on every change; the chart redraws when it is shown.
+
+### Known limitations
+
+- Text is drawn character by character: no shaping, so right-to-left scripts
+  and emoji sequences (skin tones, ZWJ families, flags) do not come out right.
+
 ## [0.3.0] - 2026-11-23
 
 First public release.

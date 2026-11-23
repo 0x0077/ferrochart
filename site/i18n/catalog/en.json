@@ -721,11 +721,15 @@
     },
     "meme": {
       "title": "Market-cap chart with trade labels",
-      "about": "Fifteen-minute candles quoted in market cap ($M, price times supply), with a trader's buys and sells and the headlines as markers, and price lines for the average entry, take-profit and stop."
+      "about": "Fifteen-minute candles quoted in market cap ($M, price times supply). A trader's buys and sells carry their wallet avatar, ringed green or red, with Chinese labels; the developer wallet's swaps are `DB`/`DS` badges, headlines are plain markers, and price lines mark the average entry, take-profit and stop."
     },
     "meme-bubbles": {
       "title": "Trade bubbles",
       "about": "A layer plugin draws a bubble at the time and price of each of the 80 largest trades of the last two hours, sized by its notional and colored by the aggressor: buys green, sells red. The top ten are labeled."
+    },
+    "meme-kol": {
+      "title": "KOL and smart-money wallets",
+      "about": "One-minute candles with the largest trades of 16 tracked wallets as avatars: influencers (KOL) with a thin ring, smart money with a thick one, green for buys and red for sells. Each bar side shows three avatars and folds the rest into a \"+k\" badge; hovering an avatar or a badge shows who traded and how much (`markerHover`). The wallets are synthetic."
     },
     "meme-line": {
       "title": "Market cap step line",

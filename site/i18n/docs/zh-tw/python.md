@@ -1,4 +1,4 @@
-<!-- source: acdcedb855 -->
+<!-- source: 4bfbed7d9a -->
 # Python
 
 `ferrochart` 套件讓你從 Python 在原生視窗、Jupyter 中繪製圖表或輸出為 PNG，使用 GPU（Metal、Vulkan、DirectX 12）並具備 CPU 備援。它接受 pandas 或 polars DataFrame，或由 NumPy 陣列組成的 dict。
@@ -48,6 +48,10 @@ line = chart.add_series("line", color="#ff9800", line_width=2)
 candles.apply_options(down_color="#e91e63")
 candles.create_price_line(101.5, title="target", line_style="dashed")
 candles.set_markers([{"time": t, "position": "below_bar", "shape": "arrow_up", "text": "buy"}])
+whale = chart.add_icon(avatar)       # a (height, width, 4) uint8 array; RGB works too
+candles.set_markers([{"time": t, "icon": whale, "size": 24, "border": "#2fbf71"},
+                     {"time": t, "label": "DB", "position": "below_bar"}])
+candles.apply_options(marker_stack_limit=4)   # 3 markers per bar side, then "+k"
 chart.apply_price_scale_options(mode="logarithmic")
 
 rsi = chart.add_indicator(candles, "rsi", n=14)
@@ -78,7 +82,18 @@ def clicked(e):
 chart.on("crosshair_move", lambda e: print(e["point"]))
 ```
 
-事件：`click`、`crosshair_move`、`visible_range_changed`、`need_more_history`、`drawing_created`、`drawing_modified`、`drawing_removed`、`drawing_selected`、`warning`。圖表顯示期間，回呼函式在主執行緒上執行。
+事件：`click`、`crosshair_move`、`visible_range_changed`、`need_more_history`、`drawing_created`、`drawing_modified`、`drawing_removed`、`drawing_selected`、`warning`、`marker_hover`（一個包含 `series`、`index`、`overflow`、`x`、`y`、`size` 的 dict，指標離開標記時為 `None`）。圖表顯示期間，回呼函式在主執行緒上執行。
+
+## 中文、日文與韓文文字
+
+內建字型涵蓋拉丁字母、數字與常用符號。若要顯示其他文字，請傳入字型檔案（路徑或位元組），依序查找；所有字型都沒有的字元會畫成 `□`：
+
+```python
+chart = fc.Chart(fonts=["/System/Library/Fonts/Hiragino Sans GB.ttc"])  # macOS
+chart = fc.Chart(fonts=["NotoSansSC-Regular.otf"])                     # any system
+```
+
+這些字型由 `show()` 與 `to_png()` 使用。在 Jupyter 中，瀏覽器以其本身的字型繪製，不需要 `fonts`。參見[標記](markers.md)。
 
 ## 視窗
 

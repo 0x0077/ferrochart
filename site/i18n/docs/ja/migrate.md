@@ -1,4 +1,4 @@
-<!-- source: 8bc24e37b6 -->
+<!-- source: 5a2a4a05ee -->
 # lightweight-charts からの移行
 
 lightweight-charts向けに書かれたコードをFerroChartで使う方法は2つあります。
@@ -116,7 +116,7 @@ console.log(chart.timeScale().getVisibleLogicalRange());
 
 **マーカー**
 
-- `position: 'inBar'`は足の上に描画され、未知の`shape`は円として描画されます。`size`と`id`は無視されます。
+- `position: 'inBar'`は足の上に描画され、未知の`shape`は円として描画されます。`size`はデフォルトサイズの倍数です（1は10 CSS pxで、4〜64 pxの範囲に収められます）。`id`は無視されます。
 
 **未対応の機能**
 

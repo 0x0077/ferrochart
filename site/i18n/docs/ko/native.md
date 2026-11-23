@@ -1,4 +1,4 @@
-<!-- source: d61f00164d -->
+<!-- source: e853ddc392 -->
 # C, C++, C#
 
 `ferrochart-ffi`는 헤더 하나(`ferrochart.h`)로 된 C 라이브러리입니다. C와
@@ -67,6 +67,48 @@ ferrochart_render_rgba(chart, now_ms, pixels, (size_t)w * 4, (size_t)w * h * 4);
 `FERROCHART_PLATFORM_APPKIT`과 `NSView*`), 창 크기가 바뀌면 `ferrochart_resize`를
 호출하고, `ferrochart_needs_redraw`가 1을 반환할 때마다 `ferrochart_render`를
 호출하세요.
+
+## 마커, 이미지, 폰트
+
+마커는 도형 모양으로 잘린 이미지나 `"DB"` 같은 짧은 레이블을 표시할 수 있습니다.
+이미지를 한 번 추가하고(straight RGBA8, 최대 256 × 256, 차트가 사본을 보관합니다)
+그 id를 여러 마커에서 사용하세요.
+
+```c
+uint64_t avatar;
+ferrochart_add_icon(chart, rgba, 64, 64, 64 * 4, &avatar);
+
+FerroChartMarker m[2] = {0};                  // zero fields are defaults
+m[0].size = sizeof m[0];
+m[0].time = t;
+m[0].icon = avatar;
+m[0].marker_size = 24;                        // CSS px, 4–64
+m[0].border = 0x2fbf71ff;
+m[1] = m[0];
+m[1].icon = 0;
+m[1].label = "DB";                            // an image or a label, not both
+m[1].position = FERROCHART_MARKER_BELOW_BAR;
+ferrochart_set_markers(chart, candles, m, 2); // replaces the series' markers
+```
+
+한 봉에 마커가 많으면 시리즈 옵션에 `marker_stack_limit`을 설정하세요. 그 개수를
+넘는 나머지는 "+k" 배지로 표시됩니다. `FERROCHART_EVENT_MARKER_HOVER`는 포인터
+아래의 마커나 배지(`target_type`, `target_index`, `x`/`y`에 담긴 중심)를 보고하며,
+예를 들어 툴팁을 표시하는 데 쓸 수 있습니다. 배지를 클릭하면 `target_type`이
+`FERROCHART_TARGET_MARKER_OVERFLOW`이고 `count`가 함께 전달됩니다.
+
+내장 폰트는 ASCII와 일반 기호를 지원합니다. 중국어, 일본어, 한국어 또는 다른
+문자를 쓰려면 폰트 파일을 추가하세요. 문자는 추가한 폰트에서 순서대로 찾으며,
+어떤 폰트에도 없으면 `□`로 그려집니다.
+
+```c
+// font_data: the bytes of a .ttf, .otf or .ttc file, e.g. Noto Sans SC or
+// /System/Library/Fonts/Hiragino Sans GB.ttc on macOS (copied by the call).
+ferrochart_add_font(chart, font_data, font_len);
+```
+
+네이티브에서는 컬러 이모지 폰트를 지원하지 않습니다. 윤곽선 이모지 폰트는 텍스트
+색상으로 그려집니다.
 
 ## 입력과 이벤트
 

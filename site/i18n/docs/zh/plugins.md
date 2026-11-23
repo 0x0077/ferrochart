@@ -1,4 +1,4 @@
-<!-- source: 69f10455ac -->
+<!-- source: 8785086f6e -->
 # 插件
 
 FerroChart 提供五种扩展图表的方式。它们都向帧中写入绘制命令，因此适用于所有渲染器（WebGPU、WebGL2、Vulkan/Metal/DX12
@@ -92,7 +92,7 @@ chart.invalidateLayer(id); // after the plugin's own data changed
 chart.removeLayer(id);
 ```
 
-`build(ctx)` 返回一个命令数组，坐标为相对于 canvas 左上角的 CSS 像素：`rect`、`line`、`polyline`、`polygon`、`text` 和 `icon`（`PluginCommand` 类型列出了它们的字段）。`ctx` 中的函数（`timeToX`、
+`build(ctx)` 返回一个命令数组，坐标为相对于 canvas 左上角的 CSS 像素：`rect`、`line`、`polyline`、`polygon`、`text` 和 `icon`（`PluginCommand` 类型列出了它们的字段）。`icon` 接受与标记相同的附加字段：`image`（用 `chart.registerIcon` 注册的名称）、`label`、`border` 和 `borderWidth`，因此图层可以在任意位置绘制头像，而不仅限于 K 线处（见[标记与价格线](markers.md)）。`ctx` 中的函数（`timeToX`、
 `priceToY`、`xToTime`、`yToPrice`、`textWidth`、`formatPrice`）只在调用期间有效。插件抛出异常或返回无效命令时，该帧什么也不画（无效命令之前的命令会保留）；第一个错误会用 `console.warn` 输出。
 
 JavaScript 图层每帧跨越 wasm 边界调用一次，所以命令数量应限于可见内容（几百个，而不是几十万个）。

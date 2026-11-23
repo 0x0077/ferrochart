@@ -59,6 +59,20 @@ pub(crate) struct IconInstance {
     pub color: [u8; 4],
 }
 
+/// An icon with an image or a border (r21): `tile` is the texel origin of
+/// its image in the icon atlas, `u32::MAX` for none.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub(crate) struct RichIconInstance {
+    pub pos: [f32; 2],
+    pub size: f32,
+    pub icon: u32,
+    pub color: [u8; 4],
+    pub border: [u8; 4],
+    pub border_width: f32,
+    pub tile: [u32; 2],
+}
+
 /// A glyph quad instance.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -82,7 +96,9 @@ pub(crate) struct Pipelines {
     pub rects: wgpu::RenderPipeline,
     pub lines: wgpu::RenderPipeline,
     pub glyphs: wgpu::RenderPipeline,
+    pub glyphs_color: wgpu::RenderPipeline,
     pub icons: wgpu::RenderPipeline,
+    pub icons_rich: wgpu::RenderPipeline,
     pub triangles: wgpu::RenderPipeline,
     pub composite: wgpu::RenderPipeline,
 }
@@ -100,6 +116,9 @@ const LINE_ATTRS: [wgpu::VertexAttribute; 4] =
     wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32, 2 => Uint32, 3 => Unorm8x4];
 const ICON_ATTRS: [wgpu::VertexAttribute; 4] =
     wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32, 2 => Uint32, 3 => Unorm8x4];
+const RICH_ICON_ATTRS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
+    0 => Float32x2, 1 => Float32, 2 => Uint32, 3 => Unorm8x4, 4 => Unorm8x4, 5 => Float32, 6 => Uint32x2
+];
 const TRIANGLE_ATTRS: [wgpu::VertexAttribute; 3] =
     wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x2, 2 => Unorm8x4];
 const GLYPH_ATTRS: [wgpu::VertexAttribute; 3] =
@@ -315,6 +334,18 @@ impl Pipelines {
                 ))],
                 blend,
             ),
+            icons_rich: make(
+                "ferrochart icons with images",
+                &textured,
+                &prims,
+                "vs_icon_rich",
+                "fs_icon_rich",
+                &[Some(instances(
+                    core::mem::size_of::<RichIconInstance>() as u64,
+                    &RICH_ICON_ATTRS,
+                ))],
+                blend,
+            ),
             triangles: make(
                 "ferrochart triangles",
                 &plain,
@@ -333,6 +364,18 @@ impl Pipelines {
                 &prims,
                 "vs_glyph",
                 "fs_glyph",
+                &[Some(instances(
+                    core::mem::size_of::<GlyphInstance>() as u64,
+                    &GLYPH_ATTRS,
+                ))],
+                blend,
+            ),
+            glyphs_color: make(
+                "ferrochart color text",
+                &textured,
+                &prims,
+                "vs_glyph",
+                "fs_glyph_color",
                 &[Some(instances(
                     core::mem::size_of::<GlyphInstance>() as u64,
                     &GLYPH_ATTRS,

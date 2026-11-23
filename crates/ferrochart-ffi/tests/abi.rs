@@ -797,3 +797,287 @@ fn state_round_trips_as_json() {
         "{back}"
     );
 }
+
+fn marker(time: i64) -> FerroChartMarker {
+    FerroChartMarker {
+        time,
+        ..FerroChartMarker::default()
+    }
+}
+
+fn set_markers(ch: &Chart, s: u64, m: &[FerroChartMarker]) -> i32 {
+    unsafe { ferrochart_set_markers(ch.0, s, m.as_ptr(), m.len()) }
+}
+
+/// `FerroChartMarker` of an older, shorter header.
+#[repr(C)]
+struct OldMarker {
+    size: u32,
+    reserved: u32,
+    time: i64,
+}
+
+#[test]
+fn image_markers_fonts_and_stack_limits() {
+    let ch = chart(FERROCHART_THEME_DARK, 400.0, 300.0, 1.0);
+    let (s, time) = candles(&ch, 60);
+    // A 32 × 32 red image with padded rows.
+    let stride = 32 * 4 + 8;
+    let mut img = vec![0_u8; stride * 32];
+    for y in 0..32 {
+        for x in 0..32 {
+            img[y * stride + x * 4..y * stride + x * 4 + 4].copy_from_slice(&[230, 20, 20, 255]);
+        }
+    }
+    let mut icon = 0;
+    unsafe {
+        assert_eq!(
+            ferrochart_add_icon(ch.0, img.as_ptr(), 32, 32, stride, &mut icon),
+            FERROCHART_OK,
+            "{}",
+            last_error()
+        );
+        assert_ne!(icon, 0);
+        let mut other = 0;
+        assert_eq!(
+            ferrochart_add_icon(ch.0, img.as_ptr(), 300, 2, stride, &mut other),
+            FERROCHART_ERR_INVALID_ARGUMENT
+        );
+        assert!(last_error().contains("1–256"));
+        assert_eq!(
+            ferrochart_add_icon(ch.0, img.as_ptr(), 32, 32, 100, &mut other),
+            FERROCHART_ERR_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            ferrochart_add_icon(ch.0, ptr::null(), 32, 32, stride, &mut other),
+            FERROCHART_ERR_NULL
+        );
+    }
+    let label = c("DB");
+    let mut with_icon = marker(time[20]);
+    with_icon.icon = icon;
+    with_icon.marker_size = 30.0;
+    with_icon.border = 0x00ff_00ff;
+    with_icon.border_width = 3.0;
+    let mut badge = marker(time[20]);
+    badge.label = label.as_ptr();
+    badge.position = FERROCHART_MARKER_BELOW_BAR;
+    badge.color = 0x2fbf_71ff;
+    assert_eq!(
+        set_markers(&ch, s, &[with_icon, badge]),
+        FERROCHART_OK,
+        "{}",
+        last_error()
+    );
+    let drawn = render(&ch).2;
+    // Without the image the marker is its shape alone.
+    unsafe {
+        assert_eq!(ferrochart_remove_icon(ch.0, icon), FERROCHART_OK);
+        assert_eq!(
+            ferrochart_remove_icon(ch.0, icon),
+            FERROCHART_ERR_UNKNOWN_ID
+        );
+        assert_eq!(ferrochart_remove_icon(ch.0, 0), FERROCHART_ERR_UNKNOWN_ID);
+    }
+    assert_ne!(render(&ch).2, drawn);
+    assert_eq!(set_markers(&ch, s, &[with_icon]), FERROCHART_ERR_UNKNOWN_ID);
+    assert!(last_error().contains("unknown icon"), "{}", last_error());
+
+    // Errors name the marker.
+    let mut both = badge;
+    both.icon = 1;
+    let mut bad = [marker(time[1]), marker(time[2])];
+    bad[1].shape = 9;
+    assert_eq!(set_markers(&ch, s, &bad), FERROCHART_ERR_INVALID_ARGUMENT);
+    assert!(last_error().starts_with("marker 1: unknown marker shape"));
+    let mut img2 = 0;
+    unsafe { ferrochart_add_icon(ch.0, img.as_ptr(), 32, 32, stride, &mut img2) };
+    both.icon = img2;
+    assert_eq!(
+        set_markers(&ch, s, &[both]),
+        FERROCHART_ERR_INVALID_ARGUMENT
+    );
+    assert!(last_error().contains("not both"), "{}", last_error());
+    let mut big = marker(time[1]);
+    big.marker_size = 100.0;
+    assert_eq!(set_markers(&ch, s, &[big]), FERROCHART_ERR_INVALID_ARGUMENT);
+    let mut mismatched = [marker(time[1]), marker(time[2])];
+    mismatched[1].size = 8;
+    assert_eq!(
+        set_markers(&ch, s, &mismatched),
+        FERROCHART_ERR_INVALID_ARGUMENT
+    );
+    unsafe {
+        assert_eq!(
+            ferrochart_set_markers(ch.0, s, ptr::null(), 1),
+            FERROCHART_ERR_NULL
+        );
+        assert_eq!(
+            ferrochart_set_markers(ch.0, s, ptr::null(), 0),
+            FERROCHART_OK
+        );
+    }
+
+    // An older header's shorter struct: the missing fields are defaults.
+    let old = [
+        OldMarker {
+            size: 16,
+            reserved: 0,
+            time: time[3],
+        },
+        OldMarker {
+            size: 16,
+            reserved: 0,
+            time: time[4],
+        },
+    ];
+    assert_eq!(
+        unsafe { ferrochart_set_markers(ch.0, s, old.as_ptr().cast(), 2) },
+        FERROCHART_OK,
+        "{}",
+        last_error()
+    );
+
+    // Stack limit in the series options.
+    let mut o = FerroChartSeriesOptions {
+        size: size_of::<FerroChartSeriesOptions>() as u32,
+        ..unsafe { std::mem::zeroed() }
+    };
+    unsafe {
+        assert_eq!(ferrochart_series_options(ch.0, s, &mut o), FERROCHART_OK);
+        assert_eq!(o.marker_stack_limit, 0);
+        o.marker_stack_limit = 2;
+        assert_eq!(ferrochart_apply_series_options(ch.0, s, &o), FERROCHART_OK);
+        let mut back = o;
+        back.marker_stack_limit = 0;
+        ferrochart_series_options(ch.0, s, &mut back);
+        assert_eq!(back.marker_stack_limit, 2);
+        o.marker_stack_limit = 70_000;
+        assert_eq!(
+            ferrochart_apply_series_options(ch.0, s, &o),
+            FERROCHART_ERR_INVALID_ARGUMENT
+        );
+    }
+}
+
+#[test]
+fn fallback_fonts_draw_cjk() {
+    let font = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../ferrochart-render-cpu/tests/fonts/NotoSansSC-subset.otf"
+    ))
+    .unwrap();
+    let text = c("买入");
+    let draw = |fonts: &[&[u8]], before: bool| {
+        let ch = chart(FERROCHART_THEME_LIGHT, 400.0, 300.0, 1.0);
+        let (s, time) = candles(&ch, 60);
+        let mut m = marker(time[30]);
+        m.text = text.as_ptr();
+        assert_eq!(set_markers(&ch, s, &[m]), FERROCHART_OK);
+        if !before {
+            render(&ch); // the CPU renderer exists before the font comes
+        }
+        for f in fonts {
+            assert_eq!(
+                unsafe { ferrochart_add_font(ch.0, f.as_ptr(), f.len()) },
+                FERROCHART_OK,
+                "{}",
+                last_error()
+            );
+        }
+        render(&ch).2
+    };
+    let boxes = draw(&[], true);
+    let glyphs = draw(&[&font], true);
+    assert_ne!(boxes, glyphs);
+    assert_eq!(draw(&[&font], false), glyphs);
+    let ch = chart(FERROCHART_THEME_LIGHT, 400.0, 300.0, 1.0);
+    let junk = [1_u8, 2, 3];
+    unsafe {
+        assert_eq!(
+            ferrochart_add_font(ch.0, junk.as_ptr(), junk.len()),
+            FERROCHART_ERR_INVALID_ARGUMENT
+        );
+        assert!(last_error().contains("font"));
+        assert_eq!(
+            ferrochart_add_font(ch.0, ptr::null(), 10),
+            FERROCHART_ERR_NULL
+        );
+    }
+}
+
+#[test]
+fn marker_hover_and_overflow_click() {
+    let ch = chart(FERROCHART_THEME_LIGHT, 600.0, 400.0, 1.0);
+    let (s, time) = candles(&ch, 60);
+    // Three big markers on every bar, at most two drawn: a marker and "+2".
+    let markers: Vec<FerroChartMarker> = time
+        .iter()
+        .flat_map(|&t| {
+            let mut m = marker(t);
+            m.marker_size = 24.0;
+            [m; 3]
+        })
+        .collect();
+    assert_eq!(set_markers(&ch, s, &markers), FERROCHART_OK);
+    let mut o = FerroChartSeriesOptions {
+        size: size_of::<FerroChartSeriesOptions>() as u32,
+        ..unsafe { std::mem::zeroed() }
+    };
+    unsafe {
+        ferrochart_series_options(ch.0, s, &mut o);
+        o.marker_stack_limit = 2;
+        assert_eq!(ferrochart_apply_series_options(ch.0, s, &o), FERROCHART_OK);
+    }
+    render(&ch);
+    events(&ch);
+    // Sweep down the middle: hover is decided when a frame is built.
+    let mut hovers = Vec::new();
+    for y in (0..400).step_by(3) {
+        let mv = input(FERROCHART_INPUT_POINTER_MOVE, 300.0, y as f32);
+        unsafe { ferrochart_handle_input(ch.0, &mv, ptr::null_mut()) };
+        render(&ch);
+        hovers.extend(
+            events(&ch)
+                .into_iter()
+                .filter(|e| e.r#type == FERROCHART_EVENT_MARKER_HOVER),
+        );
+    }
+    let on_marker = hovers
+        .iter()
+        .find(|e| e.target_type == FERROCHART_TARGET_MARKER)
+        .expect("hover on a marker");
+    assert_eq!(on_marker.target_id, s);
+    assert_eq!(on_marker.count, 0);
+    let on_badge = *hovers
+        .iter()
+        .find(|e| e.target_type == FERROCHART_TARGET_MARKER_OVERFLOW)
+        .expect("hover on a badge");
+    assert_eq!((on_badge.target_id, on_badge.count), (s, 2));
+    assert_eq!(on_badge.target_index % 3, 1, "the second of three");
+    assert!(
+        hovers
+            .iter()
+            .any(|e| e.target_type == FERROCHART_TARGET_NONE),
+        "leaving a marker"
+    );
+
+    // A click on the badge.
+    let mut down = input(FERROCHART_INPUT_POINTER_DOWN, on_badge.x, on_badge.y);
+    down.time_ms = 10.0;
+    let mut up = input(FERROCHART_INPUT_POINTER_UP, on_badge.x, on_badge.y);
+    up.time_ms = 50.0;
+    unsafe {
+        ferrochart_handle_input(ch.0, &down, ptr::null_mut());
+        ferrochart_handle_input(ch.0, &up, ptr::null_mut());
+    }
+    let click = events(&ch)
+        .into_iter()
+        .find(|e| e.r#type == FERROCHART_EVENT_CLICK)
+        .expect("click");
+    assert_eq!(click.target_type, FERROCHART_TARGET_MARKER_OVERFLOW);
+    assert_eq!(
+        (click.target_id, click.target_index, click.count),
+        (s, on_badge.target_index, 2)
+    );
+}

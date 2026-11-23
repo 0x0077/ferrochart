@@ -1,4 +1,4 @@
-<!-- source: 9cee954393 -->
+<!-- source: 5f948529f4 -->
 # クロスヘアとイベント
 
 チャートは、その上で起きたことをイベントで通知します。クロスヘアの移動、クリック、表示範囲の変化、描画の作成や編集などです。この章ではすべてのイベントについて、ペイロードと発火タイミングを一覧にし、よくある使い方を2つ紹介します。クロスヘアに追従する凡例と、マーカーやシリーズのクリックへの応答です。
@@ -75,6 +75,7 @@ chart.destroy();
 | `sync` | `{ message: SyncMessage }` | チャートが同期グループにメッセージを送ったとき |
 | `drawingSync` | `{}` | 取り出し待ちの描画同期操作がチャートにあるとき |
 | `warning` | `ChartWarning` | チャートが自動的に何かを調整したとき |
+| `markerHover` | `MarkerHoverEvent \| null` | ポインターがマーカーまたは「+k」バッジに乗ったとき、または離れたとき |
 
 ### click
 
@@ -92,6 +93,7 @@ interface ClickEvent {
 type ClickTarget =
   | { type: 'drawing'; id: number }
   | { type: 'marker'; series: Series; index: number }
+  | { type: 'markerOverflow'; series: Series; first: number; count: number }
   | { type: 'series'; series: Series };
 ```
 
@@ -100,7 +102,7 @@ type ClickTarget =
 `target`はポインターの下にあったもので、次の順で判定されます。
 
 1. **描画**（本体またはハンドルのいずれか）：`{ type: 'drawing', id }`。描画を押すと、その描画が選択されます。
-2. **マーカー**：`{ type: 'marker', series, index }`。`index`は`series.markers()`（時刻順にソート済み）におけるマーカーの位置です。
+2. **マーカー**：`{ type: 'marker', series, index }`。`index`は`series.markers()`（時刻順にソート済み）におけるマーカーの位置です。折りたたまれたマーカーの「+k」バッジでは`{ type: 'markerOverflow', series, first, count }`となり、描画されなかったマーカーは`series.markers().slice(first, first + count)`です（[マーカー](markers.md)を参照）。
 3. **シリーズ**：ポインターがローソク足の実体やヒゲの上、ラインから4 CSS px以内、ヒストグラムのバーの内側、またはドットの上にあるとき`{ type: 'series', series }`。シリーズが重なっている場合は、最後に追加されたものが優先されます。
 4. 何もない場所では`null`。
 
@@ -217,6 +219,21 @@ chart.on('warning', (w) => {
   if (w.kind === 'timeAxisMerged') console.warn(`time axis rebuilt: ${w.count} bars inserted by series ${w.series.id}`);
 });
 ```
+
+### markerHover
+
+```ts
+interface MarkerHoverEvent {
+  series: Series;
+  index: number;          // position in series.markers(); for a badge, the first marker not drawn
+  overflow: number;       // k for a "+k" badge, 0 for a marker
+  x: number;              // center, CSS px from the canvas' top-left corner
+  y: number;
+  size: number;           // diameter, CSS px
+}
+```
+
+ポインターがマーカーから離れると、ペイロードは`null`になります。あるマーカーから別のマーカーへ直接移動した場合は、新しいマーカーだけが送られます。ポインターの下のマーカーはフレームの描画時に判定されるため、イベントは1フレームにつき最大1回です。描画は対象外で、イントロアニメーションの再生中はどのマーカーもホバー中とはみなされません。アバターやバッジのツールチップに使えます（[マーカー](markers.md)を参照）。
 
 ## 例：クロスヘアに追従する凡例
 

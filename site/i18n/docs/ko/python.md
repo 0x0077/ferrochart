@@ -1,4 +1,4 @@
-<!-- source: acdcedb855 -->
+<!-- source: 4bfbed7d9a -->
 # Python
 
 `ferrochart` 패키지는 Python에서 네이티브 창, Jupyter, PNG로 차트를 그립니다.
@@ -55,6 +55,10 @@ line = chart.add_series("line", color="#ff9800", line_width=2)
 candles.apply_options(down_color="#e91e63")
 candles.create_price_line(101.5, title="target", line_style="dashed")
 candles.set_markers([{"time": t, "position": "below_bar", "shape": "arrow_up", "text": "buy"}])
+whale = chart.add_icon(avatar)       # a (height, width, 4) uint8 array; RGB works too
+candles.set_markers([{"time": t, "icon": whale, "size": 24, "border": "#2fbf71"},
+                     {"time": t, "label": "DB", "position": "below_bar"}])
+candles.apply_options(marker_stack_limit=4)   # 3 markers per bar side, then "+k"
 chart.apply_price_scale_options(mode="logarithmic")
 
 rsi = chart.add_indicator(candles, "rsi", n=14)
@@ -87,8 +91,23 @@ chart.on("crosshair_move", lambda e: print(e["point"]))
 
 이벤트: `click`, `crosshair_move`, `visible_range_changed`,
 `need_more_history`, `drawing_created`, `drawing_modified`, `drawing_removed`,
-`drawing_selected`, `warning`. 콜백은 차트가 표시되는 동안 메인 스레드에서
-실행됩니다.
+`drawing_selected`, `warning`, `marker_hover`(`series`, `index`, `overflow`,
+`x`, `y`, `size`를 담은 dict, 포인터가 마커를 벗어나면 `None`). 콜백은 차트가
+표시되는 동안 메인 스레드에서 실행됩니다.
+
+## 중국어, 일본어, 한국어 텍스트
+
+내장 폰트는 라틴 문자, 숫자, 일반 기호를 지원합니다. 다른 문자를 쓰려면 폰트
+파일(경로 또는 바이트)을 전달하세요. 지정한 순서대로 검색하며, 어떤 폰트에도 없는
+문자는 `□`로 그려집니다.
+
+```python
+chart = fc.Chart(fonts=["/System/Library/Fonts/Hiragino Sans GB.ttc"])  # macOS
+chart = fc.Chart(fonts=["NotoSansSC-Regular.otf"])                     # any system
+```
+
+이 폰트는 `show()`와 `to_png()`에서 사용됩니다. Jupyter에서는 브라우저가 자체
+폰트로 그리므로 `fonts`가 필요 없습니다. [마커](markers.md)를 참고하세요.
 
 ## 창
 

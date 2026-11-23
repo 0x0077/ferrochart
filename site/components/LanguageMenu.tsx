@@ -3,6 +3,7 @@
 // address is read when a language is picked, so it follows the viewer (which
 // changes it without a navigation).
 import { usePathname } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 import { LANGUAGE_NAME, LOCALES, englishOnly, localePath, splitPath, type Locale } from '@/lib/i18n';
 import { useI18n } from './I18n';
 
@@ -16,8 +17,28 @@ function switchPath(path: string, to: Locale): string {
 export function LanguageMenu() {
   const { locale, t } = useI18n();
   const pathname = usePathname() || '/';
+  const ref = useRef<HTMLDetailsElement>(null);
+  // <details> stays open on its own: close it on a press outside or Escape.
+  useEffect(() => {
+    const close = () => ref.current?.removeAttribute('open');
+    const onDown = (e: PointerEvent) => {
+      if (ref.current?.open && !ref.current.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && ref.current?.open) {
+        close();
+        ref.current?.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
   return (
-    <details className="lang-menu relative">
+    <details ref={ref} className="lang-menu relative">
       <summary
         aria-label={t.nav.language}
         title={t.nav.language}

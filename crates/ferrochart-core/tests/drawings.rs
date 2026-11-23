@@ -774,6 +774,7 @@ fn clicks_report_position_and_target() {
                 shape: MarkerShape::Circle,
                 color: None,
                 text: String::new(),
+                ..Marker::default()
             }],
         )
         .unwrap();

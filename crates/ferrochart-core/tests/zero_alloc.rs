@@ -393,6 +393,125 @@ mod chart_hot_paths {
         assert_eq!(n, 0);
     }
 
+    /// Image markers with borders, labels and folded stacks, hovered by the
+    /// crosshair while panning, zooming and ticking the last bar (r21).
+    #[test]
+    fn image_markers_do_not_allocate() {
+        use ferrochart_core::chart::{Marker, MarkerPosition};
+        use ferrochart_core::geom::{Css, PointCss, Rgba};
+        use ferrochart_core::icon::IconImage;
+        use ferrochart_core::interaction::{InputEvent, Modifiers};
+        use ferrochart_core::testing::test_avatar;
+
+        let (mut chart, id) = chart(10_000);
+        chart
+            .set_series_options(
+                id,
+                SeriesOptions {
+                    marker_stack_limit: Some(3),
+                    ..SeriesOptions::default()
+                },
+            )
+            .unwrap();
+        let icons: Vec<_> = (0..4_u8)
+            .map(|k| {
+                let px = test_avatar(48, k * 60);
+                chart
+                    .add_icon(IconImage {
+                        width: 48,
+                        height: 48,
+                        rgba: &px,
+                    })
+                    .unwrap()
+            })
+            .collect();
+        let times = chart.data_view().time_index().times().to_vec();
+        // 500 markers on the last ~200 bars, stacks of 1..=7 (folded above 3).
+        let mut markers = Vec::new();
+        let mut i = times.len() - 200;
+        while markers.len() < 500 {
+            for k in 0..=(i % 7).min(500 - markers.len() - 1) {
+                markers.push(Marker {
+                    time: times[i],
+                    position: if i % 2 == 0 {
+                        MarkerPosition::AboveBar
+                    } else {
+                        MarkerPosition::BelowBar
+                    },
+                    size: Some(Css(20.0)),
+                    border: Some(Rgba::hex(0x00EF_5350)),
+                    // Every fifth bar starts with a letter badge (an icon or
+                    // a label, not both).
+                    ..if k == 0 && i % 5 == 0 {
+                        Marker {
+                            label: "DS".into(),
+                            ..Marker::default()
+                        }
+                    } else {
+                        Marker {
+                            icon: Some(icons[k % icons.len()]),
+                            ..Marker::default()
+                        }
+                    }
+                });
+            }
+            i += 1;
+        }
+        chart.set_markers(id, markers).unwrap();
+        let last_time = *times.last().unwrap();
+        let step = |chart: &mut Chart, k: usize| {
+            let dx = if k % 20 < 10 { 23.0 } else { -23.0 };
+            chart.time_scale().scroll_by(Px(dx));
+            if k.is_multiple_of(7) {
+                chart
+                    .time_scale()
+                    .zoom(Px(900.0), if k.is_multiple_of(14) { 1.1 } else { 0.9 });
+            }
+            chart.handle_input(InputEvent::PointerMove {
+                id: 0,
+                pos: PointCss {
+                    x: 700.0 + (k % 50) as f32 * 9.0,
+                    y: 40.0 + (k % 26) as f32 * 20.0,
+                },
+                mods: Modifiers::default(),
+                time_ms: k as f64,
+            });
+            let k = k as u32;
+            chart
+                .update_last(
+                    id,
+                    BarUpdate {
+                        time: last_time,
+                        open: 100.0,
+                        high: 103.0 + f64::from(k % 7),
+                        low: 97.0 - f64::from(k % 5),
+                        close: 100.0 + f64::from(k % 3),
+                        volume: Some(1000.0),
+                    },
+                )
+                .unwrap();
+            chart.build_frame(f64::from(k), &MonoMeasurer);
+            chart.drain_events().for_each(drop);
+        };
+        for k in 0..200 {
+            step(&mut chart, k);
+        }
+        let frame = chart.frame();
+        let icons_drawn = frame.layers[1]
+            .cmds
+            .iter()
+            .filter(|c| matches!(c, ferrochart_core::frame::DrawCmd::Icon(_)))
+            .count();
+        assert!(icons_drawn > 0, "no markers in view");
+        assert!(frame.pools.text.contains('+'), "no folded stack in view");
+        let ((), n) = count_allocations(|| {
+            for k in 0..200 {
+                step(&mut chart, k);
+            }
+        });
+        assert_eq!(n, 0);
+    }
+
     #[test]
     fn build_frame_zoom_does_not_allocate() {
         let (mut chart, _) = chart(1_000_000);

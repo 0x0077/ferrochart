@@ -1,4 +1,4 @@
-<!-- source: 69f10455ac -->
+<!-- source: 8785086f6e -->
 # 外掛
 
 FerroChart 提供五種擴充圖表的方式。它們都會把繪圖指令寫入幀中，因此能搭配所有渲染器（WebGPU、WebGL2、Vulkan/Metal/DX12 以及 CPU 渲染器）運作，並且和內建系列一樣會出現在螢幕截圖與黃金圖像中。
@@ -87,7 +87,7 @@ chart.invalidateLayer(id); // after the plugin's own data changed
 chart.removeLayer(id);
 ```
 
-`build(ctx)` 回傳一個指令陣列，座標為從 canvas 左上角起算的 CSS 像素：`rect`、`line`、`polyline`、`polygon`、`text` 與 `icon`（`PluginCommand` 型別列出了它們的欄位）。`ctx` 的函式（`timeToX`、`priceToY`、`xToTime`、`yToPrice`、`textWidth`、`formatPrice`）只在呼叫期間有效。拋出例外或回傳無效指令的外掛在該幀什麼都不會畫（無效指令之前的指令會保留）；其第一個錯誤會以 `console.warn` 記錄。
+`build(ctx)` 回傳一個指令陣列，座標為從 canvas 左上角起算的 CSS 像素：`rect`、`line`、`polyline`、`polygon`、`text` 與 `icon`（`PluginCommand` 型別列出了它們的欄位）。`icon` 可使用與標記相同的額外欄位：`image`（以 `chart.registerIcon` 註冊的名稱）、`label`、`border` 與 `borderWidth`，因此圖層可以在任何位置繪製頭像，而不只是在 K 棒上（參見[標記](markers.md)）。`ctx` 的函式（`timeToX`、`priceToY`、`xToTime`、`yToPrice`、`textWidth`、`formatPrice`）只在呼叫期間有效。拋出例外或回傳無效指令的外掛在該幀什麼都不會畫（無效指令之前的指令會保留）；其第一個錯誤會以 `console.warn` 記錄。
 
 JavaScript 圖層每一幀會跨越 wasm 邊界被呼叫一次，因此請將指令數量控制在可見範圍內（數百個，而不是數十萬個）。大量資料請用 Rust 撰寫自訂系列。
 

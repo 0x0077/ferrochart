@@ -73,6 +73,24 @@
 // Placement of an indicator: the volume area of the source's pane.
 #define FERROCHART_PLACEMENT_VOLUME -4
 
+// Marker position: above the bar (the default).
+#define FERROCHART_MARKER_ABOVE_BAR 0
+
+// Marker position: below the bar.
+#define FERROCHART_MARKER_BELOW_BAR 1
+
+// Marker shape: filled circle (the default).
+#define FERROCHART_SHAPE_CIRCLE 0
+
+// Marker shape: filled square.
+#define FERROCHART_SHAPE_SQUARE 1
+
+// Marker shape: arrow pointing up.
+#define FERROCHART_SHAPE_ARROW_UP 2
+
+// Marker shape: arrow pointing down.
+#define FERROCHART_SHAPE_ARROW_DOWN 3
+
 // Input: pointer pressed.
 #define FERROCHART_INPUT_POINTER_DOWN 1
 
@@ -217,6 +235,14 @@
 // Event: a warning (`warning`, `target_id` the series, `count`).
 #define FERROCHART_EVENT_WARNING 9
 
+// Event: the marker under the pointer changed (r21). On a marker:
+// `target_type` `FERROCHART_TARGET_MARKER`, `target_id` the series,
+// `target_index` the marker, `x`/`y` its center (CSS px); on a "+k" badge:
+// `FERROCHART_TARGET_MARKER_OVERFLOW` with `target_index` the first marker
+// not drawn and `count` = k. `FERROCHART_TARGET_NONE` when the pointer left
+// the markers.
+#define FERROCHART_EVENT_MARKER_HOVER 10
+
 // Click target: nothing.
 #define FERROCHART_TARGET_NONE 0
 
@@ -228,6 +254,10 @@
 
 // Click target: a drawing (`target_id`).
 #define FERROCHART_TARGET_DRAWING 3
+
+// Click target: a "+k" badge of folded markers (r21; `target_id` the
+// series, `target_index` the first marker not drawn, `count` = k).
+#define FERROCHART_TARGET_MARKER_OVERFLOW 4
 
 // Warning: invalid OHLC bars were repaired (`target_id`, `count`).
 #define FERROCHART_WARNING_OHLC_REPAIRED 1
@@ -301,7 +331,41 @@ typedef struct FerroChartSeriesOptions {
   int32_t shift;
   // Decimals of price labels (0–12), or [`FERROCHART_PRECISION_AUTO`].
   uint32_t price_precision;
+  // Most markers drawn per bar and side (1–65535); beyond it a "+k"
+  // badge stands for the rest. 0: no limit (the default; r21).
+  uint32_t marker_stack_limit;
 } FerroChartSeriesOptions;
+
+// A marker for [`ferrochart_set_markers`]. Zero-initialize it, set `size`
+// and the fields you need: zero fields take their defaults.
+typedef struct FerroChartMarker {
+  // `sizeof(FerroChartMarker)`.
+  uint32_t size;
+  // Reserved, 0.
+  uint32_t reserved;
+  // Time of the bar, UTC ms; a time between bars snaps to the next bar.
+  int64_t time;
+  // `FERROCHART_MARKER_ABOVE_BAR` or `FERROCHART_MARKER_BELOW_BAR`.
+  uint32_t position;
+  // `FERROCHART_SHAPE_*`.
+  uint32_t shape;
+  // Shape and text color, `0xRRGGBBAA`; 0: the series' color.
+  uint32_t color;
+  // Diameter (side of a square), 4–64 CSS px; 0: 10.
+  float marker_size;
+  // Image clipped to the shape (circles and squares), an id from
+  // [`ferrochart_add_icon`]; 0: none.
+  uint64_t icon;
+  // Border color inside the shape's edge, `0xRRGGBBAA`; 0: none.
+  uint32_t border;
+  // Border width, CSS px; 0: 2.
+  float border_width;
+  // Text next to the shape (UTF-8); null: none.
+  const char *text;
+  // Text centered in the shape (circles and squares, at most 8
+  // characters, not with `icon`), e.g. `"DB"` (UTF-8); null: none.
+  const char *label;
+} FerroChartMarker;
 
 // An input event; zero it, set `size = sizeof(FerroChartInput)` and the
 // fields its `type` uses.
@@ -395,9 +459,10 @@ typedef struct FerroChartEvent {
   uint64_t drawing;
   // Series or drawing id of a click target or warning.
   uint64_t target_id;
-  // Marker index of a click target.
+  // Marker index of a click or hover target.
   uint64_t target_index;
-  // Bars of an `FERROCHART_WARNING_OHLC_REPAIRED` warning.
+  // Bars of an `FERROCHART_WARNING_OHLC_REPAIRED` warning; markers of a
+  // `FERROCHART_TARGET_MARKER_OVERFLOW` target.
   uint64_t count;
   // `FERROCHART_TARGET_*`.
   uint32_t target_type;
@@ -437,7 +502,7 @@ extern "C" {
 // string stays valid until the next failing call on this thread.
 const char *ferrochart_last_error(void);
 
-// The library version, e.g. `"0.3.0"` (static string).
+// The library version, e.g. `"0.4.0"` (static string).
 const char *ferrochart_version(void);
 
 // Fills `out` with the default options. Set `out->size =
@@ -567,6 +632,42 @@ int32_t ferrochart_series_options(struct FerroChart *chart,
 int32_t ferrochart_apply_series_options(struct FerroChart *chart,
                                         uint64_t series,
                                         const struct FerroChartSeriesOptions *options);
+
+// Replaces the markers of a series with `len` markers (`len` 0 removes
+// them). Each element has `size` set; elements are `markers[0].size`
+// bytes apart (`sizeof(FerroChartMarker)` of the caller's header).
+//
+// # Safety
+//
+// `chart` is a valid chart; `markers` is null (with `len` 0) or points to
+// `len` markers whose strings are null or NUL-terminated.
+int32_t ferrochart_set_markers(struct FerroChart *chart,
+                               uint64_t series,
+                               const struct FerroChartMarker *markers,
+                               size_t len);
+
+// Adds an image for markers: `width` × `height` pixels (1–256 each) of
+// straight (not premultiplied) RGBA8, rows `stride` bytes apart (at least
+// `width` × 4). Stores its id (never 0) in `*out_id`. The chart keeps a
+// resampled copy; `rgba` can be freed after the call.
+//
+// # Safety
+//
+// `chart` is a valid chart; `rgba` has `stride` × (`height` − 1) +
+// `width` × 4 readable bytes; `out_id` is valid for writes.
+int32_t ferrochart_add_icon(struct FerroChart *chart,
+                            const uint8_t *rgba,
+                            uint32_t width,
+                            uint32_t height,
+                            size_t stride,
+                            uint64_t *out_id);
+
+// Removes an image; markers that use it draw their shape alone.
+//
+// # Safety
+//
+// `chart` is a valid chart.
+int32_t ferrochart_remove_icon(struct FerroChart *chart, uint64_t icon);
 
 // Replaces the data of an OHLC series (candlestick, OHLC, Heikin-Ashi,
 // transform) with `len` bars: strictly increasing UTC ms times and
@@ -899,6 +1000,18 @@ int32_t ferrochart_needs_redraw(struct FerroChart *chart);
 //
 // `chart` is a valid chart (on macOS, used from the main thread).
 int32_t ferrochart_render(struct FerroChart *chart, double now_ms);
+
+// Adds a fallback font (TrueType or OpenType data, copied): characters
+// that the bundled font lacks (CJK, other scripts) are looked up in the
+// fallback fonts in the order they were added, then drawn as `□`.
+// Applies to the CPU renderer and an attached window. Color emoji fonts
+// (sbix, COLR, CBDT) are not supported; an outline emoji font draws in the
+// text color.
+//
+// # Safety
+//
+// `chart` is a valid chart; `data` has `len` readable bytes.
+int32_t ferrochart_add_font(struct FerroChart *chart, const uint8_t *data, size_t len);
 
 #ifdef __cplusplus
 }  // extern "C"

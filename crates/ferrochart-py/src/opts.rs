@@ -7,6 +7,7 @@ use ferrochart_core::chart::{
     Marker, MarkerPosition, MarkerShape, PriceLineOptions, SeriesOptions,
 };
 use ferrochart_core::geom::{Css, Rgba};
+use ferrochart_core::icon::IconId;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyList};
 
@@ -111,7 +112,7 @@ fn color_py(py: Python<'_>, c: Option<Rgba>) -> Py<PyAny> {
     }
 }
 
-const SERIES_KEYS: [&str; 12] = [
+const SERIES_KEYS: [&str; 13] = [
     "color",
     "down_color",
     "top_fill",
@@ -124,6 +125,7 @@ const SERIES_KEYS: [&str; 12] = [
     "price_line_visible",
     "shift",
     "price_precision",
+    "marker_stack_limit",
 ];
 
 /// `base` with the keys of `d` applied.
@@ -182,6 +184,18 @@ pub(crate) fn series_options(
         }
         o.price_precision = Some(v as u8);
     }
+    if d.get_item("marker_stack_limit")?
+        .is_some_and(|v| v.is_none())
+    {
+        o.marker_stack_limit = None; // no folding
+    } else if let Some(v) = opt_f64(d, "marker_stack_limit")? {
+        if !(1.0..=f64::from(u16::MAX)).contains(&v) || v.fract() != 0.0 {
+            return Err(err(
+                "'marker_stack_limit' must be an integer >= 1, or None for no limit",
+            ));
+        }
+        o.marker_stack_limit = Some(v as u16);
+    }
     Ok(o)
 }
 
@@ -202,6 +216,7 @@ pub(crate) fn series_options_py<'py>(
     d.set_item("price_line_visible", o.price_line_visible)?;
     d.set_item("shift", o.shift)?;
     d.set_item("price_precision", o.price_precision)?;
+    d.set_item("marker_stack_limit", o.marker_stack_limit)?;
     Ok(d)
 }
 
@@ -258,7 +273,8 @@ pub(crate) fn price_line_options_py<'py>(
     Ok(d)
 }
 
-/// Markers from dicts `{time (int ms), position?, shape?, color?, text?}`.
+/// Markers from dicts `{time (int ms), position?, shape?, color?, text?,
+/// size?, icon? (an add_icon id), label?, border?, border_width?}`.
 pub(crate) fn markers(list: &Bound<'_, PyList>) -> PyResult<Vec<Marker>> {
     let mut out = Vec::with_capacity(list.len());
     for m in list.iter() {
@@ -267,7 +283,18 @@ pub(crate) fn markers(list: &Bound<'_, PyList>) -> PyResult<Vec<Marker>> {
             .map_err(|_| err("each marker must be a dict"))?;
         check_keys(
             d,
-            &["time", "position", "shape", "color", "text"],
+            &[
+                "time",
+                "position",
+                "shape",
+                "color",
+                "text",
+                "size",
+                "icon",
+                "label",
+                "border",
+                "border_width",
+            ],
             "marker key",
         )?;
         let time: i64 = item(d, "time")?
@@ -278,8 +305,22 @@ pub(crate) fn markers(list: &Bound<'_, PyList>) -> PyResult<Vec<Marker>> {
             time,
             color: opt_color(d, "color")?.flatten(),
             text: opt_str(d, "text")?.unwrap_or_default(),
+            label: opt_str(d, "label")?.unwrap_or_default(),
+            border: opt_color(d, "border")?.flatten(),
             ..Marker::default()
         };
+        if let Some(s) = opt_f64(d, "size")? {
+            marker.size = Some(Css(s as f32));
+        }
+        if let Some(w) = opt_f64(d, "border_width")? {
+            marker.border_width = Css(w as f32);
+        }
+        if let Some(icon) = item(d, "icon")?.filter(|v| !v.is_none()) {
+            let id: u32 = icon
+                .extract()
+                .map_err(|_| err("marker 'icon' must be an id from Chart.add_icon"))?;
+            marker.icon = Some(IconId(id));
+        }
         if let Some(p) = opt_str(d, "position")? {
             marker.position = params::marker_position(&camel(&p))
                 .ok_or_else(|| err("'position' must be 'above_bar' or 'below_bar'"))?;
@@ -313,6 +354,11 @@ pub(crate) fn markers_py<'py>(py: Python<'py>, markers: &[Marker]) -> PyResult<B
         d.set_item("shape", shape)?;
         d.set_item("color", color_py(py, m.color))?;
         d.set_item("text", &m.text)?;
+        d.set_item("size", m.size.map(|s| f64::from(s.0)))?;
+        d.set_item("icon", m.icon.map(|i| i.0))?;
+        d.set_item("label", &m.label)?;
+        d.set_item("border", color_py(py, m.border))?;
+        d.set_item("border_width", f64::from(m.border_width.0))?;
         list.append(d)?;
     }
     Ok(list)

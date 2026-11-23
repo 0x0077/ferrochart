@@ -459,6 +459,16 @@ pub const ICON_ARROW_DOWN: u16 = 3;
 /// assert_eq!(icon_coverage(ICON_ARROW_UP, 4.0, -4.0, 10.0), 0.0);
 /// ```
 pub fn icon_coverage(icon: u16, dx: f32, dy: f32, size: f32) -> f32 {
+    match icon_distance(icon, dx, dy, size) {
+        Some(d) => (0.5 - d).clamp(0.0, 1.0),
+        None => 0.0,
+    }
+}
+
+/// Signed distance in pixels from `(dx, dy)` to the edge of a built-in icon
+/// `size` pixels across: negative inside; `None` for unknown icons. Shader:
+/// `icon_distance()`.
+pub fn icon_distance(icon: u16, dx: f32, dy: f32, size: f32) -> Option<f32> {
     let h = size * 0.5;
     let ax = dx.abs();
     let d = match icon {
@@ -475,9 +485,110 @@ pub fn icon_coverage(icon: u16, dx: f32, dy: f32, size: f32) -> f32 {
             let shaft = (ax - h * 0.35).max((ty - q).abs() - q);
             head.min(shaft)
         }
-        _ => return 0.0,
+        _ => return None,
     };
-    (0.5 - d).clamp(0.0, 1.0)
+    Some(d)
+}
+
+/// Half the side of the square an image fills in icon `icon` (r21): the
+/// circle's radius, the square's half side; `None` for icons that take no
+/// image (arrows). Shader: `icon_image_half()`.
+pub fn icon_image_half(icon: u16, size: f32) -> Option<f32> {
+    match icon {
+        ICON_CIRCLE => Some(size * 0.5),
+        ICON_SQUARE => Some(size * 0.5 * 0.8),
+        _ => None,
+    }
+}
+
+/// Bilinear sample of a 64×64 premultiplied tile at continuous texel
+/// coordinates `(u, v)` (texel centers at `k + 0.5`), clamped to the tile,
+/// in 0..=1. Four loads and f32 weights, the same in the shader
+/// (`sample_tile()`), so the backends agree exactly.
+pub fn sample_tile(tile: &crate::icon::IconTile, u: f32, v: f32) -> [f32; 4] {
+    let last = (crate::icon::ICON_TEXELS - 1) as f32;
+    let x = (u - 0.5).clamp(0.0, last);
+    let y = (v - 0.5).clamp(0.0, last);
+    let (x0, y0) = (x.floor(), y.floor());
+    let (fx, fy) = (x - x0, y - y0);
+    let (x1, y1) = ((x0 + 1.0).min(last), (y0 + 1.0).min(last));
+    let at = |x: f32, y: f32, c: usize| -> f32 {
+        let k = (y as usize * crate::icon::ICON_TEXELS + x as usize) * 4 + c;
+        f32::from(tile[k]) / 255.0
+    };
+    let mut out = [0.0; 4];
+    for (c, o) in out.iter_mut().enumerate() {
+        let top = at(x0, y0, c) * (1.0 - fx) + at(x1, y0, c) * fx;
+        let bottom = at(x0, y1, c) * (1.0 - fx) + at(x1, y1, c) * fx;
+        *o = top * (1.0 - fy) + bottom * fy;
+    }
+    out
+}
+
+/// Premultiplied color (0..=1) of the pixel centered `(dx, dy)` from the
+/// center of an icon with an image and/or a border (r21): the image
+/// over the fill, clipped to the shape, and the border inside the edge.
+/// Icons without both are drawn by [`icon_coverage`] alone. Shader:
+/// `icon_shade()`.
+pub fn icon_shade(
+    icon: &crate::frame::IconInst,
+    dx: f32,
+    dy: f32,
+    tile: Option<&crate::icon::IconTile>,
+) -> [f32; 4] {
+    let Some(d) = icon_distance(icon.icon, dx, dy, icon.size.0) else {
+        return [0.0; 4];
+    };
+    let premul = |c: crate::geom::Rgba| -> [f32; 4] {
+        let a = f32::from(c.a) / 255.0;
+        [
+            f32::from(c.r) / 255.0 * a,
+            f32::from(c.g) / 255.0 * a,
+            f32::from(c.b) / 255.0 * a,
+            a,
+        ]
+    };
+    let fill = premul(icon.color);
+    let mut inner = fill;
+    if let (Some(tile), Some(half)) = (tile, icon_image_half(icon.icon, icon.size.0)) {
+        let n = crate::icon::ICON_TEXELS as f32;
+        let u = (dx / (2.0 * half) + 0.5) * n;
+        let v = (dy / (2.0 * half) + 0.5) * n;
+        let s = sample_tile(tile, u, v);
+        for c in 0..4 {
+            inner[c] = s[c] + fill[c] * (1.0 - s[3]);
+        }
+    }
+    let cov = (0.5 - d).clamp(0.0, 1.0);
+    let mut out = [0.0; 4];
+    if icon.border.a > 0 && icon.border_width.0 > 0.0 {
+        let ic = (0.5 - (d + icon.border_width.0)).clamp(0.0, 1.0);
+        let b = premul(icon.border);
+        for c in 0..4 {
+            out[c] = inner[c] * ic + b[c] * (cov - ic);
+        }
+    } else {
+        for c in 0..4 {
+            out[c] = inner[c] * cov;
+        }
+    }
+    out
+}
+
+/// A premultiplied color (0..=1) as straight 8-bit RGBA, the way both
+/// backends blend it; alpha 0 for nothing to draw. Shader: `unpremul8()`.
+pub fn unpremultiply_8(c: [f32; 4]) -> crate::geom::Rgba {
+    let a = (c[3] * 255.0 + 0.5).floor().clamp(0.0, 255.0);
+    if a <= 0.0 {
+        return crate::geom::Rgba::default();
+    }
+    let ch = |v: f32| ((v / c[3]) * 255.0 + 0.5).floor().clamp(0.0, 255.0) as u8;
+    crate::geom::Rgba {
+        r: ch(c[0]),
+        g: ch(c[1]),
+        b: ch(c[2]),
+        a: a as u8,
+    }
 }
 
 /// Whether the dash pattern is "on" at pixel center `x` for a line of the

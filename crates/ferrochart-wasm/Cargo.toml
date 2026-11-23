@@ -12,6 +12,12 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["text-browser"]
+# Characters no bundled or fallback font has are drawn by the browser
+# (system CJK fonts, color emoji).
+text-browser = []
+
 [dependencies]
 ferrochart-core = { workspace = true, features = ["testing"] }
 ferrochart-indicators.workspace = true
@@ -20,6 +26,7 @@ ferrochart-plot.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 ferrochart-render-wgpu = { workspace = true, features = ["webgl"] }
+ferrochart-text.workspace = true
 ferrochart-orderflow = { workspace = true, features = ["gpu"] }
 wgpu.workspace = true
 wasm-bindgen.workspace = true
@@ -42,10 +49,17 @@ web-sys = { workspace = true, features = [
     "MediaQueryList",
     "MouseEvent",
     "Node",
+    "Blob",
+    "ImageBitmap",
+    "ImageData",
+    "OffscreenCanvas",
+    "OffscreenCanvasRenderingContext2d",
+    "TextMetrics",
     "Performance",
     "PointerEvent",
     "ResizeObserver",
     "ResizeObserverEntry",
+    "Response",
     "WheelEvent",
     "Window",
 ] }

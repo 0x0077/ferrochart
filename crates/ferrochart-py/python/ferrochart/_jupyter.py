@@ -147,6 +147,9 @@ def markers(ms: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
         for k in ("position", "shape"):
             if isinstance(m.get(k), str):
                 m[k] = camel(m[k])
+        # Icons are named by their Python id in the front end.
+        if m.get("icon") is not None:
+            m["icon"] = str(m["icon"])
         out.append(m)
     return out
 
@@ -330,7 +333,9 @@ def widget_class() -> type:
                     bufs = [*bufs, _static("ferrochart_wasm_bg.wasm")]
                 self.send(reply, bufs)
             elif content.get("type") == "event":
-                self._chart._emit(content.get("name", ""), _snake_payload(content.get("payload") or {}))
+                payload = content.get("payload", {})
+                # marker_hover sends None when the pointer leaves a marker.
+                self._chart._emit(content.get("name", ""), None if payload is None else _snake_payload(payload))
 
         def _broadcast(self, seq: int, op: dict[str, Any], buffer: bytes | None) -> None:
             if buffer is None:

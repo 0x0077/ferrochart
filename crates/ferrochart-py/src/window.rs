@@ -368,8 +368,9 @@ fn open(event_loop: &ActiveEventLoop, req: Request) -> Result<Win, String> {
         .create_surface(window.clone())
         .map_err(|e| e.to_string())?;
     let ctx = GpuContext::with_instance(instance, Some(&surface)).map_err(|e| e.to_string())?;
-    let renderer = WgpuRenderer::with_surface(&ctx, surface, physical(window.inner_size()))
+    let mut renderer = WgpuRenderer::with_surface(&ctx, surface, physical(window.inner_size()))
         .map_err(|e| e.to_string())?;
+    crate::png::add_fonts(renderer.text_engine_mut(), &req.scene.fonts());
     let win = Win {
         window,
         _ctx: ctx,

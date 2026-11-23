@@ -140,6 +140,10 @@ pub struct SeriesOptions {
     /// `j + shift` (Ichimoku's leading spans and lagging line).
     /// Autoscale and the crosshair follow the drawn positions.
     pub shift: i32,
+    /// Most markers drawn on one side of a bar (r21): beyond it the
+    /// last place shows a "+k" badge for the `k` markers not drawn. `None`
+    /// (the default) draws all; `Some(0)` is invalid.
+    pub marker_stack_limit: Option<u16>,
 }
 
 impl Default for SeriesOptions {
@@ -158,6 +162,7 @@ impl Default for SeriesOptions {
             last_value_visible: true,
             price_line_visible: true,
             shift: 0,
+            marker_stack_limit: None,
         }
     }
 }
@@ -204,11 +209,11 @@ fn volume_like(e: &SeriesEntry) -> bool {
     e.kind == SeriesKind::Volume || e.volume_scale
 }
 
-/// A marker drawn in the last frame, for click hit tests.
+/// A marker drawn in the last frame, for click and hover hit tests.
 #[derive(Clone, Copy, Debug)]
-struct MarkerHit {
-    series: SeriesId,
-    index: usize,
+struct MarkerSpot {
+    /// `Marker` or `MarkerOverflow`.
+    target: ClickTarget,
     pane: PaneId,
     pos: PointPx,
     radius: f32,
@@ -346,7 +351,7 @@ impl MarkerShape {
 /// assert_eq!(chart.markers(id).map(<[Marker]>::len), Some(1));
 /// # Ok::<(), ferrochart_core::Error>(())
 /// ```
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Marker {
     /// Time of the bar. A time that is not on the time axis snaps to the next
     /// bar (the last one for times after the end).
@@ -359,11 +364,87 @@ pub struct Marker {
     pub color: Option<Rgba>,
     /// Text next to the icon, on the side away from the bar; empty for none.
     pub text: String,
+    /// Diameter (side of a square), 4..=64 CSS px; `None` for 10 (r21).
+    pub size: Option<Css>,
+    /// Image clipped to the shape, over the fill (circles and squares; r21).
+    /// An unknown or removed image draws the shape alone.
+    pub icon: Option<crate::icon::IconId>,
+    /// Short text centered in the shape (circles and squares, at most 8
+    /// characters, not with `icon`; r21), e.g. `"DB"`.
+    pub label: String,
+    /// Border color, inside the shape's edge (r21).
+    pub border: Option<Rgba>,
+    /// Border width; default 2 CSS px. Used when `border` is set.
+    pub border_width: Css,
+}
+
+impl Default for Marker {
+    fn default() -> Self {
+        Self {
+            time: 0,
+            position: MarkerPosition::default(),
+            shape: MarkerShape::default(),
+            color: None,
+            text: String::new(),
+            size: None,
+            icon: None,
+            label: String::new(),
+            border: None,
+            border_width: Css(2.0),
+        }
+    }
 }
 
 /// Marker icon size and gap to the bar or the next marker, in CSS pixels.
 const MARKER_SIZE: f32 = 10.0;
 const MARKER_GAP: f32 = 4.0;
+/// Smallest and largest marker size, CSS px (r21).
+const MARKER_SIZE_RANGE: core::ops::RangeInclusive<f32> = 4.0..=64.0;
+/// Most characters of a marker label.
+const MARKER_LABEL_CHARS: usize = 8;
+/// Smallest label font, CSS px.
+const MARKER_LABEL_MIN_FONT: f32 = 7.0;
+
+/// Checks the r21 marker fields.
+fn check_marker(m: &Marker) -> Result<()> {
+    if let Some(s) = m.size
+        && !(s.0.is_finite() && MARKER_SIZE_RANGE.contains(&s.0))
+    {
+        return Err(Error::InvalidArgument("marker size must be 4..=64 CSS px"));
+    }
+    let arrow = matches!(m.shape, MarkerShape::ArrowUp | MarkerShape::ArrowDown);
+    if arrow && (m.icon.is_some() || !m.label.is_empty()) {
+        return Err(Error::InvalidArgument(
+            "marker icon and label need a circle or square shape",
+        ));
+    }
+    if m.icon.is_some() && !m.label.is_empty() {
+        return Err(Error::InvalidArgument(
+            "a marker has an icon or a label, not both",
+        ));
+    }
+    if m.label.chars().count() > MARKER_LABEL_CHARS {
+        return Err(Error::InvalidArgument(
+            "marker label is at most 8 characters",
+        ));
+    }
+    if !(m.border_width.0.is_finite() && m.border_width.0 >= 0.0) {
+        return Err(Error::InvalidArgument(
+            "marker border width must be finite and >= 0",
+        ));
+    }
+    Ok(())
+}
+
+/// Checks the options that have a restricted domain.
+fn check_series_options(o: &SeriesOptions) -> Result<()> {
+    if o.marker_stack_limit == Some(0) {
+        return Err(Error::InvalidArgument(
+            "marker_stack_limit must be at least 1",
+        ));
+    }
+    Ok(())
+}
 
 #[derive(Clone, Debug)]
 struct PriceLineEntry {
@@ -466,6 +547,16 @@ pub enum ClickTarget {
         /// Its index in [`Chart::markers`].
         index: usize,
     },
+    /// The "+k" badge of a folded marker stack (r21): `count` markers
+    /// from index `first` of [`Chart::markers`] are not drawn.
+    MarkerOverflow {
+        /// The series the markers belong to.
+        series: SeriesId,
+        /// The first marker not drawn.
+        first: usize,
+        /// How many are not drawn.
+        count: u32,
+    },
     /// A series: a candle's body or wick, within 4 CSS px of a line, inside
     /// a histogram bar, or on a dot.
     Series(SeriesId),
@@ -533,6 +624,26 @@ pub enum ChartEvent {
     /// them to charts in other workers take them with
     /// [`Chart::take_drawing_sync_ops`]. Reported once until they are taken.
     DrawingSync,
+    /// The marker under the pointer changed (r21): entered, left or
+    /// another one. Coalesced like `CrosshairMove`. Hosts show their own
+    /// tooltip.
+    MarkerHover(Option<MarkerHit>),
+}
+
+/// The marker under the pointer, in [`ChartEvent::MarkerHover`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MarkerHit {
+    /// The series the marker belongs to.
+    pub series: SeriesId,
+    /// Its index in [`Chart::markers`]; for a "+k" badge the first marker
+    /// not drawn.
+    pub index: usize,
+    /// For a "+k" badge, `k`; 0 for a marker.
+    pub overflow: u32,
+    /// Center, CSS px from the chart's top left.
+    pub center: PointCss,
+    /// Diameter, CSS px.
+    pub size: Css,
 }
 
 /// Rectangles of the last built layout, in physical pixels. Per-pane
@@ -739,7 +850,11 @@ pub struct Chart {
     bands: Vec<BandEntry>,
     next_band: u32,
     /// Markers of the last frame (click hit tests).
-    marker_hits: Vec<MarkerHit>,
+    marker_hits: Vec<MarkerSpot>,
+    /// The marker of the last `MarkerHover` event.
+    last_marker_hover: Option<MarkerHit>,
+    /// Registered images (r21).
+    icons: crate::icon::IconStore,
     /// Gradual display of the data; `None`: everything.
     reveal: Option<Reveal>,
 }
@@ -915,6 +1030,8 @@ impl Chart {
             bands: Vec::new(),
             next_band: 0,
             marker_hits: Vec::new(),
+            last_marker_hover: None,
+            icons: crate::icon::IconStore::default(),
             reveal: None,
             native_kinds: Vec::new(),
         }
@@ -1212,6 +1329,7 @@ impl Chart {
         if kind == SeriesKind::Band {
             return Err(Error::InvalidArgument("bands are added with add_band"));
         }
+        check_series_options(&opts)?;
         if kind == SeriesKind::Volume {
             let source_ok = opts
                 .source
@@ -1296,6 +1414,7 @@ impl Chart {
                 "the source of a series cannot change",
             ));
         }
+        check_series_options(&opts)?;
         self.series[k].opts = opts;
         self.invalidation = Invalidation::Full;
         Ok(())
@@ -2699,7 +2818,10 @@ impl Chart {
     /// # Errors
     ///
     /// [`Error::UnknownId`] if the series does not exist;
-    /// [`Error::InvalidArgument`] for a volume series.
+    /// [`Error::InvalidArgument`] for a volume series, or a marker with a
+    /// size outside 4..=64, an icon or label on an arrow, both an icon and
+    /// a label, a label over 8 characters or an invalid border width (the
+    /// markers are then left as they were).
     ///
     /// # Examples
     ///
@@ -2709,8 +2831,49 @@ impl Chart {
         if self.series[k].kind == SeriesKind::Volume {
             return Err(Error::InvalidArgument("volume series have no markers"));
         }
+        markers.iter().try_for_each(check_marker)?;
         markers.sort_by_key(|m| m.time);
         self.series[k].markers = markers;
+        self.invalidation = self.invalidation.max(Invalidation::Data);
+        Ok(())
+    }
+
+    /// Registers an image for markers and plugin icons (r21). It is
+    /// resampled to a 64×64 tile once; renderers upload it on their next
+    /// frame. Not on the hot path.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::InvalidArgument`] for a side outside 1..=256 or a buffer that
+    /// is not `width × height × 4` bytes; [`Error::CapacityExceeded`] beyond
+    /// 1024 images.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrochart_core::icon::IconImage;
+    /// use ferrochart_core::{Chart, ChartOptions};
+    ///
+    /// let mut chart = Chart::new(ChartOptions::default());
+    /// let red = [255, 0, 0, 255].repeat(16 * 16);
+    /// let id = chart.add_icon(IconImage { width: 16, height: 16, rgba: &red })?;
+    /// assert_eq!(chart.data_view().icons().len(), 1);
+    /// chart.remove_icon(id)?;
+    /// # Ok::<(), ferrochart_core::Error>(())
+    /// ```
+    pub fn add_icon(&mut self, image: crate::icon::IconImage<'_>) -> Result<crate::icon::IconId> {
+        let id = self.icons.add(image)?;
+        self.invalidation = self.invalidation.max(Invalidation::Data);
+        Ok(id)
+    }
+
+    /// Removes an image. Markers that use it draw their shape alone.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::UnknownId`] if there is no such image.
+    pub fn remove_icon(&mut self, id: crate::icon::IconId) -> Result<()> {
+        self.icons.remove(id)?;
         self.invalidation = self.invalidation.max(Invalidation::Data);
         Ok(())
     }
@@ -2769,6 +2932,7 @@ impl Chart {
         ChartDataView {
             series: &self.series,
             time_index: &self.time_index,
+            icons: self.icons.view(),
         }
     }
 
@@ -3094,7 +3258,7 @@ impl Chart {
             self.emit_layers(Some(i), LayerPosition::Background, text);
             self.emit_layers(Some(i), LayerPosition::BelowSeries, text);
             self.emit_series(i, text);
-            self.emit_markers(i, line_h, font);
+            self.emit_markers(i, line_h, font, text);
             self.emit_layers(Some(i), LayerPosition::AboveSeries, text);
             self.emit_drawings(i, text);
             self.emit_marks(i, line_h, pad, font);
@@ -3113,6 +3277,7 @@ impl Chart {
             }
         }
         let local_crosshair = self.emit_crosshair(time_h, pad, font);
+        self.emit_marker_hover();
         self.emit_view_events();
         self.push_sync(local_crosshair.map(|i| i as f64));
     }
@@ -3237,10 +3402,57 @@ impl Chart {
             .iter()
             .rev()
             .find(|m| m.pane == pane && (p.x - m.pos.x).hypot(p.y - m.pos.y) <= m.radius + tol)
-            .map(|m| ClickTarget::Marker {
-                series: m.series,
-                index: m.index,
+            .map(|m| m.target)
+    }
+
+    /// Whether a pointer move can change the hovered marker: markers were
+    /// drawn in the last frame, or one is hovered.
+    pub(crate) fn tracks_marker_hover(&self) -> bool {
+        !self.marker_hits.is_empty() || self.last_marker_hover.is_some()
+    }
+
+    /// `MarkerHover` when the marker under the pointer changed.
+    fn emit_marker_hover(&mut self) {
+        let spot = self
+            .input
+            .pointer
+            .filter(|_| !self.revealing())
+            .and_then(|p| {
+                let pane = self.panes.get(self.pane_at(p)?)?.id;
+                let tol = HIT_TOLERANCE * 0.5 * self.dpr;
+                self.marker_hits
+                    .iter()
+                    .rev()
+                    .find(|m| {
+                        m.pane == pane && (p.x - m.pos.x).hypot(p.y - m.pos.y) <= m.radius + tol
+                    })
+                    .copied()
+            });
+        let hit = spot.and_then(|m| {
+            let (series, index, overflow) = match m.target {
+                ClickTarget::Marker { series, index } => (series, index, 0),
+                ClickTarget::MarkerOverflow {
+                    series,
+                    first,
+                    count,
+                } => (series, first, count),
+                _ => return None,
+            };
+            Some(MarkerHit {
+                series,
+                index,
+                overflow,
+                center: PointCss {
+                    x: m.pos.x / self.dpr,
+                    y: m.pos.y / self.dpr,
+                },
+                size: Css(m.radius * 2.0 / self.dpr),
             })
+        });
+        if hit != self.last_marker_hover {
+            self.last_marker_hover = hit;
+            self.push_event(ChartEvent::MarkerHover(hit));
+        }
     }
 
     /// The topmost series of `pane` under `p`: on a candle's body or
@@ -3593,6 +3805,7 @@ impl Chart {
                         size: Px(size),
                         icon: crate::transform_helpers::ICON_CIRCLE,
                         color: c,
+                        ..Default::default()
                     },
                 );
             }
@@ -3606,6 +3819,7 @@ impl Chart {
         let coalesce = matches!(
             event,
             ChartEvent::CrosshairMove { .. }
+                | ChartEvent::MarkerHover(_)
                 | ChartEvent::VisibleRangeChanged { .. }
                 | ChartEvent::Sync(_)
         );
@@ -4529,8 +4743,9 @@ impl Chart {
     }
 
     /// Markers of the series in pane `i` (main layer, clipped to the plot). Markers on
-    /// the same bar and side stack away from the bar.
-    fn emit_markers(&mut self, i: usize, line_h: f32, font: FontStyleRef) {
+    /// the same bar and side stack away from the bar; with
+    /// `marker_stack_limit`, a side with more markers ends in a "+k" badge.
+    fn emit_markers(&mut self, i: usize, line_h: f32, font: FontStyleRef, text: &dyn TextMeasurer) {
         let Some(pane) = self.panes.get(i) else {
             return;
         };
@@ -4554,8 +4769,8 @@ impl Chart {
         // Markers snap to the next bar: those before `t_skip` land left of
         // the first visible bar.
         let t_skip = self.time_index.time_at(ja - 1).unwrap_or(i64::MIN);
-        let size = (MARKER_SIZE * self.dpr).round().max(4.0);
-        let gap = (MARKER_GAP * self.dpr).round();
+        let dpr = self.dpr;
+        let gap = (MARKER_GAP * dpr).round();
         let clip = self.data_clip(plot);
         self.frame.push_cmd(LayerId::Main, DrawCmd::PushClip(clip));
         for k in 0..self.series.len() {
@@ -4563,58 +4778,158 @@ impl Chart {
             let Some(norm) = e.norm.filter(|_| e.pane == id && !e.markers.is_empty()) else {
                 continue;
             };
-            let main = self.style_of(e).up;
+            let (series, main, limit, shift) = (
+                e.id,
+                self.style_of(e).up,
+                e.opts.marker_stack_limit,
+                e.opts.shift,
+            );
             let start = e.markers.partition_point(|m| m.time <= t_skip);
-            // (bar, offset above, offset below) of the stack being built.
-            let mut stack = (i64::MIN, 0.0_f32, 0.0_f32);
-            for n in start..e.markers.len() {
+            let bar_of = |t: Timestamp| self.time_index.lower_bound(t).min(end - 1);
+            // The bar of the stack being built, the offsets taken above and
+            // below it, the markers drawn on each side and their totals.
+            let mut bar = i64::MIN;
+            let (mut off, mut drawn, mut total) = ([0.0_f32; 2], [0_u32; 2], [0_u32; 2]);
+            for n in start..self.series[k].markers.len() {
+                let e = &self.series[k];
                 let m = &e.markers[n];
                 if m.time > t_hi && jb < end - 1 {
                     break;
                 }
-                let j = self.time_index.lower_bound(m.time).min(end - 1);
+                let j = bar_of(m.time);
                 let Some([_, high, low, _]) = e.store.bar_at(j) else {
                     continue;
                 };
-                if j != stack.0 {
-                    stack = (j, 0.0, 0.0);
+                if j != bar {
+                    bar = j;
+                    (off, drawn, total) = ([0.0; 2], [0; 2], [0; 2]);
+                    if limit.is_some() {
+                        for o in &e.markers[n..] {
+                            if bar_of(o.time) != j {
+                                break;
+                            }
+                            total[usize::from(o.position == MarkerPosition::BelowBar)] += 1;
+                        }
+                    }
                 }
                 let above = m.position == MarkerPosition::AboveBar;
+                let side = usize::from(!above);
+                // Folding: the place of marker `lim` shows "+k" for the rest.
+                let mut overflow = 0;
+                if let Some(lim) = limit.map(u32::from)
+                    && total[side] > lim
+                {
+                    if drawn[side] >= lim {
+                        continue;
+                    }
+                    if drawn[side] == lim - 1 {
+                        overflow = total[side] - drawn[side];
+                    }
+                }
+                drawn[side] += 1;
+                let size_css = m.size.map_or(MARKER_SIZE, |s| s.0);
+                let size = (size_css * dpr).round().max(4.0);
                 let price = if above { high } else { low };
                 let y_bar = self.panes[i]
                     .price_scale
                     .price_to_y(norm.apply(price), top, height) as f32;
-                let text_h = if m.text.is_empty() { 0.0 } else { line_h };
+                let text_h = if m.text.is_empty() || overflow > 0 {
+                    0.0
+                } else {
+                    line_h
+                };
                 let (cy, ty) = if above {
-                    let cy = y_bar - gap - stack.1 - size * 0.5;
-                    stack.1 += gap + size + text_h;
+                    let cy = y_bar - gap - off[0] - size * 0.5;
+                    off[0] += gap + size + text_h;
                     (cy, cy - size * 0.5 - text_h * 0.5)
                 } else {
-                    let cy = y_bar + gap + stack.2 + size * 0.5;
-                    stack.2 += gap + size + text_h;
+                    let cy = y_bar + gap + off[1] + size * 0.5;
+                    off[1] += gap + size + text_h;
                     (cy, cy + size * 0.5 + text_h * 0.5)
                 };
-                let shown = j + i64::from(e.opts.shift);
+                let shown = j + i64::from(shift);
                 let x = (plot.x + self.time_scale.index_to_x(shown as f64).0).round();
-                let color = m.color.unwrap_or(main);
-                self.marker_hits.push(MarkerHit {
-                    series: e.id,
-                    index: n,
-                    pane: id,
-                    pos: PointPx { x, y: cy.round() },
-                    radius: size * 0.5,
-                });
-                self.frame.push_icon(
-                    LayerId::Main,
-                    crate::frame::IconInst {
-                        pos: PointPx { x, y: cy.round() },
+                let pos = PointPx { x, y: cy.round() };
+                let (target, inst, color) = if overflow > 0 {
+                    let target = ClickTarget::MarkerOverflow {
+                        series,
+                        first: n,
+                        count: overflow,
+                    };
+                    let inst = crate::frame::IconInst {
+                        pos,
+                        size: Px(size),
+                        icon: MarkerShape::Circle.icon(),
+                        color: main,
+                        ..Default::default()
+                    };
+                    (target, inst, main)
+                } else {
+                    let color = m.color.unwrap_or(main);
+                    let border = m.border.unwrap_or_default();
+                    let inst = crate::frame::IconInst {
+                        pos,
                         size: Px(size),
                         icon: m.shape.icon(),
                         color,
-                    },
-                );
+                        image: m.icon,
+                        border,
+                        border_width: Px((m.border_width.0 * dpr).min(size * 0.5)),
+                    };
+                    (ClickTarget::Marker { series, index: n }, inst, color)
+                };
+                self.marker_hits.push(MarkerSpot {
+                    target,
+                    pane: id,
+                    pos,
+                    radius: size * 0.5,
+                });
+                self.frame.push_icon(LayerId::Main, inst);
+                // The label inside the shape: the marker's, or "+k".
+                let label = if overflow > 0 {
+                    let start = self.frame.pools.text.len();
+                    let _ = core::fmt::Write::write_fmt(
+                        &mut self.frame.pools.text,
+                        format_args!("+{overflow}"),
+                    );
+                    Some(Span {
+                        start: start as u32,
+                        len: (self.frame.pools.text.len() - start) as u32,
+                    })
+                } else if !self.series[k].markers[n].label.is_empty() {
+                    Some(self.frame.push_str(&self.series[k].markers[n].label))
+                } else {
+                    None
+                };
+                if let Some(span) = label {
+                    let s = self.frame.pools.text_of(span);
+                    // Full-width characters (CJK) are unreadable at the
+                    // Latin size: they start larger and still shrink to fit.
+                    let ratio = if s.is_ascii() { 0.45 } else { 0.6 };
+                    let mut fs = (size_css * ratio).round().max(MARKER_LABEL_MIN_FONT);
+                    let style = |fs: f32| FontStyleRef {
+                        font: font.font,
+                        size: fs * dpr,
+                    };
+                    while fs > MARKER_LABEL_MIN_FONT
+                        && crate::text::text_width(text, s, style(fs)) > size * 0.8
+                    {
+                        fs -= 1.0;
+                    }
+                    self.frame.push_text(
+                        LayerId::Main,
+                        TextRun {
+                            pos,
+                            text: span,
+                            style: style(fs),
+                            color: contrast(inst.color),
+                            align: TextAlign::Center,
+                            bg: None,
+                        },
+                    );
+                }
                 if text_h > 0.0 {
-                    let span = self.frame.push_str(&e.markers[n].text);
+                    let span = self.frame.push_str(&self.series[k].markers[n].text);
                     self.frame.push_text(
                         LayerId::Main,
                         TextRun {
@@ -4874,12 +5189,19 @@ impl Chart {
 pub struct ChartDataView<'a> {
     series: &'a [SeriesEntry],
     time_index: &'a TimeIndex,
+    icons: crate::icon::IconsView<'a>,
 }
 
 /// The time index of [`ChartDataView::empty`].
 static EMPTY_TIME_INDEX: TimeIndex = TimeIndex::new();
 
 impl<'a> ChartDataView<'a> {
+    /// The registered images (r21): renderers upload the tiles when
+    /// [`IconsView::generation`](crate::icon::IconsView::generation) changes.
+    pub fn icons(self) -> crate::icon::IconsView<'a> {
+        self.icons
+    }
+
     /// A view without series, for frames that only hold immediate
     /// primitives (`ferrochart-plot`).
     ///
@@ -4895,6 +5217,7 @@ impl<'a> ChartDataView<'a> {
         ChartDataView {
             series: &[],
             time_index: &EMPTY_TIME_INDEX,
+            icons: crate::icon::IconsView::empty(),
         }
     }
 
@@ -5632,6 +5955,226 @@ mod tests {
             .unwrap();
         assert!(chart.set_markers(vol, vec![]).is_err());
         assert!(chart.markers(SeriesId(99)).is_none());
+    }
+
+    #[test]
+    fn marker_fields_are_checked() {
+        let (mut chart, candles, _) = two_series(SeriesKind::Candlestick, SeriesKind::Line);
+        let ok = Marker::default();
+        let bad = [
+            Marker {
+                size: Some(Css(3.0)),
+                ..Marker::default()
+            },
+            Marker {
+                size: Some(Css(f32::NAN)),
+                ..Marker::default()
+            },
+            Marker {
+                shape: MarkerShape::ArrowUp,
+                label: "DB".into(),
+                ..Marker::default()
+            },
+            Marker {
+                shape: MarkerShape::ArrowDown,
+                icon: Some(crate::icon::IconId(0)),
+                ..Marker::default()
+            },
+            Marker {
+                icon: Some(crate::icon::IconId(0)),
+                label: "M".into(),
+                ..Marker::default()
+            },
+            Marker {
+                label: "123456789".into(),
+                ..Marker::default()
+            },
+            Marker {
+                border_width: Css(-1.0),
+                ..Marker::default()
+            },
+        ];
+        chart.set_markers(candles, vec![ok.clone()]).unwrap();
+        for m in bad {
+            assert!(matches!(
+                chart.set_markers(candles, vec![ok.clone(), m]),
+                Err(Error::InvalidArgument(_))
+            ));
+        }
+        // Rejected lists leave the markers as they were.
+        assert_eq!(chart.markers(candles).map(<[Marker]>::len), Some(1));
+        // Eight characters (not bytes) are fine.
+        chart
+            .set_markers(
+                candles,
+                vec![Marker {
+                    label: "买入卖出买入卖出".into(),
+                    ..Marker::default()
+                }],
+            )
+            .unwrap();
+        let mut o = SeriesOptions {
+            marker_stack_limit: Some(0),
+            ..SeriesOptions::default()
+        };
+        assert!(chart.set_series_options(candles, o).is_err());
+        o.marker_stack_limit = Some(3);
+        chart.set_series_options(candles, o).unwrap();
+    }
+
+    #[test]
+    fn markers_with_images_labels_and_folding() {
+        use crate::testing::MonoMeasurer;
+
+        let (mut chart, candles, _) = two_series(SeriesKind::Candlestick, SeriesKind::Line);
+        chart.resize(SizeCss { w: 400.0, h: 600.0 }, 2.0);
+        chart
+            .set_data(candles, ohlc(&[10, 20, 30, 40], 5.0))
+            .unwrap();
+        let avatar = chart
+            .add_icon(crate::icon::IconImage {
+                width: 2,
+                height: 2,
+                rgba: &[255; 16],
+            })
+            .unwrap();
+        let mut markers: Vec<Marker> = (0..6)
+            .map(|_| Marker {
+                size: Some(Css(20.0)),
+                icon: Some(avatar),
+                border: Some(Rgba::hex(0xFF_0000)),
+                ..Marker::default()
+            })
+            .collect();
+        markers.push(Marker {
+            time: 20,
+            label: "DB".into(),
+            color: Some(Rgba::hex(0x2F_BF71)),
+            ..Marker::default()
+        });
+        for m in &mut markers[..6] {
+            m.time = 30;
+        }
+        chart.set_markers(candles, markers).unwrap();
+        chart.fit_content();
+        chart.build_frame(0.0, &MonoMeasurer);
+        let icons = chart.frame().pools.icons.clone();
+        assert_eq!(icons.len(), 7);
+        let img = icons
+            .iter()
+            .filter(|i| i.image == Some(avatar))
+            .collect::<Vec<_>>();
+        assert_eq!(img.len(), 6);
+        // 20 CSS px at dpr 2, border 2 CSS px, stacked 4 CSS px apart.
+        assert_eq!((img[0].size, img[0].border_width), (Px(40.0), Px(4.0)));
+        assert!((img[0].pos.y - img[1].pos.y - 48.0).abs() < 1e-3);
+        // The label is centered in its circle, black or white on the fill.
+        let db = icons
+            .iter()
+            .find(|i| i.color == Rgba::hex(0x2F_BF71))
+            .unwrap();
+        let labels = main_texts(&chart);
+        let (_, y) = labels.iter().find(|(t, _)| t == "DB").unwrap();
+        assert!((*y - db.pos.y).abs() < 1e-3);
+
+        // Fold above 4: three markers and a "+3" badge in the series color.
+        let mut o = *chart.series_options(candles).unwrap();
+        o.marker_stack_limit = Some(4);
+        chart.set_series_options(candles, o).unwrap();
+        chart.build_frame(0.0, &MonoMeasurer);
+        let icons = chart.frame().pools.icons.clone();
+        assert_eq!(icons.iter().filter(|i| i.image == Some(avatar)).count(), 3);
+        assert!(main_texts(&chart).iter().any(|(t, _)| t == "+3"));
+        let badge = icons
+            .iter()
+            .find(|i| i.image.is_none() && i.size == Px(40.0))
+            .unwrap();
+        // Clicking the badge reports the markers it stands for.
+        let p = badge.pos;
+        let pane = chart.main_pane();
+        assert_eq!(
+            chart.hit_marker(pane, p),
+            Some(ClickTarget::MarkerOverflow {
+                series: candles,
+                first: 4,
+                count: 3
+            })
+        );
+    }
+
+    #[test]
+    fn marker_hover_events() {
+        use crate::interaction::{InputEvent, Modifiers};
+        use crate::testing::MonoMeasurer;
+
+        let (mut chart, candles, _) = two_series(SeriesKind::Candlestick, SeriesKind::Line);
+        chart.resize(SizeCss { w: 400.0, h: 300.0 }, 1.0);
+        chart
+            .set_data(candles, ohlc(&[10, 20, 30, 40], 5.0))
+            .unwrap();
+        chart
+            .set_markers(
+                candles,
+                vec![Marker {
+                    time: 20,
+                    size: Some(Css(16.0)),
+                    ..Marker::default()
+                }],
+            )
+            .unwrap();
+        chart.fit_content();
+        chart.build_frame(0.0, &MonoMeasurer);
+        let icon = chart.frame().pools.icons[0];
+        let hovers = |chart: &mut Chart| -> Vec<Option<MarkerHit>> {
+            chart
+                .drain_events()
+                .filter_map(|e| match e {
+                    ChartEvent::MarkerHover(h) => Some(h),
+                    _ => None,
+                })
+                .collect()
+        };
+        let mv = |chart: &mut Chart, x: f32, y: f32, t: f64| {
+            chart.handle_input(InputEvent::PointerMove {
+                id: 0,
+                pos: PointCss { x, y },
+                mods: Modifiers::default(),
+                time_ms: t,
+            });
+            chart.build_frame(t, &MonoMeasurer);
+        };
+        let _ = hovers(&mut chart);
+        mv(&mut chart, icon.pos.x, icon.pos.y, 16.0);
+        let h = hovers(&mut chart);
+        assert_eq!(h.len(), 1);
+        let hit = h[0].unwrap();
+        assert_eq!(
+            (hit.series, hit.index, hit.overflow, hit.size),
+            (candles, 0, 0, Css(16.0))
+        );
+        // Moving within the marker sends nothing; leaving sends `None`.
+        mv(&mut chart, icon.pos.x + 2.0, icon.pos.y, 32.0);
+        assert!(hovers(&mut chart).is_empty());
+        mv(&mut chart, icon.pos.x, icon.pos.y + 60.0, 48.0);
+        assert_eq!(hovers(&mut chart), vec![None]);
+
+        // Without a crosshair, moving the pointer still asks for a frame, in
+        // which the hover is decided.
+        chart.set_crosshair_mode(CrosshairMode::Hidden);
+        chart.build_frame(64.0, &MonoMeasurer);
+        assert_eq!(chart.needs_redraw(), Invalidation::None);
+        chart.handle_input(InputEvent::PointerMove {
+            id: 0,
+            pos: PointCss {
+                x: icon.pos.x,
+                y: icon.pos.y,
+            },
+            mods: Modifiers::default(),
+            time_ms: 80.0,
+        });
+        assert_ne!(chart.needs_redraw(), Invalidation::None);
+        chart.build_frame(80.0, &MonoMeasurer);
+        assert_eq!(hovers(&mut chart).len(), 1);
     }
 
     /// Draws one rectangle filling its area, and reports whether it had

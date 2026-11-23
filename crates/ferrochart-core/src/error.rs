@@ -39,6 +39,9 @@ pub enum Error {
     Unsupported(&'static str),
     /// A required allocation could not be satisfied.
     OutOfMemory,
+    /// A fixed limit was reached (for example 1024 icons per chart). The
+    /// payload names the limit.
+    CapacityExceeded(&'static str),
 }
 
 impl fmt::Display for Error {
@@ -55,6 +58,7 @@ impl fmt::Display for Error {
             Self::UnknownId => f.write_str("unknown id"),
             Self::Unsupported(what) => write!(f, "unsupported: {what}"),
             Self::OutOfMemory => f.write_str("out of memory"),
+            Self::CapacityExceeded(what) => write!(f, "capacity exceeded: {what}"),
         }
     }
 }

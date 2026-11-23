@@ -54,6 +54,10 @@ line = chart.add_series("line", color="#ff9800", line_width=2)
 candles.apply_options(down_color="#e91e63")
 candles.create_price_line(101.5, title="target", line_style="dashed")
 candles.set_markers([{"time": t, "position": "below_bar", "shape": "arrow_up", "text": "buy"}])
+whale = chart.add_icon(avatar)       # a (height, width, 4) uint8 array; RGB works too
+candles.set_markers([{"time": t, "icon": whale, "size": 24, "border": "#2fbf71"},
+                     {"time": t, "label": "DB", "position": "below_bar"}])
+candles.apply_options(marker_stack_limit=4)   # 3 markers per bar side, then "+k"
 chart.apply_price_scale_options(mode="logarithmic")
 
 rsi = chart.add_indicator(candles, "rsi", n=14)
@@ -86,8 +90,23 @@ chart.on("crosshair_move", lambda e: print(e["point"]))
 
 Events: `click`, `crosshair_move`, `visible_range_changed`,
 `need_more_history`, `drawing_created`, `drawing_modified`, `drawing_removed`,
-`drawing_selected`, `warning`. Callbacks run on the main thread while the
+`drawing_selected`, `warning`, `marker_hover` (a dict with `series`, `index`,
+`overflow`, `x`, `y`, `size`, or `None` when the pointer leaves the marker). Callbacks run on the main thread while the
 chart is shown.
+
+## Chinese, Japanese and Korean text
+
+The bundled font covers Latin letters, digits and common symbols. For other
+scripts, pass font files (paths or bytes), searched in order; characters that
+no font has are drawn as `□`:
+
+```python
+chart = fc.Chart(fonts=["/System/Library/Fonts/Hiragino Sans GB.ttc"])  # macOS
+chart = fc.Chart(fonts=["NotoSansSC-Regular.otf"])                     # any system
+```
+
+The fonts are used by `show()` and `to_png()`. In Jupyter, the browser draws
+with its own fonts and `fonts` is not needed. See [Markers](markers.md).
 
 ## Windows
 

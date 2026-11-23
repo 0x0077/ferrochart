@@ -8,7 +8,7 @@
 //
 // Without ids or --cat: every example. Needs the engine built:
 //   (cd crates/ferrochart-wasm && wasm-pack build --release --target web)
-import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { register } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
@@ -38,6 +38,8 @@ await mkdir(out, { recursive: true });
 await writeFile(`${site}index.html`, '<!doctype html><meta charset="utf-8"><link rel="icon" href="data:,"><style>html,body{margin:0;height:100%;background:#0b0d12}canvas{display:block;width:100vw;height:100vh}canvas[data-side]{float:left}canvas[data-side=main]{width:72vw}canvas[data-side=plot]{width:28vw}</style><canvas id="chart"></canvas><script type="module" src="./demo-harness.js"></script>');
 await copyFile(fileURLToPath(new URL('./pages/demo-harness.js', import.meta.url)), `${site}demo-harness.js`);
 for (const f of ['ferrochart_wasm.js', 'ferrochart_wasm_bg.wasm']) await copyFile(`${pkg}${f}`, `${site}${f}`);
+// Static files the examples load (wallet avatars).
+await cp(fileURLToPath(new URL('../../site/public/avatars/', import.meta.url)), `${site}avatars/`, { recursive: true });
 
 const server = await startSiteServer(site);
 const launch = () => chromium.launch({ channel: 'chrome', headless: false });

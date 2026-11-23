@@ -102,6 +102,7 @@ chart.destroy();
 | `sync` | `{ message: SyncMessage }` | The chart posted a message to its sync group |
 | `drawingSync` | `{}` | The chart has drawing sync operations waiting to be taken |
 | `warning` | `ChartWarning` | The chart adjusted something on its own |
+| `markerHover` | `MarkerHoverEvent \| null` | The pointer moved onto a marker or a "+k" badge, or off it |
 
 ### click
 
@@ -119,6 +120,7 @@ interface ClickEvent {
 type ClickTarget =
   | { type: 'drawing'; id: number }
   | { type: 'marker'; series: Series; index: number }
+  | { type: 'markerOverflow'; series: Series; first: number; count: number }
   | { type: 'series'; series: Series };
 ```
 
@@ -131,7 +133,10 @@ sent while a drawing is being created.
 1. **A drawing** (its body or one of its handles): `{ type: 'drawing', id }`.
    Pressing a drawing also selects it.
 2. **A marker**: `{ type: 'marker', series, index }`, where `index` is the
-   marker's position in `series.markers()` (which is sorted by time).
+   marker's position in `series.markers()` (which is sorted by time). A "+k"
+   badge of folded markers gives `{ type: 'markerOverflow', series, first,
+   count }`: the markers not drawn are `series.markers().slice(first, first +
+   count)` (see [Markers](markers.md)).
 3. **A series**: `{ type: 'series', series }` when the pointer is on a
    candle's body or wick, within 4 CSS px of a line, inside a histogram bar or
    on a dot. With overlapping series, the one added last wins.
@@ -274,6 +279,26 @@ chart.on('warning', (w) => {
   if (w.kind === 'timeAxisMerged') console.warn(`time axis rebuilt: ${w.count} bars inserted by series ${w.series.id}`);
 });
 ```
+
+### markerHover
+
+```ts
+interface MarkerHoverEvent {
+  series: Series;
+  index: number;          // position in series.markers(); for a badge, the first marker not drawn
+  overflow: number;       // k for a "+k" badge, 0 for a marker
+  x: number;              // center, CSS px from the canvas' top-left corner
+  y: number;
+  size: number;           // diameter, CSS px
+}
+```
+
+The payload is `null` when the pointer leaves the marker. Moving from one
+marker straight onto another sends only the new one. The marker under the
+pointer is found when a frame is drawn, so the event comes at most once per
+frame; drawings are not considered, and while the intro animation plays no
+marker counts as hovered. Use it for tooltips over avatars or badges (see
+[Markers](markers.md)).
 
 ## Example: a legend that follows the crosshair
 

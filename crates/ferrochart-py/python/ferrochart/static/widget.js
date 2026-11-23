@@ -79,6 +79,7 @@ const EVENT_NAMES = {
   drawing_removed: 'drawingRemoved',
   drawing_selected: 'drawingSelected',
   warning: 'warning',
+  marker_hover: 'markerHover',
 };
 
 const PLOT_EVENT_NAMES = {
@@ -133,7 +134,12 @@ class View {
     this.seq = null; // snapshot not applied yet
     this.listeners = [];
     this.closed = false;
-    this.onMsg = (msg, buffers) => this.message(msg, buffers).catch((e) => console.error('ferrochart:', e));
+    // Messages are handled one after the other: registerIcon is asynchronous
+    // and the operations after it may use the image.
+    this.queue = Promise.resolve();
+    this.onMsg = (msg, buffers) => {
+      this.queue = this.queue.then(() => this.message(msg, buffers)).catch((e) => console.error('ferrochart:', e));
+    };
     this.onEvents = () => this.subscribe();
     model.on('msg:custom', this.onMsg);
     model.on('change:events', this.onEvents);
@@ -165,12 +171,12 @@ class View {
         this.dispose();
         return;
       }
-      for (const op of msg.ops) this.apply(op, buffers);
+      for (const op of msg.ops) await this.apply(op, buffers);
       this.seq = msg.seq;
       this.subscribe();
     } else if (msg.type === 'ops') {
       if (this.seq === null || msg.seq <= this.seq) return;
-      for (const op of msg.ops) this.apply(op, buffers);
+      for (const op of msg.ops) await this.apply(op, buffers);
       this.seq = msg.seq;
     }
   }
@@ -323,6 +329,15 @@ class View {
     const pane = op.pane ?? undefined;
     try {
       switch (op.op) {
+        case 'registerIcon': {
+          const b = buffers[op.buffer];
+          const px = new Uint8ClampedArray(b.buffer, b.byteOffset, b.byteLength);
+          return c.registerIcon(op.name, new ImageData(px.slice(), op.width, op.height))
+            .catch((e) => console.error(`ferrochart: ${op.op} failed:`, e));
+        }
+        case 'unregisterIcon':
+          c.unregisterIcon(op.name);
+          break;
         case 'addSeries':
           this.series.set(op.id, c.addSeries(op.kind, op.options, pane));
           break;

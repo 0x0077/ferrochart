@@ -45,6 +45,7 @@
 #![forbid(unsafe_code)]
 
 mod atlas;
+mod icon_atlas;
 mod native;
 mod pipelines;
 mod series;
@@ -69,9 +70,10 @@ use ferrochart_core::transform_helpers::{
 use ferrochart_text::TextEngine;
 
 use crate::atlas::Atlas;
+use crate::icon_atlas::IconAtlas;
 use crate::pipelines::{
     DrawUniform, GlyphInstance, IconInstance, LineInstance, Pipelines, RectInstance,
-    TriangleInstance,
+    RichIconInstance, TriangleInstance,
 };
 use crate::series::{COLOR_BYTES, Scratch, SeriesGpu, ohlc_offset, value_offset};
 
@@ -320,7 +322,16 @@ enum Op {
         start: u32,
         count: u32,
     },
+    /// Glyphs from the color atlas (same instance buffer as `Glyphs`).
+    ColorGlyphs {
+        start: u32,
+        count: u32,
+    },
     Icons {
+        start: u32,
+        count: u32,
+    },
+    RichIcons {
         start: u32,
         count: u32,
     },
@@ -442,6 +453,9 @@ pub struct WgpuRenderer {
     pipelines: Pipelines,
     atlas: Atlas,
     atlas_bind: wgpu::BindGroup,
+    color_atlas_bind: wgpu::BindGroup,
+    icon_atlas: IconAtlas,
+    icon_atlas_bind: wgpu::BindGroup,
     text: TextEngine,
     series: HashMap<u32, SeriesGpu>,
     scratch: Scratch,
@@ -454,6 +468,7 @@ pub struct WgpuRenderer {
     rect_buf: GrowBuffer,
     line_buf: GrowBuffer,
     icon_buf: GrowBuffer,
+    rich_icon_buf: GrowBuffer,
     tri_buf: GrowBuffer,
     glyph_buf: GrowBuffer,
     cache: Option<LayerCache>,
@@ -462,6 +477,7 @@ pub struct WgpuRenderer {
     rects: Vec<RectInstance>,
     lines: Vec<LineInstance>,
     icons: Vec<IconInstance>,
+    rich_icons: Vec<RichIconInstance>,
     tris: Vec<TriangleInstance>,
     glyphs: Vec<GlyphInstance>,
     main_ops: Vec<Op>,
@@ -501,7 +517,10 @@ impl WgpuRenderer {
         }));
         let pipelines = Pipelines::new(&device, format);
         let atlas = Atlas::new(&device);
-        let atlas_bind = Self::texture_bind(&device, &pipelines, &atlas.view);
+        let atlas_bind = Self::texture_bind(&device, &pipelines, &atlas.mono.view);
+        let color_atlas_bind = Self::texture_bind(&device, &pipelines, &atlas.color.view);
+        let icon_atlas = IconAtlas::new(&device);
+        let icon_atlas_bind = Self::texture_bind(&device, &pipelines, &icon_atlas.view);
         let uniform_buf =
             GrowBuffer::new(&device, "ferrochart uniforms", wgpu::BufferUsages::UNIFORM);
         let uniform_bind = Self::uniform_bind(&device, &pipelines, &uniform_buf.buffer);
@@ -510,6 +529,11 @@ impl WgpuRenderer {
             rect_buf: GrowBuffer::new(&device, "ferrochart rects", wgpu::BufferUsages::VERTEX),
             line_buf: GrowBuffer::new(&device, "ferrochart lines", wgpu::BufferUsages::VERTEX),
             icon_buf: GrowBuffer::new(&device, "ferrochart icons", wgpu::BufferUsages::VERTEX),
+            rich_icon_buf: GrowBuffer::new(
+                &device,
+                "ferrochart icons with images",
+                wgpu::BufferUsages::VERTEX,
+            ),
             tri_buf: GrowBuffer::new(&device, "ferrochart triangles", wgpu::BufferUsages::VERTEX),
             glyph_buf: GrowBuffer::new(&device, "ferrochart glyphs", wgpu::BufferUsages::VERTEX),
             queue: ctx.queue.clone(),
@@ -518,6 +542,9 @@ impl WgpuRenderer {
             pipelines,
             atlas,
             atlas_bind,
+            color_atlas_bind,
+            icon_atlas,
+            icon_atlas_bind,
             text: TextEngine::new(),
             series: HashMap::new(),
             scratch: Scratch::default(),
@@ -535,6 +562,7 @@ impl WgpuRenderer {
             rects: Vec::new(),
             lines: Vec::new(),
             icons: Vec::new(),
+            rich_icons: Vec::new(),
             tris: Vec::new(),
             glyphs: Vec::new(),
             main_ops: Vec::new(),
@@ -885,7 +913,9 @@ impl WgpuRenderer {
                 (Op::Rects { start, count }, Op::Rects { start: s, count: n })
                 | (Op::Lines { start, count }, Op::Lines { start: s, count: n })
                 | (Op::Glyphs { start, count }, Op::Glyphs { start: s, count: n })
+                | (Op::ColorGlyphs { start, count }, Op::ColorGlyphs { start: s, count: n })
                 | (Op::Icons { start, count }, Op::Icons { start: s, count: n })
+                | (Op::RichIcons { start, count }, Op::RichIcons { start: s, count: n })
                 | (Op::Triangles { start, count }, Op::Triangles { start: s, count: n })
                     if *start + *count == s =>
                 {
@@ -1024,7 +1054,14 @@ impl WgpuRenderer {
                 src: [slot.x as f32, slot.y as f32],
                 color: rgba(run.color),
             });
-            Self::push_op(ops, Op::Glyphs { start, count: 1 });
+            Self::push_op(
+                ops,
+                if slot.color {
+                    Op::ColorGlyphs { start, count: 1 }
+                } else {
+                    Op::Glyphs { start, count: 1 }
+                },
+            );
         }
     }
 
@@ -1331,6 +1368,22 @@ impl WgpuRenderer {
                 DrawCmd::Series(s) => self.series_draw(ops, frame, data, &s, viewport),
                 DrawCmd::Icon(span) => {
                     for icon in pools.icons.get(span.range()).unwrap_or(&[]) {
+                        let tile = icon.image.and_then(|id| self.icon_atlas.tile_of(id));
+                        let bordered = icon.border.a > 0 && icon.border_width.0 > 0.0;
+                        if (tile.is_some() || bordered) && icon.size.0 > 0.0 {
+                            let start = u32::try_from(self.rich_icons.len()).unwrap_or(u32::MAX);
+                            self.rich_icons.push(RichIconInstance {
+                                pos: [icon.pos.x, icon.pos.y],
+                                size: icon.size.0,
+                                icon: u32::from(icon.icon),
+                                color: rgba(icon.color),
+                                border: rgba(icon.border),
+                                border_width: icon.border_width.0,
+                                tile: tile.unwrap_or([u32::MAX; 2]),
+                            });
+                            Self::push_op(ops, Op::RichIcons { start, count: 1 });
+                            continue;
+                        }
                         if icon.color.a == 0 || icon.size.0 <= 0.0 {
                             continue;
                         }
@@ -1433,6 +1486,17 @@ impl WgpuRenderer {
                     );
                     pass.draw(0..6, 0..count);
                 }
+                Op::RichIcons { start, count } => {
+                    pass.set_pipeline(&self.pipelines.icons_rich);
+                    pass.set_bind_group(0, &self.uniform_bind, &[0]);
+                    pass.set_bind_group(1, &self.icon_atlas_bind, &[]);
+                    let stride = core::mem::size_of::<RichIconInstance>() as u64;
+                    pass.set_vertex_buffer(
+                        0,
+                        self.rich_icon_buf.buffer.slice(u64::from(start) * stride..),
+                    );
+                    pass.draw(0..6, 0..count);
+                }
                 Op::Triangles { start, count } => {
                     pass.set_pipeline(&self.pipelines.triangles);
                     pass.set_bind_group(0, &self.uniform_bind, &[0]);
@@ -1443,10 +1507,15 @@ impl WgpuRenderer {
                     );
                     pass.draw(0..3, 0..count);
                 }
-                Op::Glyphs { start, count } => {
-                    pass.set_pipeline(&self.pipelines.glyphs);
+                Op::Glyphs { start, count } | Op::ColorGlyphs { start, count } => {
+                    let (pipeline, bind) = if let Op::ColorGlyphs { .. } = op {
+                        (&self.pipelines.glyphs_color, &self.color_atlas_bind)
+                    } else {
+                        (&self.pipelines.glyphs, &self.atlas_bind)
+                    };
+                    pass.set_pipeline(pipeline);
                     pass.set_bind_group(0, &self.uniform_bind, &[0]);
-                    pass.set_bind_group(1, &self.atlas_bind, &[]);
+                    pass.set_bind_group(1, bind, &[]);
                     let stride = core::mem::size_of::<GlyphInstance>() as u64;
                     pass.set_vertex_buffer(
                         0,
@@ -1562,6 +1631,13 @@ impl WgpuRenderer {
                 }
             }
         }
+        if self
+            .icon_atlas
+            .sync(&self.device, &self.queue, data.icons())
+        {
+            self.icon_atlas_bind =
+                Self::texture_bind(&self.device, &self.pipelines, &self.icon_atlas.view);
+        }
         self.ensure_cache(size);
         let revisions = (frame.layers[0].revision, frame.layers[1].revision);
         let cache_valid = self
@@ -1574,6 +1650,7 @@ impl WgpuRenderer {
         self.rects.clear();
         self.lines.clear();
         self.icons.clear();
+        self.rich_icons.clear();
         self.tris.clear();
         self.glyphs.clear();
         let viewport = [size.0 as f32, size.1 as f32];
@@ -1618,6 +1695,11 @@ impl WgpuRenderer {
             .write(&self.device, &self.queue, bytemuck::cast_slice(&self.lines));
         self.icon_buf
             .write(&self.device, &self.queue, bytemuck::cast_slice(&self.icons));
+        self.rich_icon_buf.write(
+            &self.device,
+            &self.queue,
+            bytemuck::cast_slice(&self.rich_icons),
+        );
         self.tri_buf
             .write(&self.device, &self.queue, bytemuck::cast_slice(&self.tris));
         self.glyph_buf.write(

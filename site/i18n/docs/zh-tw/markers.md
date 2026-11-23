@@ -1,7 +1,7 @@
-<!-- source: b0ef03b731 -->
+<!-- source: a85278941b -->
 # 標記與價格線
 
-標記是附加在 K 棒上、可附帶文字的小圖示，例如買賣訊號或新聞。價格線是位於固定價格的水平線，例如委託單、停損或目標價。兩者都隸屬於某個系列。每個系列還有一個最新值標籤與一條最新值線，可透過系列選項開啟或關閉。
+標記是附加在 K 棒上、可附帶文字的小圖形，例如買賣訊號或新聞。標記也可以顯示圖片（錢包或帳戶頭像）或簡短的徽章（例如 `DB`），擁擠的 K 棒還可以把標記收合成「+k」徽章。價格線是位於固定價格的水平線，例如委託單、停損或目標價。兩者都隸屬於某個系列。每個系列還有一個最新值標籤與一條最新值線，可透過系列選項開啟或關閉。
 
 ## 標記
 
@@ -31,8 +31,13 @@ candles.setMarkers([]);
 | `shape` | `'circle' \| 'square' \| 'arrowUp' \| 'arrowDown'` | `'circle'` | 實心圖示 |
 | `color` | `Color \| null` | `null` | 圖示與文字顏色；`null` 使用系列的主色（K 線與棒使用上漲顏色） |
 | `text` | `string` | `''` | 圖示旁、遠離 K 棒那一側的文字；空字串表示不顯示 |
+| `size` | `number \| null` | `null` | 直徑（方形則為邊長），4–64 CSS px；`null` 表示 10 |
+| `icon` | `string \| null` | `null` | 以 `chart.registerIcon` 加入的圖片名稱，繪製在圓形或方形內 |
+| `label` | `string` | `''` | 繪製在圓形或方形內、最多 8 個字元的文字，例如 `'DB'`；不可與 `icon` 併用 |
+| `border` | `Color \| null` | `null` | 圖形邊緣內側的外環；`null` 表示不繪製 |
+| `borderWidth` | `number` | `2` | 外環寬度，CSS px |
 
-未知的 `position` 或 `shape`、缺少 `time` 或其非整數，或無效的顏色都會擲出例外，標記維持原狀。
+未知的 `position` 或 `shape`、缺少 `time` 或其非整數、無效的顏色、超出 4–64 的 `size`、超過 8 個字元的 `label`，或在箭頭上使用 `icon` 或 `label`、或在同一個標記上同時使用兩者，都會擲出例外，標記維持原狀。
 
 ### 讀取標記
 
@@ -45,7 +50,7 @@ candles.setMarkers([]);
 - 標記繪製在時間等於 `time` 的 K 棒上。落在兩根 K 棒之間的時間會吸附到**下一根** K 棒；晚於最後一根 K 棒的時間會吸附到最後一根。早於第一根 K 棒的時間會吸附到第一根。
 - 若系列在該 K 棒上沒有值（缺口），則不繪製標記。
 - 標記會跟隨系列的 `shift` 選項。
-- 圖示寬 10 CSS px，與 K 棒相距 4 CSS px。
+- 圖示寬 `size` CSS px（預設為 10），與 K 棒相距 4 CSS px。
 - 同一根 K 棒同一側的多個標記會依 `markers()` 的順序朝遠離 K 棒的方向堆疊。帶有文字的標記占用一個圖示加一行文字的空間。
 - 文字以 K 棒為中心，`aboveBar` 時位於圖示上方，`belowBar` 時位於圖示下方，並使用標記的顏色。
 - 標記會被裁切在繪圖區內。
@@ -57,6 +62,82 @@ candles.setMarkers([
   { time: t, position: 'belowBar', shape: 'circle', text: 'Alert' },
 ]);
 ```
+
+### 圖片、徽章與外環
+
+先以某個名稱註冊一次圖片，之後就能在任意數量的標記中使用該名稱。來源可以是 URL（會被下載；來自其他來源的圖片需要 CORS 標頭）、`HTMLImageElement`、`ImageBitmap`、`ImageData` 或 canvas。圖表會保留一份縮放至 64 × 64 像素以內的副本：
+
+```ts
+await chart.registerIcon('whale', '/avatars/whale.png');
+await chart.registerIcon('dev', document.querySelector('img#dev') as HTMLImageElement);
+
+candles.setMarkers([
+  { time: t1, icon: 'whale', size: 24, border: '#2fbf71' },             // a buy
+  { time: t2, icon: 'whale', size: 24, border: '#ef5350' },             // a sell
+  { time: t2, position: 'belowBar', label: 'DB', color: '#2962ff', size: 20 },
+  { time: t3, position: 'belowBar', label: '狙', color: '#ff9800', size: 20 },
+]);
+```
+
+- 圖片會填滿圓形（裁切成圓形）或方形，疊在標記顏色之上，因此透明圖片會露出其後的顏色。箭頭不能有圖片或標籤。
+- `registerIcon` 傳回一個 promise；使用該名稱前請先等待它完成。以未註冊的名稱呼叫 `setMarkers` 會擲出例外。圖片無法載入或讀取時（下載失敗、來自其他來源且沒有 CORS 標頭的圖片），promise 會被拒絕：此時請讓該標記改用 `label` 或單純的圖形。
+- 再次註冊同一名稱，會替換所有使用它之標記中的圖片。`chart.unregisterIcon(name)` 會將其移除（傳回原本是否存在）；使用它的標記之後只繪製圖形，且 `markers()` 回報其 `icon` 為 `null`。一個圖表最多保存 1024 張圖片。
+- `label` 會置中繪製，顏色與標記顏色形成對比，並縮放以符合大小：拉丁字母約為直徑的 0.45，中文、日文或韓文字元約為 0.6，文字較寬時會更小。
+- `border` 外環繪製在邊緣內側，因此不會改變標記的大小，例如買進用綠色外環、賣出用紅色外環。
+
+### 收合擁擠的 K 棒
+
+當許多標記落在同一根 K 棒上時（例如十幾位交易者在同一分鐘內買進），請在系列上設定 `markerStackLimit`。K 棒每一側最多使用這麼多個位置；最後一個位置顯示「+k」，代表 k 個未繪製的標記：
+
+```ts
+candles.applyOptions({ markerStackLimit: 4 });   // 3 markers, then "+k"
+candles.applyOptions({ markerStackLimit: null }); // no limit (the default)
+```
+
+徽章是系列主色的圓形，大小與它所取代的標記相同。點擊它會傳送一個 `click`，其 target 為 `{ type: 'markerOverflow', series, first, count }`：未繪製的標記為 `series.markers().slice(first, first + count)`，例如可在彈出視窗中列出它們。
+
+### 懸停標記
+
+當指標移到某個標記或「+k」徽章上時，會觸發 `markerHover` 事件；移開時則以 `null` 觸發。事件帶有標記的索引，以及以 CSS px 表示的中心與直徑，這正是提示框所需的資訊：
+
+```ts
+chart.on('markerHover', (e) => {
+  if (!e) return hideTooltip();
+  const list = e.series.markers();
+  if (e.overflow > 0) {
+    showTooltip(e.x, e.y - e.size / 2, `${e.overflow} more`, list.slice(e.index, e.index + e.overflow));
+  } else {
+    showTooltip(e.x, e.y - e.size / 2, list[e.index].text ?? '');
+  }
+});
+```
+
+`index` 是在 `series.markers()` 中的位置；對徽章而言，它是第一個未繪製的標記，而 `overflow` 為 k（標記則為 0）。懸停中的標記是在繪製幀時判定的，因此此事件每幀最多觸發一次。開場動畫播放期間，不會有任何標記被視為懸停中。參見[十字游標與事件](crosshair-events.md)。
+
+### 中文、日文、韓文與 emoji
+
+標記文字與標籤可以使用任何文字。內建字型只涵蓋拉丁字母、數字與常用符號；其他字元的來源為：
+
+- **Web**：瀏覽器本身的字型（系統的 CJK 字型與彩色 emoji），不需任何設定，也不會增加套件大小。
+- **桌面、Python 與 C**：由你加入的字型，依序查找：winit 使用 `WindowOptions { fonts, .. }`，Python 使用 `fc.Chart(fonts=[...])`，C 使用 `ferrochart_add_font`。不會掃描系統字型。通常存在的字型：`/System/Library/Fonts/Hiragino Sans GB.ttc`（macOS）、`C:/Windows/Fonts/msyh.ttc`（Windows）、`/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`（Linux，需安裝 Noto CJK 套件）；或隨應用程式附帶 Noto Sans SC/JP/KR。
+
+所有字型都沒有的字元會畫成 `□`。原生環境不支援彩色 emoji 字型：輪廓 emoji 字型（Noto Emoji）會以文字顏色繪製。文字逐字繪製，不做字形塑形（shaping）：由右至左的文字（阿拉伯文、希伯來文）以及由多個字元組成的 emoji（膚色、家庭與旗幟序列）無法正確顯示。
+
+### Python、C 與 Rust
+
+各個綁定中的欄位都相同：
+
+```python
+red = chart.add_icon(avatar)          # a (height, width, 4) or (height, width, 3) uint8 array
+candles.set_markers([
+    {"time": t, "icon": red, "size": 24, "border": "#2fbf71"},
+    {"time": t, "position": "below_bar", "label": "DB", "color": "#2962ff"},
+])
+candles.apply_options(marker_stack_limit=4)
+chart.on("marker_hover", lambda e: print(e))   # None when the pointer leaves
+```
+
+在 Python 中，`add_icon` 傳回一個整數 id，`remove_icon(id)` 會移除該圖片。在 C 中，`ferrochart_add_icon` 與 `ferrochart_set_markers` 接受相同的欄位（參見 [C、C++ 與 C#](native.md)）。在 Rust 中，`Chart::add_icon` 接受一個 `IconImage`（非預乘 RGBA，最大 256 × 256），並傳回供 `Marker::icon` 使用的 `IconId`；`ChartEvent::MarkerHover` 與 `ClickTarget::MarkerOverflow` 分別是對應的事件與點擊 target。
 
 ### 哪些系列可以有標記
 

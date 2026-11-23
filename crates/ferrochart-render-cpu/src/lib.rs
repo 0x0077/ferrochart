@@ -42,13 +42,14 @@ use ferrochart_core::frame::{
     SeriesKind, SeriesStyle, TextAlign, TextRun, YTransform,
 };
 use ferrochart_core::geom::{PointPx, Px, RectPx, Rgba, SizePx};
+use ferrochart_core::icon::IconTile;
 use ferrochart_core::render::{RenderError, Renderer};
 use ferrochart_core::text::TextMeasurer;
 use ferrochart_core::transform_helpers::{
     ICON_CIRCLE, band_coverage, bar_metrics, candle, chunk_of, coverage_8, dash_on, fill_coverage,
-    fill_edge, gradient_t, histogram, histogram_value_y, icon_coverage, initial_chunk_ref, is_gap,
-    is_up_rel, line_axis, line_coverage, line_segments, ohlc_bar, ohlc_rel, segment_coverage,
-    v_rel, x_center, y, y_bias, y_of_price,
+    fill_edge, gradient_t, histogram, histogram_value_y, icon_coverage, icon_shade,
+    initial_chunk_ref, is_gap, is_up_rel, line_axis, line_coverage, line_segments, ohlc_bar,
+    ohlc_rel, segment_coverage, unpremultiply_8, v_rel, x_center, y, y_bias, y_of_price,
 };
 use ferrochart_text::{GlyphCache, TextEngine};
 use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, Transform};
@@ -286,8 +287,9 @@ impl CpuRenderer {
             }
             DrawCmd::Series(s) => self.draw_series(pm, frame, data, &s),
             DrawCmd::Icon(span) => {
+                let icons = data.icons();
                 for icon in pools.icons.get(span.range()).unwrap_or(&[]) {
-                    self.draw_icon(pm, icon);
+                    self.draw_icon(pm, icon, icon.image.and_then(|id| icons.get(id)));
                 }
             }
             // Unbalanced pops are ignored. No native kinds are declared here,
@@ -332,8 +334,10 @@ impl CpuRenderer {
         }
     }
 
-    /// Built-in icon by its coverage function; shader `fs_icon`.
-    fn draw_icon(&self, pm: &mut Pixmap, icon: &IconInst) {
+    /// Built-in icon by its coverage function; shader `fs_icon`. With an
+    /// image (`tile`) or a border, by `icon_shade` instead (r21); shader
+    /// `fs_icon_rich`.
+    fn draw_icon(&self, pm: &mut Pixmap, icon: &IconInst, tile: Option<&IconTile>) {
         let Some(clip) = self.clip() else {
             return;
         };
@@ -345,15 +349,21 @@ impl CpuRenderer {
             y1: (icon.pos.y + reach).ceil() as i32,
         }
         .intersect(clip);
-        if b.is_empty() || icon.color.a == 0 {
+        let rich = tile.is_some() || (icon.border.a > 0 && icon.border_width.0 > 0.0);
+        if b.is_empty() || (icon.color.a == 0 && !rich) {
             return;
         }
         for y in b.y0..b.y1 {
             for x in b.x0..b.x1 {
                 let dx = x as f32 + 0.5 - icon.pos.x;
                 let dy = y as f32 + 0.5 - icon.pos.y;
-                let c = icon_coverage(icon.icon, dx, dy, icon.size.0);
-                Self::blend(pm, x, y, icon.color, coverage_8(c));
+                if rich {
+                    let c = unpremultiply_8(icon_shade(icon, dx, dy, tile));
+                    Self::blend(pm, x, y, c, 255);
+                } else {
+                    let c = icon_coverage(icon.icon, dx, dy, icon.size.0);
+                    Self::blend(pm, x, y, icon.color, coverage_8(c));
+                }
             }
         }
     }
@@ -526,10 +536,23 @@ impl CpuRenderer {
                     if x < clip.x0 || x >= clip.x1 {
                         continue;
                     }
-                    let cov = g.coverage[(gy * g.width as i32 + gxi) as usize];
-                    if cov > 0 {
-                        Self::blend(pm, x, y, run.color, cov);
+                    let k = (gy * g.width as i32 + gxi) as usize;
+                    let cov = g.coverage[k];
+                    if cov == 0 {
+                        continue;
                     }
+                    // Color glyphs (emoji from a GlyphSource) keep their
+                    // colors; only the text color's alpha applies.
+                    let color = match g.rgba.as_deref().and_then(|p| p.get(k * 4..k * 4 + 3)) {
+                        Some(&[r, g, b]) => Rgba {
+                            r,
+                            g,
+                            b,
+                            a: run.color.a,
+                        },
+                        _ => run.color,
+                    };
+                    Self::blend(pm, x, y, color, cov);
                 }
             }
         }

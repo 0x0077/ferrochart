@@ -32,9 +32,13 @@
 
 #[cfg(target_arch = "wasm32")]
 mod api;
+#[cfg(all(target_arch = "wasm32", feature = "text-browser"))]
+mod browser_text;
 mod convert;
 #[cfg(target_arch = "wasm32")]
 mod host;
+#[cfg(target_arch = "wasm32")]
+mod icons;
 #[cfg(target_arch = "wasm32")]
 mod intro;
 #[cfg(target_arch = "wasm32")]

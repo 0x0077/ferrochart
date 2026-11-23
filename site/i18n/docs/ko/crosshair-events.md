@@ -1,4 +1,4 @@
-<!-- source: 9cee954393 -->
+<!-- source: 5f948529f4 -->
 # 크로스헤어와 이벤트
 
 차트는 자신에게 일어나는 일을 이벤트로 알려 줍니다. 크로스헤어 이동, 클릭,
@@ -101,6 +101,7 @@ chart.destroy();
 | `sync` | `{ message: SyncMessage }` | 차트가 동기화 그룹에 메시지를 보냈을 때 |
 | `drawingSync` | `{}` | 차트에 가져가기를 기다리는 드로잉 동기화 작업이 있을 때 |
 | `warning` | `ChartWarning` | 차트가 스스로 무언가를 조정했을 때 |
+| `markerHover` | `MarkerHoverEvent \| null` | 포인터가 마커나 "+k" 배지 위로 올라갔거나 벗어났을 때 |
 
 ### click
 
@@ -118,6 +119,7 @@ interface ClickEvent {
 type ClickTarget =
   | { type: 'drawing'; id: number }
   | { type: 'marker'; series: Series; index: number }
+  | { type: 'markerOverflow'; series: Series; first: number; count: number }
   | { type: 'series'; series: Series };
 ```
 
@@ -130,7 +132,10 @@ type ClickTarget =
 1. **드로잉**(본체 또는 핸들): `{ type: 'drawing', id }`.
    드로잉을 누르면 그 드로잉이 선택되기도 합니다.
 2. **마커**: `{ type: 'marker', series, index }`. 여기서 `index`는
-   `series.markers()`(시간순으로 정렬됨)에서 마커의 위치입니다.
+   `series.markers()`(시간순으로 정렬됨)에서 마커의 위치입니다. 접힌 마커의
+   "+k" 배지는 `{ type: 'markerOverflow', series, first, count }`를 주며,
+   그려지지 않은 마커는 `series.markers().slice(first, first + count)`입니다
+   ([마커](markers.md) 참고).
 3. **시리즈**: 포인터가 캔들의 몸통이나 꼬리 위, 선에서 4 CSS px 이내,
    히스토그램 막대 안, 또는 점 위에 있을 때 `{ type: 'series', series }`.
    시리즈가 겹치면 마지막에 추가된 시리즈가 우선합니다.
@@ -273,6 +278,25 @@ chart.on('warning', (w) => {
   if (w.kind === 'timeAxisMerged') console.warn(`time axis rebuilt: ${w.count} bars inserted by series ${w.series.id}`);
 });
 ```
+
+### markerHover
+
+```ts
+interface MarkerHoverEvent {
+  series: Series;
+  index: number;          // position in series.markers(); for a badge, the first marker not drawn
+  overflow: number;       // k for a "+k" badge, 0 for a marker
+  x: number;              // center, CSS px from the canvas' top-left corner
+  y: number;
+  size: number;           // diameter, CSS px
+}
+```
+
+포인터가 마커를 벗어나면 페이로드는 `null`입니다. 한 마커에서 다른 마커로 바로
+옮겨 가면 새 마커만 전송됩니다. 포인터 아래의 마커는 프레임을 그릴 때 찾으므로
+이벤트는 프레임당 최대 한 번 전송됩니다. 드로잉은 고려하지 않으며, 인트로
+애니메이션이 재생되는 동안에는 어떤 마커도 호버된 것으로 보지 않습니다. 아바타나
+배지 위의 툴팁에 사용하세요([마커](markers.md) 참고).
 
 ## 예제: 크로스헤어를 따라가는 범례
 

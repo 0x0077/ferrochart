@@ -9,7 +9,10 @@ import os
 import threading
 import traceback
 import weakref
+from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
+
+import numpy as np
 
 from . import _data, _jupyter
 from . import _native
@@ -39,10 +42,11 @@ EVENTS = (
     "drawing_removed",
     "drawing_selected",
     "warning",
+    "marker_hover",
 )
 
 
-def _dispatch(ref: "weakref.ref[Chart]", name: str, payload: dict[str, Any]) -> None:
+def _dispatch(ref: "weakref.ref[Chart]", name: str, payload: dict[str, Any] | None) -> None:
     """The native event handler of a chart (holds it weakly: no cycle)."""
     chart = ref()
     if chart is not None:
@@ -66,6 +70,13 @@ class Chart:
 
     `attribution_logo` shows a small FerroChart logo at the bottom-left of
     the chart in Jupyter only; native windows and `to_png` never draw it.
+
+    `fonts`: fallback fonts (paths or bytes of TTF/OTF/TTC files) for
+    characters the bundled font lacks, such as Chinese, in windows and
+    `to_png`; characters no font has draw as □. Jupyter uses the browser's
+    fonts instead. Common CJK fonts: macOS
+    `/System/Library/Fonts/Hiragino Sans GB.ttc`, Windows
+    `C:/Windows/Fonts/msyh.ttc`, Linux `/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`.
     """
 
     def __init__(
@@ -75,8 +86,10 @@ class Chart:
         height: float = 720,
         *,
         attribution_logo: bool = True,
+        fonts: Iterable[str | os.PathLike[str] | bytes] = (),
     ) -> None:
-        self._native = _native.Chart(theme, float(width), float(height))
+        data = [bytes(f) if isinstance(f, (bytes, bytearray, memoryview)) else Path(f).read_bytes() for f in fonts]
+        self._native = _native.Chart(theme, float(width), float(height), data)
         self._theme = theme
         # Creation options of the Jupyter front end.
         self._options = {"attributionLogo": bool(attribution_logo)}
@@ -96,6 +109,28 @@ class Chart:
         if self._rec is not None:
             self._rec.record(op, buffer)
 
+    # Images -----------------------------------------------------------------
+
+    def add_icon(self, image: Any) -> int:
+        """Registers an image for markers (`icon=` in `Series.set_markers`)
+        and returns its id: an RGBA or RGB `uint8` array of shape
+        `(height, width, 4)` or `(height, width, 3)`, sides 1–256, or
+        anything `numpy.asarray` turns into one (a PIL image). It is scaled
+        to fit 64×64, keeping its aspect ratio. At most 1024 per chart."""
+        a = np.ascontiguousarray(np.asarray(image), dtype=np.uint8)
+        icon = int(self._native.add_icon(a))
+        if a.shape[2] == 3:
+            a = np.concatenate([a, np.full(a.shape[:2] + (1,), 255, np.uint8)], axis=2)
+        self._record({"op": "registerIcon", "name": str(icon), "width": int(a.shape[1]),
+                      "height": int(a.shape[0])}, a.tobytes())
+        return icon
+
+    def remove_icon(self, icon: int) -> None:
+        """Removes an image added with `add_icon`; markers using it draw
+        their shape only."""
+        self._native.remove_icon(int(icon))
+        self._record({"op": "unregisterIcon", "name": str(int(icon))})
+
     # Series and panes -----------------------------------------------------
 
     def add_series(self, kind: str = "candlestick", pane: int | None = None, **options: Any) -> Series:
@@ -106,7 +141,9 @@ class Chart:
         `last_value_visible`, `price_line_visible`, `shift`,
         `price_precision` (0 to 12 decimals; None, the default, is automatic:
         at least 2 decimals and 4 significant digits, with subscript zeros
-        for small prices such as 0.0₄1234)."""
+        for small prices such as 0.0₄1234), `marker_stack_limit` (most
+        markers stacked on one side of a bar, the rest folding into a "+k"
+        badge; None, the default, for no limit)."""
         s = Series(self, self._native.add_series(kind, options, pane))
         self._record({"op": "addSeries", "id": s.id, "kind": camel(kind),
                       "options": _jupyter.series_options(options), "pane": pane})
@@ -276,7 +313,11 @@ class Chart:
 
         Payloads (dicts): `click`: `x`, `y` (CSS px), `pane`, `logical_index`,
         `time` (ms or None), `price`, `target` (None or a dict with `type`
-        'series', 'marker' or 'drawing' and `series` / `index` / `id`);
+        'series', 'marker' or 'drawing' and `series` / `index` / `id`, or
+        'marker_overflow' with `series`, `first`, `count` for a "+k" badge);
+        `marker_hover`: None when the pointer leaves a marker, else
+        `series`, `index`, `overflow` (k of a "+k" badge, else 0), `x`, `y`
+        (center, CSS px) and `size` (diameter);
         `crosshair_move`: `point` (None or `logical_index`, `time`, `pane`,
         `price`, `bar`); `visible_range_changed`: `from`, `to`;
         `need_more_history`: `bars_before_start`; `drawing_*`: `id`.
@@ -313,13 +354,18 @@ class Chart:
         native = self._native.series_by_id(sid)
         return sid if native is None else Series(self, native)
 
-    def _emit(self, name: str, payload: dict[str, Any]) -> None:
+    def _emit(self, name: str, payload: dict[str, Any] | None) -> None:
         handlers = list(self._handlers.get(name, ()))
         if not handlers:
             return
-        target = payload.get("target")
-        if isinstance(target, dict) and "series" in target:
-            target["series"] = self._series_of(target["series"])
+        if payload is not None:
+            target = payload.get("target")
+            if isinstance(target, dict) and "series" in target:
+                target["series"] = self._series_of(target["series"])
+                if target.get("type") == "markerOverflow":  # from Jupyter
+                    target["type"] = "marker_overflow"
+            if name == "marker_hover" and "series" in payload:
+                payload["series"] = self._series_of(payload["series"])
         for cb in handlers:
             try:
                 cb(payload)
@@ -546,7 +592,10 @@ class Series:
     def set_markers(self, markers: Iterable[Mapping[str, Any]]) -> None:
         """Replaces the markers: dicts with `time`, `position` ('above_bar',
         'below_bar'), `shape` ('circle', 'square', 'arrow_up', 'arrow_down'),
-        `color`, `text`."""
+        `color`, `text` (beside the marker), `size` (diameter, 4–64 CSS px),
+        `icon` (an id from `Chart.add_icon`, drawn inside a circle or
+        square), `label` (up to 8 characters inside it, not with `icon`),
+        `border` (a ring color) and `border_width` (default 2)."""
         out = []
         for m in markers:
             m = dict(m)

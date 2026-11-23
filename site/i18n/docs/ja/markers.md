@@ -1,7 +1,7 @@
-<!-- source: b0ef03b731 -->
+<!-- source: a85278941b -->
 # マーカーと価格ライン
 
-マーカーは、足に付ける小さなアイコンで、テキストも付けられます。売買シグナルやニュースなどに使います。価格ラインは固定価格の水平線で、注文、ストップ、ターゲットなどに使います。どちらもシリーズに属します。各シリーズには最新値ラベルと最新値ラインもあり、シリーズのオプションでオン・オフを切り替えます。
+マーカーは、足に付ける小さな図形で、テキストも付けられます。売買シグナルやニュースなどに使います。マーカーには画像（ウォレットやアカウントのアバター）や`DB`のような短いバッジも表示でき、混み合った足ではマーカーを「+k」バッジにまとめられます。価格ラインは固定価格の水平線で、注文、ストップ、ターゲットなどに使います。どちらもシリーズに属します。各シリーズには最新値ラベルと最新値ラインもあり、シリーズのオプションでオン・オフを切り替えます。
 
 ## マーカー
 
@@ -31,8 +31,13 @@ candles.setMarkers([]);
 | `shape` | `'circle' \| 'square' \| 'arrowUp' \| 'arrowDown'` | `'circle'` | 塗りつぶしのアイコン |
 | `color` | `Color \| null` | `null` | アイコンとテキストの色。`null`ではシリーズのメインカラー（ローソク足とバーでは陽線の色）を使います |
 | `text` | `string` | `''` | アイコンの隣、足と反対側に表示するテキスト。なしの場合は空 |
+| `size` | `number \| null` | `null` | 直径（正方形では一辺）、4〜64 CSS px。`null`では10 |
+| `icon` | `string \| null` | `null` | `chart.registerIcon`で追加した画像の名前。円または正方形の中に描画されます |
+| `label` | `string` | `''` | 円または正方形の中に描く最大8文字のテキスト（`'DB'`など）。`icon`とは併用できません |
+| `border` | `Color \| null` | `null` | 図形の縁の内側に描くリング。`null`ではなし |
+| `borderWidth` | `number` | `2` | リングの幅（CSS px） |
 
-不明な`position`や`shape`、`time`の欠落や整数でない`time`、無効な色は例外を投げ、マーカーは元のままです。
+不明な`position`や`shape`、`time`の欠落や整数でない`time`、無効な色、4〜64の範囲外の`size`、8文字を超える`label`、矢印への`icon`や`label`の指定、または1つのマーカーへの両方の指定は例外を投げ、マーカーは元のままです。
 
 ### マーカーの読み出し
 
@@ -45,7 +50,7 @@ candles.setMarkers([]);
 - マーカーは、時刻が`time`と等しい足に描画されます。2本の足の間の時刻は**次の**足にスナップし、最後の足より後の時刻は最後の足にスナップします。最初の足より前の時刻は最初の足にスナップします。
 - その足でシリーズに値がない（欠損）場合、マーカーは描画されません。
 - マーカーはシリーズの`shift`オプションに従います。
-- アイコンの大きさは10 CSS pxで、足から4 CSS px離れています。
+- アイコンの大きさは`size` CSS px（デフォルトは10）で、足から4 CSS px離れています。
 - 同じ足の同じ側にある複数のマーカーは、`markers()`の順で足から離れる方向に積み重なります。テキスト付きのマーカーは、アイコンとテキスト1行分の場所を取ります。
 - テキストは足の中央に揃えられ、`aboveBar`ではアイコンの上、`belowBar`ではアイコンの下に、マーカーの色で表示されます。
 - マーカーはプロット領域でクリップされます。
@@ -57,6 +62,82 @@ candles.setMarkers([
   { time: t, position: 'belowBar', shape: 'circle', text: 'Alert' },
 ]);
 ```
+
+### 画像、バッジ、枠線
+
+画像は一度だけ名前を付けて登録し、その名前をいくつのマーカーでも使えます。ソースにはURL（取得されます。別オリジンの画像にはCORSヘッダーが必要です）、`HTMLImageElement`、`ImageBitmap`、`ImageData`、またはcanvasを指定できます。チャートは64 × 64ピクセルに収まるよう縮小したコピーを保持します。
+
+```ts
+await chart.registerIcon('whale', '/avatars/whale.png');
+await chart.registerIcon('dev', document.querySelector('img#dev') as HTMLImageElement);
+
+candles.setMarkers([
+  { time: t1, icon: 'whale', size: 24, border: '#2fbf71' },             // a buy
+  { time: t2, icon: 'whale', size: 24, border: '#ef5350' },             // a sell
+  { time: t2, position: 'belowBar', label: 'DB', color: '#2962ff', size: 20 },
+  { time: t3, position: 'belowBar', label: '狙', color: '#ff9800', size: 20 },
+]);
+```
+
+- 画像はマーカーの色の上に、円（丸くクリップ）または正方形いっぱいに描画されるため、透明な画像では背後の色が見えます。矢印には画像もラベルも付けられません。
+- `registerIcon`はPromiseを返します。名前を使う前に完了を待ってください。登録されていない名前で`setMarkers`を呼ぶと例外を投げます。画像を読み込めない、または読み取れない場合（取得の失敗、CORSヘッダーのない別オリジンの画像）はPromiseがrejectされます。そのマーカーには`label`や通常の図形で代替してください。
+- 同じ名前で再登録すると、その名前を使うすべてのマーカーの画像が置き換わります。`chart.unregisterIcon(name)`で削除できます（登録されていたかどうかを返します）。その画像を使っていたマーカーは図形のみを描画し、`markers()`はその`icon`を`null`として返します。1つのチャートが保持できる画像は最大1024個です。
+- `label`はマーカーの色と対照的な色で中央に、収まる大きさで描画されます。ラテン文字では直径の約0.45、中国語・日本語・韓国語の文字では約0.6で、テキストが幅広い場合はさらに小さくなります。
+- `border`のリングは縁の内側に描かれるため、マーカーの大きさは変わりません。たとえば買いには緑、売りには赤のリングを使えます。
+
+### 混み合った足をまとめる
+
+1本の足に多数のマーカーが集まる場合（同じ1分間に十数人のトレーダーが買うなど）は、シリーズに`markerStackLimit`を設定します。足の各側で使う場所はその数までとなり、最後の場所には描画されなかったk個のマーカーを表す「+k」が表示されます。
+
+```ts
+candles.applyOptions({ markerStackLimit: 4 });   // 3 markers, then "+k"
+candles.applyOptions({ markerStackLimit: null }); // no limit (the default)
+```
+
+バッジはシリーズのメインカラーの円で、置き換えるマーカーと同じ大きさです。クリックすると、ターゲットが`{ type: 'markerOverflow', series, first, count }`の`click`が送られます。描画されなかったマーカーは`series.markers().slice(first, first + count)`で、たとえばポップアップに一覧表示するのに使えます。
+
+### マーカーのホバー
+
+`markerHover`イベントは、ポインターがマーカーまたは「+k」バッジに乗ったときに発生し、離れたときには`null`で発生します。マーカーのインデックスと、CSS px単位の中心と直径を持つので、ツールチップに必要な情報がそろいます。
+
+```ts
+chart.on('markerHover', (e) => {
+  if (!e) return hideTooltip();
+  const list = e.series.markers();
+  if (e.overflow > 0) {
+    showTooltip(e.x, e.y - e.size / 2, `${e.overflow} more`, list.slice(e.index, e.index + e.overflow));
+  } else {
+    showTooltip(e.x, e.y - e.size / 2, list[e.index].text ?? '');
+  }
+});
+```
+
+`index`は`series.markers()`における位置です。バッジでは描画されなかった最初のマーカーを指し、`overflow`はkです（マーカーでは0）。ホバー中のマーカーはフレームの描画時に判定されるため、イベントは1フレームにつき最大1回です。イントロアニメーションの再生中は、どのマーカーもホバー中とはみなされません。[クロスヘアとイベント](crosshair-events.md)を参照してください。
+
+### 中国語、日本語、韓国語、絵文字
+
+マーカーのテキストとラベルには任意の文字体系を使えます。同梱フォントはラテン文字、数字、一般的な記号のみに対応しており、それ以外の文字は次のフォントから描画されます。
+
+- **Web**：ブラウザー自身のフォント（システムのCJKフォントとカラー絵文字）。設定は不要で、パッケージにも何も追加されません。
+- **デスクトップ、Python、C**：追加したフォントを順に検索します。winitでは`WindowOptions { fonts, .. }`、Pythonでは`fc.Chart(fonts=[...])`、Cでは`ferrochart_add_font`です。システムフォントは走査しません。通常存在するフォントは`/System/Library/Fonts/Hiragino Sans GB.ttc`（macOS）、`C:/Windows/Fonts/msyh.ttc`（Windows）、`/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`（Linux、Noto CJKパッケージ導入時）です。あるいはNoto Sans SC/JP/KRをアプリケーションに同梱してください。
+
+どのフォントにもない文字は`□`として描画されます。ネイティブではカラー絵文字フォントには対応しておらず、アウトライン絵文字フォント（Noto Emoji）はテキストの色で描画されます。テキストはシェーピングなしで1文字ずつ描画されるため、右から左に書く文字体系（アラビア語、ヘブライ語）や、複数の文字で構成される絵文字（肌の色、家族や旗のシーケンス）は正しく表示されません。
+
+### Python、C、Rust
+
+フィールドはどのバインディングでも同じです。
+
+```python
+red = chart.add_icon(avatar)          # a (height, width, 4) or (height, width, 3) uint8 array
+candles.set_markers([
+    {"time": t, "icon": red, "size": 24, "border": "#2fbf71"},
+    {"time": t, "position": "below_bar", "label": "DB", "color": "#2962ff"},
+])
+candles.apply_options(marker_stack_limit=4)
+chart.on("marker_hover", lambda e: print(e))   # None when the pointer leaves
+```
+
+Pythonでは、`add_icon`は整数のidを返し、`remove_icon(id)`で画像を削除します。Cでは、`ferrochart_add_icon`と`ferrochart_set_markers`が同じフィールドを受け取ります（[C、C++、C#](native.md)を参照）。Rustでは、`Chart::add_icon`が`IconImage`（ストレートRGBA、最大256 × 256）を受け取り、`Marker::icon`用の`IconId`を返します。イベントは`ChartEvent::MarkerHover`、クリックターゲットは`ClickTarget::MarkerOverflow`です。
 
 ### マーカーを持てるシリーズ
 

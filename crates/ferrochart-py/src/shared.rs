@@ -271,11 +271,17 @@ pub(crate) trait Shown: Send + Sync {
     /// on the main thread), or through the queue of `events.rs`. The scene
     /// is not locked, so handlers may change it.
     fn dispatch(self: Arc<Self>, blocking: bool);
+    /// Fallback fonts for the window's renderer.
+    fn fonts(&self) -> Vec<Vec<u8>>;
 }
 
 impl<S: Scene> Shown for Shared<S> {
     fn shown(&self) -> &AtomicBool {
         &self.shown
+    }
+
+    fn fonts(&self) -> Vec<Vec<u8>> {
+        self.lock().parts().renderers.fonts().to_vec()
     }
 
     fn fit_window(&self, size: SizeCss, dpr: f32) {

@@ -214,7 +214,14 @@ pub(crate) async fn open(
     };
     canvas.set_width(size.w as u32);
     canvas.set_height(size.h as u32);
-    let (ctx, renderer, backend) = gpu(canvas, &mode, size).await?;
+    #[allow(unused_mut)] // without `text-browser`
+    let (ctx, mut renderer, backend) = gpu(canvas, &mode, size).await?;
+    #[cfg(feature = "text-browser")]
+    if let Some(glyphs) = crate::browser_text::BrowserGlyphs::new() {
+        renderer
+            .text_engine_mut()
+            .set_glyph_source(Some(Box::new(glyphs)));
+    }
     Ok(Surface {
         ctx,
         renderer,
@@ -435,7 +442,12 @@ fn frame<S: Scene>(host: &Rc<Host<S>>, now: f64) {
         let state = &mut *guard;
         let (animating, finished) = intro::advance(host, &mut state.scene, now);
         S::prepare(state);
-        if state.scene.needs_redraw() != Invalidation::None {
+        // A canvas with a CSS size of 0 (`display: none`, a collapsed
+        // container) has nothing to draw into: skip the frame, keeping the
+        // changes pending, instead of failing with "invalid render target
+        // size". `apply_size` schedules a frame when it gets a size again.
+        let drawable = drawable(state.css, state.dpr);
+        if drawable && state.scene.needs_redraw() != Invalidation::None {
             state.scene.build_frame(now, &state.renderer);
             if let Ok(l) = host.logo.try_borrow()
                 && let Some(l) = l.as_ref()
@@ -460,7 +472,7 @@ fn frame<S: Scene>(host: &Rc<Host<S>>, now: f64) {
         let wake = S::take_events(host, state, &mut events);
         (
             wake,
-            animating || state.scene.needs_redraw() != Invalidation::None,
+            drawable && (animating || state.scene.needs_redraw() != Invalidation::None),
             finished,
         )
     };
@@ -523,6 +535,12 @@ pub(crate) fn report_error(e: &JsValue) {
         }
         None => web_sys::console::error_1(e),
     }
+}
+
+/// Whether a canvas of `css` CSS px at `dpr` has at least one device pixel
+/// each way (the renderer rejects smaller targets).
+fn drawable((w, h): (f64, f64), dpr: f64) -> bool {
+    (w * dpr).round() >= 1.0 && (h * dpr).round() >= 1.0
 }
 
 /// Sizes the canvas backing store and the scene to `css` × dpr.

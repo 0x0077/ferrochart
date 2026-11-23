@@ -1,4 +1,4 @@
-<!-- source: 0c5fc454f5 -->
+<!-- source: 084e0fa734 -->
 # 桌面应用（Rust + winit）
 
 `ferrochart-winit` 负责打开窗口、用 wgpu 渲染，并处理鼠标、触控板和键盘输入。你只需提供一个 `Chart`，以及可选的回调。
@@ -32,6 +32,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 `show` 以默认标题和尺寸打开一个窗口，并在窗口关闭时返回。如需设置标题、尺寸或回调（实时数据、事件），请配合下文的 `ChartApp` 使用 `run(WindowOptions, chart, app)`。`run` 在窗口关闭时返回。图表只在有变化时（输入、新数据、惯性滚动）才重绘，因此空闲的图表不占用 CPU。
+
+内置字体包含拉丁字母、数字和常用符号。要在标记文字、标签和标题中使用中文、日文、韩文或其他文字，请提供后备字体，按顺序查找（不会扫描系统字体；所有字体都没有的字符画成 `□`）：
+
+```rust,ignore
+let options = WindowOptions {
+    fonts: vec![std::fs::read("/System/Library/Fonts/Hiragino Sans GB.ttc")?],
+    ..WindowOptions::default()
+};
+ferrochart_winit::run(options, chart, app)?;
+```
+
+如果使用自己的事件循环，请把它们添加到渲染器：`renderer.text_engine_mut().add_fallback_font(data)`。
 
 ## 实时数据
 

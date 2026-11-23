@@ -97,6 +97,12 @@ export async function m4(canvas: HTMLCanvasElement, other: HTMLCanvasElement): P
     else if (w.kind === 'dataDropped') console.log(w.series.id);
   });
   chart.on('visibleRangeChanged', (e) => console.log(e.from + e.to));
+  // r21 image markers.
+  void chart.registerIcon('avatar', 'https://example.com/a.png').then(() => chart.unregisterIcon('avatar'));
+  candles.setMarkers([{ time: 0, icon: 'avatar', size: 20, border: '#ef5350', borderWidth: 2 }, { time: 0, label: 'DB' }]);
+  candles.applyOptions({ markerStackLimit: 5 });
+  chart.on('markerHover', (e) => { if (e) console.log(e.series.id, e.index, e.overflow, e.x, e.y, e.size); });
+  chart.on('click', (e) => { if (e.target?.type === 'markerOverflow') console.log(e.target.first, e.target.count); });
   // @ts-expect-error: not an event name
   chart.on('nope', () => {});
   const at: number | null = chart.indexOfTime(new Date(0));

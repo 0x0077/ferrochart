@@ -1,4 +1,4 @@
-<!-- source: 8bc24e37b6 -->
+<!-- source: 5a2a4a05ee -->
 # lightweight-charts에서 마이그레이션
 
 lightweight-charts용으로 작성한 코드를 FerroChart로 옮기는 방법은 두 가지입니다.
@@ -156,7 +156,8 @@ console.log(chart.timeScale().getVisibleLogicalRange());
 **마커**
 
 - `position: 'inBar'`는 봉 위에 그려지고, 알 수 없는 `shape`는 원으로
-  그려집니다. `size`와 `id`는 무시됩니다.
+  그려집니다. `size`는 기본 크기의 배수이며(1은 10 CSS px, 4–64 px 범위로
+  제한), `id`는 무시됩니다.
 
 **아직 지원하지 않는 기능**
 

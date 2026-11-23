@@ -1,8 +1,9 @@
-<!-- source: b0ef03b731 -->
+<!-- source: a85278941b -->
 # 마커와 가격선
 
-마커는 봉에 붙는 작은 아이콘이며 텍스트를 함께 달 수 있습니다. 매수·매도 신호나
-뉴스 표시에 씁니다. 가격선은 주문, 손절, 목표가처럼 고정된 가격에 그리는 수평선입니다.
+마커는 봉에 붙는 작은 도형이며 텍스트를 함께 달 수 있습니다. 매수·매도 신호나
+뉴스 표시에 씁니다. 마커는 이미지(지갑이나 계정 아바타)나 `DB` 같은 짧은 배지를
+표시할 수도 있고, 마커가 몰린 봉은 마커를 "+k" 배지로 접을 수 있습니다. 가격선은 주문, 손절, 목표가처럼 고정된 가격에 그리는 수평선입니다.
 둘 다 시리즈에 속합니다. 또한 각 시리즈에는 최근 값 레이블과 최근 값 선이 있으며,
 시리즈 옵션으로 켜고 끕니다.
 
@@ -35,9 +36,16 @@ candles.setMarkers([]);
 | `shape` | `'circle' \| 'square' \| 'arrowUp' \| 'arrowDown'` | `'circle'` | 채워진 아이콘 |
 | `color` | `Color \| null` | `null` | 아이콘과 텍스트 색상, `null`이면 시리즈의 주 색상(캔들과 봉은 상승 색상) 사용 |
 | `text` | `string` | `''` | 아이콘 옆, 봉에서 먼 쪽에 표시되는 텍스트, 없으면 빈 문자열 |
+| `size` | `number \| null` | `null` | 지름(사각형은 한 변), 4–64 CSS px, `null`이면 10 |
+| `icon` | `string \| null` | `null` | `chart.registerIcon`으로 추가한 이미지의 이름, 원이나 사각형 안에 그려짐 |
+| `label` | `string` | `''` | 원이나 사각형 안에 그리는 최대 8자의 텍스트(예: `'DB'`), `icon`과 함께 쓸 수 없음 |
+| `border` | `Color \| null` | `null` | 도형 가장자리 안쪽의 테두리 링, `null`이면 없음 |
+| `borderWidth` | `number` | `2` | 링 두께, CSS px |
 
 알 수 없는 `position`이나 `shape`, 없거나 정수가 아닌 `time`, 유효하지 않은
-색상은 예외를 던지며, 마커는 이전 상태로 유지됩니다.
+색상, 4–64 범위를 벗어난 `size`, 8자를 넘는 `label`, 화살표에 지정한 `icon`이나
+`label`, 또는 한 마커에 둘 다 지정한 경우 예외를 던지며, 마커는 이전 상태로
+유지됩니다.
 
 ### 마커 읽기
 
@@ -56,7 +64,8 @@ candles.setMarkers([]);
   시간은 첫 번째 봉에 맞춰집니다.
 - 그 봉에 시리즈 값이 없으면(공백) 마커는 그려지지 않습니다.
 - 마커는 시리즈의 `shift` 옵션을 따릅니다.
-- 아이콘 크기는 10 CSS px이며 봉에서 4 CSS px 떨어져 있습니다.
+- 아이콘 크기는 `size` CSS px(기본값 10)이며 봉에서 4 CSS px 떨어져
+  있습니다.
 - 같은 봉의 같은 쪽에 있는 여러 마커는 `markers()` 순서대로 봉에서 멀어지는
   방향으로 쌓입니다. 텍스트가 있는 마커는 아이콘에 텍스트 한 줄을 더한 공간을
   차지합니다.
@@ -71,6 +80,123 @@ candles.setMarkers([
   { time: t, position: 'belowBar', shape: 'circle', text: 'Alert' },
 ]);
 ```
+
+### 이미지, 배지, 테두리
+
+이미지를 한 번 이름으로 등록한 뒤, 그 이름을 여러 마커에서 사용합니다. 소스는
+URL(가져오며, 다른 출처의 이미지에는 CORS 헤더가 필요합니다), `HTMLImageElement`,
+`ImageBitmap`, `ImageData` 또는 캔버스일 수 있습니다. 차트는 64 × 64 픽셀에
+맞춰 축소한 사본을 보관합니다.
+
+```ts
+await chart.registerIcon('whale', '/avatars/whale.png');
+await chart.registerIcon('dev', document.querySelector('img#dev') as HTMLImageElement);
+
+candles.setMarkers([
+  { time: t1, icon: 'whale', size: 24, border: '#2fbf71' },             // a buy
+  { time: t2, icon: 'whale', size: 24, border: '#ef5350' },             // a sell
+  { time: t2, position: 'belowBar', label: 'DB', color: '#2962ff', size: 20 },
+  { time: t3, position: 'belowBar', label: '狙', color: '#ff9800', size: 20 },
+]);
+```
+
+- 이미지는 마커 색상 위에 원(둥글게 잘림)이나 사각형을 채우므로, 투명한 이미지는
+  뒤의 색상이 비쳐 보입니다. 화살표에는 이미지나 레이블을 넣을 수 없습니다.
+- `registerIcon`은 프로미스를 반환합니다. 이름을 사용하기 전에 완료를 기다리세요.
+  등록되지 않은 이름으로 `setMarkers`를 호출하면 예외가 발생합니다. 이미지를
+  불러오거나 읽을 수 없으면(가져오기 실패, CORS 헤더 없는 다른 출처의 이미지)
+  프로미스가 거부되므로, 그 마커는 `label`이나 일반 도형으로 대체하세요.
+- 같은 이름을 다시 등록하면 그 이름을 쓰는 모든 마커의 이미지가 교체됩니다.
+  `chart.unregisterIcon(name)`은 이미지를 제거하며(이미지가 있었는지를 반환),
+  그 이미지를 쓰던 마커는 도형만 그리고 `markers()`는 해당 마커의 `icon`을
+  `null`로 보고합니다. 차트 하나는 최대 1024개의 이미지를 보관합니다.
+- `label`은 마커 색상과 대비되는 색으로 가운데에 크기를 맞춰 그립니다. 라틴
+  문자는 지름의 약 0.45, 한중일 문자는 약 0.6 크기이며, 텍스트가 더 넓으면 더
+  작아집니다.
+- `border` 링은 가장자리 안쪽에 그려지므로 마커 크기가 바뀌지 않습니다. 예를 들어
+  매수는 초록색 링, 매도는 빨간색 링으로 표시할 수 있습니다.
+
+### 몰린 봉 접기
+
+한 봉에 마커가 많이 몰릴 때(예: 같은 분에 트레이더 열두 명이 매수) 시리즈에
+`markerStackLimit`을 설정하세요. 봉의 각 쪽에서 최대 그 개수만큼의 자리만
+사용하며, 마지막 자리에는 그려지지 않은 k개의 마커를 나타내는 "+k"가 표시됩니다.
+
+```ts
+candles.applyOptions({ markerStackLimit: 4 });   // 3 markers, then "+k"
+candles.applyOptions({ markerStackLimit: null }); // no limit (the default)
+```
+
+배지는 시리즈의 주 색상으로 그린 원이며, 대신하는 마커와 크기가 같습니다. 배지를
+클릭하면 target이 `{ type: 'markerOverflow', series, first, count }`인 `click`이
+전송됩니다. 그려지지 않은 마커는 `series.markers().slice(first, first + count)`이며,
+예를 들어 팝업에 목록으로 보여 줄 수 있습니다.
+
+### 마커 호버
+
+`markerHover` 이벤트는 포인터가 마커나 "+k" 배지 위로 올라가면 발생하고, 벗어나면
+`null`과 함께 발생합니다. 마커의 인덱스와 CSS px 단위의 중심과 지름을 담고 있어
+툴팁에 필요한 정보를 모두 제공합니다.
+
+```ts
+chart.on('markerHover', (e) => {
+  if (!e) return hideTooltip();
+  const list = e.series.markers();
+  if (e.overflow > 0) {
+    showTooltip(e.x, e.y - e.size / 2, `${e.overflow} more`, list.slice(e.index, e.index + e.overflow));
+  } else {
+    showTooltip(e.x, e.y - e.size / 2, list[e.index].text ?? '');
+  }
+});
+```
+
+`index`는 `series.markers()`에서의 위치입니다. 배지의 경우 그려지지 않은 첫 번째
+마커이며 `overflow`는 k입니다(마커는 0). 호버된 마커는 프레임을 그릴 때 찾으므로
+이벤트는 프레임당 최대 한 번 전송됩니다. 인트로 애니메이션이 재생되는 동안에는
+어떤 마커도 호버된 것으로 보지 않습니다.
+[크로스헤어와 이벤트](crosshair-events.md)를 참고하세요.
+
+### 중국어, 일본어, 한국어와 이모지
+
+마커 텍스트와 레이블에는 어떤 문자든 쓸 수 있습니다. 내장 폰트는 라틴 문자, 숫자,
+일반 기호만 지원하며, 그 밖의 문자는 다음에서 가져옵니다.
+
+- **웹**: 브라우저 자체 폰트(시스템의 CJK 폰트와 컬러 이모지)를 사용하며, 설정할
+  것도 없고 패키지에 추가되는 것도 없습니다.
+- **데스크톱, Python, C**: 직접 추가한 폰트를 순서대로 검색합니다. winit에서는
+  `WindowOptions { fonts, .. }`, Python에서는 `fc.Chart(fonts=[...])`, C에서는
+  `ferrochart_add_font`를 사용합니다. 시스템 폰트는 검색하지 않습니다. 보통
+  설치되어 있는 폰트: `/System/Library/Fonts/Hiragino Sans GB.ttc`(macOS),
+  `C:/Windows/Fonts/msyh.ttc`(Windows),
+  `/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`(Linux, Noto CJK
+  패키지 설치 시). 또는 애플리케이션에 Noto Sans SC/JP/KR을 포함해 배포하세요.
+
+어떤 폰트에도 없는 문자는 `□`로 그려집니다. 네이티브에서는 컬러 이모지 폰트를
+지원하지 않으며, 윤곽선 이모지 폰트(Noto Emoji)는 텍스트 색상으로 그려집니다.
+텍스트는 셰이핑 없이 문자 단위로 그려지므로, 오른쪽에서 왼쪽으로 쓰는 문자(아랍어,
+히브리어)와 여러 문자로 이루어진 이모지(피부색, 가족, 국기 시퀀스)는 올바르게
+표시되지 않습니다.
+
+### Python, C, Rust
+
+필드는 모든 바인딩에서 같습니다.
+
+```python
+red = chart.add_icon(avatar)          # a (height, width, 4) or (height, width, 3) uint8 array
+candles.set_markers([
+    {"time": t, "icon": red, "size": 24, "border": "#2fbf71"},
+    {"time": t, "position": "below_bar", "label": "DB", "color": "#2962ff"},
+])
+candles.apply_options(marker_stack_limit=4)
+chart.on("marker_hover", lambda e: print(e))   # None when the pointer leaves
+```
+
+Python에서 `add_icon`은 정수 id를 반환하고 `remove_icon(id)`는 이미지를
+제거합니다. C에서 `ferrochart_add_icon`과 `ferrochart_set_markers`는 같은 필드를
+받습니다([C, C++, C#](native.md) 참고). Rust에서 `Chart::add_icon`은
+`IconImage`(straight RGBA, 최대 256 × 256)를 받아 `Marker::icon`에 쓸 `IconId`를
+반환하며, `ChartEvent::MarkerHover`와 `ClickTarget::MarkerOverflow`가 각각
+이벤트와 클릭 target입니다.
 
 ### 마커를 가질 수 있는 시리즈
 

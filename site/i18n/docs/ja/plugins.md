@@ -1,4 +1,4 @@
-<!-- source: 69f10455ac -->
+<!-- source: 8785086f6e -->
 # プラグイン
 
 FerroChartにはチャートを拡張する方法が5つあります。いずれもフレームに描画コマンドを書き込むため、すべてのレンダラー（WebGPU、WebGL2、Vulkan/Metal/DX12、CPUレンダラー）で動作し、組み込みのシリーズと同じようにスクリーンショットやゴールデンイメージにも現れます。
@@ -87,7 +87,7 @@ chart.invalidateLayer(id); // after the plugin's own data changed
 chart.removeLayer(id);
 ```
 
-`build(ctx)`は、canvasの左上隅を原点とするCSSピクセル単位のコマンドの配列を返します。コマンドは`rect`、`line`、`polyline`、`polygon`、`text`、`icon`です（各フィールドは`PluginCommand`型に記載されています）。`ctx`の関数（`timeToX`、`priceToY`、`xToTime`、`yToPrice`、`textWidth`、`formatPrice`）は呼び出し中にのみ動作します。例外をthrowしたり無効なコマンドを返したりしたプラグインは、そのフレームでは何も描画しません（不正なコマンドより前のコマンドは残ります）。最初のエラーは`console.warn`で出力されます。
+`build(ctx)`は、canvasの左上隅を原点とするCSSピクセル単位のコマンドの配列を返します。コマンドは`rect`、`line`、`polyline`、`polygon`、`text`、`icon`です（各フィールドは`PluginCommand`型に記載されています）。`icon`はマーカーと同じ追加フィールドを受け取ります：`image`（`chart.registerIcon`で登録した名前）、`label`、`border`、`borderWidth`。これにより、レイヤーは足の位置に限らずどこにでもアバターを描画できます（[マーカー](markers.md)を参照）。`ctx`の関数（`timeToX`、`priceToY`、`xToTime`、`yToPrice`、`textWidth`、`formatPrice`）は呼び出し中にのみ動作します。例外をthrowしたり無効なコマンドを返したりしたプラグインは、そのフレームでは何も描画しません（不正なコマンドより前のコマンドは残ります）。最初のエラーは`console.warn`で出力されます。
 
 JavaScriptのレイヤーはフレームごとに1回、wasmの境界を越えて呼び出されるため、コマンド数は表示されている分（数十万ではなく数百程度）に抑えてください。大規模データには、Rustでカスタムシリーズを書いてください。
 

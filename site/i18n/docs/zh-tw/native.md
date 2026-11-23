@@ -1,4 +1,4 @@
-<!-- source: d61f00164d -->
+<!-- source: e853ddc392 -->
 # C、C++ 與 C#
 
 `ferrochart-ffi` 是一個只有單一標頭檔 `ferrochart.h` 的 C 函式庫。可以直接從 C 與 C++ 使用，也可以從 C#、Swift、Go、Qt、Flutter 或任何能呼叫 C 的語言使用。此函式庫可以繪製到你擁有的原生視窗中，或繪製到 RGBA 緩衝區。
@@ -54,6 +54,39 @@ ferrochart_render_rgba(chart, now_ms, pixels, (size_t)w * 4, (size_t)w * h * 4);
 ```
 
 繪製到視窗：把視窗的原生控制代碼傳給 `ferrochart_attach_window`（`FERROCHART_PLATFORM_WIN32` 搭配 `HWND` 與 `HINSTANCE`，或 `FERROCHART_PLATFORM_APPKIT` 搭配 `NSView*`），在視窗調整大小時呼叫 `ferrochart_resize`，並在 `ferrochart_needs_redraw` 傳回 1 時呼叫 `ferrochart_render`。
+
+## 標記、圖片與字型
+
+標記可以顯示裁切成其形狀的圖片，或簡短的標籤，例如 `"DB"`。圖片只需加入一次（非預乘 RGBA8，最大 256 × 256；圖表會保留一份副本），即可在任意數量的標記中使用其 id：
+
+```c
+uint64_t avatar;
+ferrochart_add_icon(chart, rgba, 64, 64, 64 * 4, &avatar);
+
+FerroChartMarker m[2] = {0};                  // zero fields are defaults
+m[0].size = sizeof m[0];
+m[0].time = t;
+m[0].icon = avatar;
+m[0].marker_size = 24;                        // CSS px, 4–64
+m[0].border = 0x2fbf71ff;
+m[1] = m[0];
+m[1].icon = 0;
+m[1].label = "DB";                            // an image or a label, not both
+m[1].position = FERROCHART_MARKER_BELOW_BAR;
+ferrochart_set_markers(chart, candles, m, 2); // replaces the series' markers
+```
+
+同一根 K 棒上有很多標記時，請在系列選項中設定 `marker_stack_limit`：超過上限的部分由一個「+k」徽章代表。`FERROCHART_EVENT_MARKER_HOVER` 會回報指標下方的標記或徽章（`target_type`、`target_index`，以及其中心 `x`/`y`），例如用來顯示提示框；點擊徽章時，`target_type` 為 `FERROCHART_TARGET_MARKER_OVERFLOW`，並帶有 `count`。
+
+內建字型涵蓋 ASCII 與常用符號。若要顯示中文、日文、韓文或其他文字，請加入字型檔案；字元會依序在已加入的字型中查找，所有字型都沒有時畫成 `□`：
+
+```c
+// font_data: the bytes of a .ttf, .otf or .ttc file, e.g. Noto Sans SC or
+// /System/Library/Fonts/Hiragino Sans GB.ttc on macOS (copied by the call).
+ferrochart_add_font(chart, font_data, font_len);
+```
+
+原生環境不支援彩色 emoji 字型；輪廓 emoji 字型會以文字顏色繪製。
 
 ## 輸入與事件
 

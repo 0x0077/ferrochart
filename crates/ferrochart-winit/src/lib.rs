@@ -67,6 +67,13 @@ pub enum HostError {
     Surface(wgpu::CreateSurfaceError),
     /// No GPU adapter/device, or the surface is unsupported.
     Render(RenderError),
+    /// `WindowOptions::fonts[index]` is not a usable TrueType/OpenType font.
+    Font {
+        /// Index in [`WindowOptions::fonts`].
+        index: usize,
+        /// Why it was rejected.
+        message: String,
+    },
 }
 
 impl std::fmt::Display for HostError {
@@ -76,6 +83,7 @@ impl std::fmt::Display for HostError {
             Self::Window(e) => write!(f, "window: {e}"),
             Self::Surface(e) => write!(f, "surface: {e}"),
             Self::Render(e) => write!(f, "renderer: {e}"),
+            Self::Font { index, message } => write!(f, "font {index}: {message}"),
         }
     }
 }
@@ -89,6 +97,12 @@ pub struct WindowOptions {
     pub title: String,
     /// Initial inner size.
     pub size: SizeCss,
+    /// Fallback fonts (TrueType/OpenType/collection data), searched in order
+    /// for characters the bundled font lacks: CJK and other scripts (r21). Without one
+    /// they are drawn as `□`. No system fonts are
+    /// scanned; for example on macOS
+    /// `std::fs::read("/System/Library/Fonts/Hiragino Sans GB.ttc")`.
+    pub fonts: Vec<Vec<u8>>,
 }
 
 impl Default for WindowOptions {
@@ -99,6 +113,7 @@ impl Default for WindowOptions {
                 w: 1200.0,
                 h: 720.0,
             },
+            fonts: Vec::new(),
         }
     }
 }
@@ -378,7 +393,7 @@ pub fn show(chart: Chart) -> Result<(), HostError> {
 /// # Errors
 ///
 /// [`HostError`] if the event loop, window, surface or GPU device cannot be
-/// created.
+/// created, or a font of [`WindowOptions::fonts`] is not usable.
 pub fn run(options: WindowOptions, chart: Chart, app: impl ChartApp) -> Result<(), HostError> {
     let event_loop = EventLoop::new().map_err(HostError::EventLoop)?;
     let mut host = Host {
@@ -454,6 +469,15 @@ impl<A: ChartApp> Host<A> {
         let size = window.inner_size();
         let mut renderer =
             WgpuRenderer::with_surface(&ctx, surface, physical(size)).map_err(HostError::Render)?;
+        for (index, font) in self.options.fonts.iter().enumerate() {
+            renderer
+                .text_engine_mut()
+                .add_fallback_font(font.clone())
+                .map_err(|e| HostError::Font {
+                    index,
+                    message: e.to_string(),
+                })?;
+        }
         self.app.on_renderer(&mut renderer);
         self.resize_chart(&window);
         Ok(Gpu {

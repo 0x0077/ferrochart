@@ -472,7 +472,9 @@ impl Chart {
     fn set_pointer(&mut self, p: Option<PointPx>) {
         if self.input.pointer != p {
             self.input.pointer = p;
-            if self.input.crosshair != CrosshairMode::Hidden {
+            // A frame decides the hovered marker (`MarkerHover`), so one is
+            // needed when markers were drawn, even without a crosshair.
+            if self.input.crosshair != CrosshairMode::Hidden || self.tracks_marker_hover() {
                 self.invalidation = self.invalidation.max(Invalidation::Cursor);
             }
         }

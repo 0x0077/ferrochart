@@ -1,4 +1,4 @@
-<!-- source: 69f10455ac -->
+<!-- source: 8785086f6e -->
 # 플러그인
 
 FerroChart에서는 다섯 가지 방법으로 차트를 확장할 수 있습니다. 모두 프레임에
@@ -108,7 +108,10 @@ chart.removeLayer(id);
 
 `build(ctx)`는 캔버스 왼쪽 위 모서리 기준 CSS 픽셀 단위의 명령 배열을
 반환합니다. 명령은 `rect`, `line`, `polyline`, `polygon`, `text`, `icon`이
-있습니다(각 필드는 `PluginCommand` 타입에 나와 있습니다). `ctx` 함수
+있습니다(각 필드는 `PluginCommand` 타입에 나와 있습니다). `icon`은 마커와 같은
+추가 필드를 받습니다. `image`(`chart.registerIcon`으로 등록한 이름), `label`,
+`border`, `borderWidth`가 있으므로, 레이어는 봉 위뿐 아니라 어디에든 아바타를
+그릴 수 있습니다([마커](markers.md) 참고). `ctx` 함수
 (`timeToX`, `priceToY`, `xToTime`, `yToPrice`, `textWidth`, `formatPrice`)는
 호출 중에만 동작합니다. 예외를 던지거나 잘못된 명령을 반환한 플러그인은 해당
 프레임에서 아무것도 그리지 않습니다(잘못된 명령 앞의 명령은 유지됩니다). 첫 번째

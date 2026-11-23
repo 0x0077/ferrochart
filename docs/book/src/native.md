@@ -67,6 +67,48 @@ Into a window: pass its native handle to `ferrochart_attach_window`
 the window is resized, and call `ferrochart_render` whenever
 `ferrochart_needs_redraw` returns 1.
 
+## Markers, images and fonts
+
+Markers can show an image clipped to their shape, or a short label such as
+`"DB"`. Add the image once (straight RGBA8, up to 256 × 256; the chart keeps
+a copy) and use its id in any number of markers:
+
+```c
+uint64_t avatar;
+ferrochart_add_icon(chart, rgba, 64, 64, 64 * 4, &avatar);
+
+FerroChartMarker m[2] = {0};                  // zero fields are defaults
+m[0].size = sizeof m[0];
+m[0].time = t;
+m[0].icon = avatar;
+m[0].marker_size = 24;                        // CSS px, 4–64
+m[0].border = 0x2fbf71ff;
+m[1] = m[0];
+m[1].icon = 0;
+m[1].label = "DB";                            // an image or a label, not both
+m[1].position = FERROCHART_MARKER_BELOW_BAR;
+ferrochart_set_markers(chart, candles, m, 2); // replaces the series' markers
+```
+
+With many markers on one bar, set `marker_stack_limit` in the series options:
+beyond it a "+k" badge stands for the rest. `FERROCHART_EVENT_MARKER_HOVER`
+reports the marker or badge under the pointer (`target_type`, `target_index`,
+its center in `x`/`y`), for example to show a tooltip; a click on a badge has
+`target_type` `FERROCHART_TARGET_MARKER_OVERFLOW` and `count`.
+
+The bundled font covers ASCII and common symbols. For Chinese, Japanese,
+Korean or other scripts, add a font file; characters are looked up in the
+added fonts in order, and drawn as `□` when none has them:
+
+```c
+// font_data: the bytes of a .ttf, .otf or .ttc file, e.g. Noto Sans SC or
+// /System/Library/Fonts/Hiragino Sans GB.ttc on macOS (copied by the call).
+ferrochart_add_font(chart, font_data, font_len);
+```
+
+Color emoji fonts are not supported natively; an outline emoji font draws in
+the text color.
+
 ## Input and events
 
 Forward mouse, wheel and key input with `ferrochart_handle_input`

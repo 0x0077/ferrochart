@@ -35,19 +35,27 @@ ${bars(tok('15m', 600))}
 ${load('supply', 'series/memeSupply', tok('15m', 600))}
 ${load('fills', 'events/memeFills', tok('15m', 600))}
 ${load('news', 'events/memeNews', tok('15m', 600))}
+${load('dev', 'events/devTrades', tok('15m', 600))}
 ${FMT}
 // Quote the token by market cap: every price times the supply, in $M.
 const cap = (col) => bars[col].map((p, i) => (p * supply.value[i]) / 1e6);
-const candles = chart.addCandlestickSeries({ pricePrecision: 1 });
+const candles = chart.addCandlestickSeries({ pricePrecision: 1, markerStackLimit: 3 });
 candles.setData({ time: bars.time, open: cap('open'), high: cap('high'), low: cap('low'), close: cap('close') });
 const capAt = new Map(bars.time.map((t, i) => [t, (bars.close[i] * supply.value[i]) / 1e6]));
+// The trader's wallet avatar, ringed green for buys and red for sells, with Chinese labels.
+await chart.registerIcon('me', '/avatars/w01.png');
 const markers = fills.time.map((time, i) => {
   const buy = fills.value[i] > 0;
-  return buy
-    ? { time, position: 'belowBar', shape: 'arrowUp', color: '#2ee6b6', text: 'Buy ' + m(fills.value[i]) }
-    : { time, position: 'aboveBar', shape: 'arrowDown', color: '#ff5d73', text: 'Sell ' + m(fills.value[i]) };
+  const color = buy ? '#2ee6b6' : '#ff5d73'; // the ring and the text
+  return { time, position: buy ? 'belowBar' : 'aboveBar', icon: 'me', size: 22, color, border: color,
+    text: (buy ? '买入 ' : '卖出 ') + m(fills.value[i]) };
 });
-news.time.forEach((time, i) => markers.push({ time, position: 'aboveBar', shape: 'circle', color: '#ffb547', text: news.label[i] }));
+// The developer wallet's swaps as badges: DB (dev buy), DS (dev sell).
+dev.time.forEach((time, i) => {
+  const buy = dev.value[i] > 0;
+  markers.push({ time, position: buy ? 'belowBar' : 'aboveBar', label: buy ? 'DB' : 'DS', size: 22, color: buy ? '#ffb547' : '#b388ff' });
+});
+news.time.forEach((time, i) => markers.push({ time, position: 'aboveBar', shape: 'circle', color: '#4cc9f0', text: news.label[i] }));
 candles.setMarkers(markers.sort((a, b) => a.time - b.time));
 // Average entry of the buys (size-weighted), with a take-profit and a stop.
 let tokens = 0, cost = 0;
@@ -58,9 +66,9 @@ const entry = cost / tokens;
 candles.createPriceLine({ price: entry, color: '#4cc9f0', lineStyle: 'dashed', title: 'avg entry' });
 candles.createPriceLine({ price: entry * 1.5, color: '#2ee6b6', lineStyle: 'dotted', title: 'TP' });
 candles.createPriceLine({ price: entry * 0.8, color: '#ff5d73', lineStyle: 'dotted', title: 'SL' });
-${view(5)}`,
-      about: 'Fifteen-minute candles quoted in market cap ($M, price times supply), with a trader\'s buys and sells and the headlines as markers, and price lines for the average entry, take-profit and stop.',
-      api: ['Series.setMarkers', 'createPriceLine'],
+chart.fitContent();`,
+      about: 'Fifteen-minute candles quoted in market cap ($M, price times supply). A trader\'s buys and sells carry their wallet avatar, ringed green or red, with Chinese labels; the developer wallet\'s swaps are `DB`/`DS` badges, headlines are plain markers, and price lines mark the average entry, take-profit and stop.',
+      api: ['registerIcon', 'Marker.icon', 'Marker.label', 'createPriceLine'],
     },
     {
       id: 'meme-bubbles',
@@ -96,6 +104,62 @@ chart.addLayer({
 ${view(8)}`,
       about: 'A layer plugin draws a bubble at the time and price of each of the 80 largest trades of the last two hours, sized by its notional and colored by the aggressor: buys green, sells red. The top ten are labeled.',
       api: ['addLayer', "{ type: 'icon' }", 'ctx.priceToY'],
+    },
+    {
+      id: 'meme-kol',
+      title: 'KOL and smart-money wallets',
+      group: 'Price',
+      code: `${create()}
+const to = Math.floor(Date.now() / 60_000) * 60_000; // the last whole minute
+const from = to - 50 * 60_000;
+const range = 'symbol=MEME&from=' + from + '&to=' + to;
+const bars = await fetch('/api/bars?interval=1m&' + range).then((r) => r.json());
+const trades = await fetch('/api/trades?' + range).then((r) => r.json());
+// Tracked wallets: influencers (KOL) and wallets with a good record (smart money).
+const wallets = [
+  ['moonboy', 'KOL'], ['gm_capital', 'Smart'], ['ape_lord', 'KOL'], ['sigma.sol', 'Smart'],
+  ['wenlambo', 'KOL'], ['quiet_whale', 'Smart'], ['degen_daily', 'KOL'], ['early_bird', 'Smart'],
+  ['chart_wizard', 'KOL'], ['delta_fund', 'Smart'], ['pump_watch', 'KOL'], ['cold_wallet', 'Smart'],
+  ['meme_queen', 'KOL'], ['alpha_desk', 'Smart'], ['ngmi_labs', 'KOL'], ['flow_reader', 'Smart'],
+].map(([name, kind], i) => ({ name, kind, icon: 'w' + (i + 1) }));
+await Promise.all(wallets.map((w, i) => chart.registerIcon(w.icon, '/avatars/w' + String(i + 1).padStart(2, '0') + '.png')));
+// The 500 largest trades (about ten a minute), each attributed to a tracked wallet (synthetic data).
+const fills = trades.time
+  .map((time, i) => ({ time, usd: trades.price[i] * trades.size[i], buy: trades.side[i] > 0, wallet: wallets[(i * 7 + 3) % wallets.length] }))
+  .sort((a, b) => b.usd - a.usd)
+  .slice(0, 500)
+  .sort((a, b) => a.time - b.time); // markers() is sorted by time: indices match
+const candles = chart.addCandlestickSeries({ markerStackLimit: 4 }); // 3 avatars a side, then "+k"
+candles.setData(bars);
+candles.setMarkers(fills.map((f) => ({
+  time: f.time, position: f.buy ? 'belowBar' : 'aboveBar', icon: f.wallet.icon, size: 18,
+  color: '#1b1f2a', border: f.buy ? '#2ee6b6' : '#ff5d73', borderWidth: f.wallet.kind === 'Smart' ? 3 : 1.5,
+})));
+// A tooltip for the avatar or "+k" badge under the pointer.
+const usd = (v) => (v >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : '$' + (v / 1e3).toFixed(0) + 'k');
+const line = (f) => (f.buy ? 'buy ' : 'sell ') + usd(f.usd) + '  ' + f.wallet.name + ' (' + f.wallet.kind + ')';
+let hover = null;
+const tip = chart.addLayer({
+  pane: 0,
+  position: 'overlay',
+  build(ctx) {
+    if (!hover) return [];
+    const rows = hover.overflow > 0
+      ? [hover.overflow + ' more on this bar', ...fills.slice(hover.index, hover.index + hover.overflow).map(line)]
+      : [line(fills[hover.index])];
+    const width = 16 + Math.max(...rows.map((r) => ctx.textWidth(r, 11)));
+    const x = Math.min(hover.x + hover.size / 2 + 8, ctx.rect.x + ctx.rect.width - width);
+    const y = Math.max(ctx.rect.y, hover.y - 8 - rows.length * 8);
+    return [
+      { type: 'rect', x, y, width, height: 10 + rows.length * 16, color: 'rgba(17, 20, 28, 0.92)' },
+      ...rows.map((text, i) => ({ type: 'text', x: x + 8, y: y + 5 + i * 16, text, size: 11, color: i === 0 && hover.overflow ? '#8a93a6' : '#e6ebf5' })),
+    ];
+  },
+});
+chart.on('markerHover', (e) => { hover = e; chart.invalidateLayer(tip); });
+${view(24)}`,
+      about: 'One-minute candles with the largest trades of 16 tracked wallets as avatars: influencers (KOL) with a thin ring, smart money with a thick one, green for buys and red for sells. Each bar side shows three avatars and folds the rest into a "+k" badge; hovering an avatar or a badge shows who traded and how much (`markerHover`). The wallets are synthetic.',
+      api: ['registerIcon', 'markerStackLimit', 'markerHover', 'addLayer'],
     },
     {
       id: 'meme-line',

@@ -18,7 +18,7 @@ use ferrochart_core::plugin::{Indicator as _, Placement};
 use ferrochart_core::price_scale::ScaleSide;
 use ferrochart_core::theme::Theme;
 use ferrochart_core::{Chart as CoreChart, ChartOptions};
-use numpy::PyReadonlyArray1;
+use numpy::{PyReadonlyArray1, PyReadonlyArrayDyn};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList};
 
@@ -105,8 +105,8 @@ fn pane_of(chart: &CoreChart, pane: Option<u32>) -> PaneId {
 #[pymethods]
 impl Chart {
     #[new]
-    #[pyo3(signature = (theme = "light", width = 1200.0, height = 720.0))]
-    fn new(theme: &str, width: f64, height: f64) -> PyResult<Self> {
+    #[pyo3(signature = (theme = "light", width = 1200.0, height = 720.0, fonts = Vec::new()))]
+    fn new(theme: &str, width: f64, height: f64, fonts: Vec<Vec<u8>>) -> PyResult<Self> {
         let theme = match theme {
             "light" => Theme::light(),
             "dark" => Theme::dark(),
@@ -122,12 +122,13 @@ impl Chart {
             ..ChartOptions::default()
         });
         chart.resize(size, 1.0);
+        let renderers = Renderers::with_fonts(fonts).map_err(err)?;
         Ok(Self {
             shared: Shared::new(State {
                 chart,
                 size,
                 dpr: 1.0,
-                renderers: Renderers::default(),
+                renderers,
             }),
         })
     }
@@ -153,6 +154,53 @@ impl Chart {
     #[getter]
     fn shown(&self) -> bool {
         self.shared.is_shown()
+    }
+
+    /// Registers an image for markers: an RGBA (or RGB) `uint8` array of
+    /// shape `(height, width, 4)` (or `3`), sides 1–256. Returns its id.
+    #[allow(clippy::needless_pass_by_value)] // pyo3 extracts arguments by value
+    fn add_icon(&self, image: PyReadonlyArrayDyn<'_, u8>) -> PyResult<u32> {
+        let data = image.as_array();
+        let [h, w, channels] = data.shape()[..] else {
+            return Err(err(
+                "the image must be an array of shape (height, width, 4) or (height, width, 3)",
+            ));
+        };
+        if channels != 3 && channels != 4 {
+            return Err(err("the image must have 3 (RGB) or 4 (RGBA) channels"));
+        }
+        // Before copying: the core rejects larger images anyway.
+        let side = ferrochart_core::icon::MAX_IMAGE_SIDE as usize;
+        if w == 0 || h == 0 || w > side || h > side {
+            return Err(err("icon width and height must be 1..=256"));
+        }
+        let mut rgba = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            for x in 0..w {
+                for c in 0..4 {
+                    rgba.push(if c < channels { data[[y, x, c]] } else { 255 });
+                }
+            }
+        }
+        let (Ok(width), Ok(height)) = (u32::try_from(w), u32::try_from(h)) else {
+            return Err(err("icon width and height must be 1..=256"));
+        };
+        self.with(|c| {
+            c.add_icon(ferrochart_core::icon::IconImage {
+                width,
+                height,
+                rgba: &rgba,
+            })
+        })
+        .map(|id| id.0)
+        .map_err(err)
+    }
+
+    /// Removes an image added with `add_icon`; markers using it draw their
+    /// shape only.
+    fn remove_icon(&self, id: u32) -> PyResult<()> {
+        self.with(|c| c.remove_icon(ferrochart_core::icon::IconId(id)))
+            .map_err(err)
     }
 
     /// Sets `handler(name, payload)` for chart events (None: no handler).
@@ -699,7 +747,20 @@ impl Series {
 
     fn set_markers(&self, markers: &Bound<'_, PyList>) -> PyResult<()> {
         let m = opts::markers(markers)?;
-        self.with(|c| c.set_markers(self.id, m)).map_err(err)
+        self.with(|c| {
+            let icons = c.data_view().icons();
+            if let Some(id) = m
+                .iter()
+                .filter_map(|m| m.icon)
+                .find(|&id| icons.get(id).is_none())
+            {
+                return Err(err(format!(
+                    "unknown icon {} (add it with Chart.add_icon)",
+                    id.0
+                )));
+            }
+            c.set_markers(self.id, m).map_err(err)
+        })
     }
 
     fn markers<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyList>> {

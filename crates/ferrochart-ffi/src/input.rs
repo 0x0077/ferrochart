@@ -357,6 +357,13 @@ pub const FERROCHART_EVENT_DRAWING_REMOVED: u32 = 7;
 pub const FERROCHART_EVENT_DRAWING_SELECTED: u32 = 8;
 /// Event: a warning (`warning`, `target_id` the series, `count`).
 pub const FERROCHART_EVENT_WARNING: u32 = 9;
+/// Event: the marker under the pointer changed (r21). On a marker:
+/// `target_type` `FERROCHART_TARGET_MARKER`, `target_id` the series,
+/// `target_index` the marker, `x`/`y` its center (CSS px); on a "+k" badge:
+/// `FERROCHART_TARGET_MARKER_OVERFLOW` with `target_index` the first marker
+/// not drawn and `count` = k. `FERROCHART_TARGET_NONE` when the pointer left
+/// the markers.
+pub const FERROCHART_EVENT_MARKER_HOVER: u32 = 10;
 
 /// Click target: nothing.
 pub const FERROCHART_TARGET_NONE: u32 = 0;
@@ -366,6 +373,9 @@ pub const FERROCHART_TARGET_SERIES: u32 = 1;
 pub const FERROCHART_TARGET_MARKER: u32 = 2;
 /// Click target: a drawing (`target_id`).
 pub const FERROCHART_TARGET_DRAWING: u32 = 3;
+/// Click target: a "+k" badge of folded markers (r21; `target_id` the
+/// series, `target_index` the first marker not drawn, `count` = k).
+pub const FERROCHART_TARGET_MARKER_OVERFLOW: u32 = 4;
 
 /// Warning: invalid OHLC bars were repaired (`target_id`, `count`).
 pub const FERROCHART_WARNING_OHLC_REPAIRED: u32 = 1;
@@ -416,9 +426,10 @@ pub struct FerroChartEvent {
     pub drawing: u64,
     /// Series or drawing id of a click target or warning.
     pub target_id: u64,
-    /// Marker index of a click target.
+    /// Marker index of a click or hover target.
     pub target_index: u64,
-    /// Bars of an `FERROCHART_WARNING_OHLC_REPAIRED` warning.
+    /// Bars of an `FERROCHART_WARNING_OHLC_REPAIRED` warning; markers of a
+    /// `FERROCHART_TARGET_MARKER_OVERFLOW` target.
     pub count: u64,
     /// `FERROCHART_TARGET_*`.
     pub target_type: u32,
@@ -491,6 +502,16 @@ fn event(e: &ChartEvent) -> FerroChartEvent {
                     out.target_type = FERROCHART_TARGET_DRAWING;
                     out.target_id = d.0;
                 }
+                Some(ClickTarget::MarkerOverflow {
+                    series,
+                    first,
+                    count,
+                }) => {
+                    out.target_type = FERROCHART_TARGET_MARKER_OVERFLOW;
+                    out.target_id = u64::from(series.0);
+                    out.target_index = *first as u64;
+                    out.count = u64::from(*count);
+                }
                 None | Some(_) => {}
             }
         }
@@ -532,6 +553,21 @@ fn event(e: &ChartEvent) -> FerroChartEvent {
                     out.warning = FERROCHART_WARNING_TIME_AXIS_MERGED;
                 }
                 _ => out.warning = FERROCHART_WARNING_OTHER,
+            }
+        }
+        ChartEvent::MarkerHover(hit) => {
+            out.r#type = FERROCHART_EVENT_MARKER_HOVER;
+            if let Some(h) = hit {
+                out.target_type = if h.overflow > 0 {
+                    FERROCHART_TARGET_MARKER_OVERFLOW
+                } else {
+                    FERROCHART_TARGET_MARKER
+                };
+                out.target_id = u64::from(h.series.0);
+                out.target_index = h.index as u64;
+                out.count = u64::from(h.overflow);
+                out.x = h.center.x;
+                out.y = h.center.y;
             }
         }
         _ => {

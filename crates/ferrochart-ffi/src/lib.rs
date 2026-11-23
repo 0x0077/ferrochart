@@ -41,12 +41,15 @@ use std::ffi::{CStr, CString, c_char};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
-use ferrochart_core::chart::{ChartEvent, SeriesData, SeriesOptions};
+use ferrochart_core::chart::{
+    ChartEvent, Marker, MarkerPosition, MarkerShape, SeriesData, SeriesOptions,
+};
 use ferrochart_core::data::{
     BarUpdate, DrawingId, IndicatorId, OhlcColumns, PaneId, SeriesId, ValueColumns,
 };
 use ferrochart_core::frame::{LineDash, SeriesKind};
 use ferrochart_core::geom::{Css, SizeCss};
+use ferrochart_core::icon::IconId;
 use ferrochart_core::pane::PaneOptions;
 use ferrochart_core::plugin::{Indicator as _, Placement};
 use ferrochart_core::price_scale::ScaleSide;
@@ -217,7 +220,7 @@ pub extern "C" fn ferrochart_last_error() -> *const c_char {
     LAST_ERROR.with(|e| e.borrow().as_ptr())
 }
 
-/// The library version, e.g. `"0.3.0"` (static string).
+/// The library version, e.g. `"0.4.0"` (static string).
 #[unsafe(no_mangle)]
 pub extern "C" fn ferrochart_version() -> *const c_char {
     concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr().cast()
@@ -259,7 +262,7 @@ unsafe fn opt_text<'a>(p: *const c_char, what: &str) -> Result<Option<&'a str>> 
 /// # Safety
 ///
 /// `p` points to `len` initialized elements valid for the call.
-unsafe fn slice<'a, T>(p: *const T, len: usize, what: &str) -> Result<&'a [T]> {
+pub(crate) unsafe fn slice<'a, T>(p: *const T, len: usize, what: &str) -> Result<&'a [T]> {
     if len == 0 {
         return Ok(&[]);
     }
@@ -677,6 +680,9 @@ pub struct FerroChartSeriesOptions {
     pub shift: i32,
     /// Decimals of price labels (0–12), or [`FERROCHART_PRECISION_AUTO`].
     pub price_precision: u32,
+    /// Most markers drawn per bar and side (1–65535); beyond it a "+k"
+    /// badge stands for the rest. 0: no limit (the default; r21).
+    pub marker_stack_limit: u32,
 }
 
 // SAFETY: repr(C), u32 size first, plain numbers.
@@ -717,6 +723,7 @@ impl FerroChartSeriesOptions {
             price_precision: o
                 .price_precision
                 .map_or(FERROCHART_PRECISION_AUTO, u32::from),
+            marker_stack_limit: o.marker_stack_limit.map_or(0, u32::from),
         }
     }
 
@@ -733,6 +740,12 @@ impl FerroChartSeriesOptions {
                 "'price_precision' must be 0–12 or FERROCHART_PRECISION_AUTO",
             ));
         }
+        let marker_stack_limit = match self.marker_stack_limit {
+            0 => None,
+            n => Some(u16::try_from(n).map_err(|_| {
+                Error::invalid("'marker_stack_limit' must be 0 (no limit) to 65535")
+            })?),
+        };
         if self.shift.unsigned_abs() > 1_000_000 {
             return Err(Error::invalid("'shift' is out of range"));
         }
@@ -759,6 +772,7 @@ impl FerroChartSeriesOptions {
             base_value: self.base_value,
             shift: self.shift,
             price_precision: u8::try_from(self.price_precision).ok(),
+            marker_stack_limit,
             ..base
         })
     }
@@ -974,6 +988,279 @@ pub unsafe extern "C" fn ferrochart_apply_series_options(
         // SAFETY: valid per the contract.
         let o = unsafe { series_options(options, base)? };
         c.chart.set_series_options(id, o)?;
+        Ok(FERROCHART_OK)
+    })
+}
+
+// Markers and images (r21) -------------------------------------------------------------
+
+/// Marker position: above the bar (the default).
+pub const FERROCHART_MARKER_ABOVE_BAR: u32 = 0;
+/// Marker position: below the bar.
+pub const FERROCHART_MARKER_BELOW_BAR: u32 = 1;
+
+/// Marker shape: filled circle (the default).
+pub const FERROCHART_SHAPE_CIRCLE: u32 = 0;
+/// Marker shape: filled square.
+pub const FERROCHART_SHAPE_SQUARE: u32 = 1;
+/// Marker shape: arrow pointing up.
+pub const FERROCHART_SHAPE_ARROW_UP: u32 = 2;
+/// Marker shape: arrow pointing down.
+pub const FERROCHART_SHAPE_ARROW_DOWN: u32 = 3;
+
+/// A marker for [`ferrochart_set_markers`]. Zero-initialize it, set `size`
+/// and the fields you need: zero fields take their defaults.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct FerroChartMarker {
+    /// `sizeof(FerroChartMarker)`.
+    pub size: u32,
+    /// Reserved, 0.
+    pub reserved: u32,
+    /// Time of the bar, UTC ms; a time between bars snaps to the next bar.
+    pub time: i64,
+    /// `FERROCHART_MARKER_ABOVE_BAR` or `FERROCHART_MARKER_BELOW_BAR`.
+    pub position: u32,
+    /// `FERROCHART_SHAPE_*`.
+    pub shape: u32,
+    /// Shape and text color, `0xRRGGBBAA`; 0: the series' color.
+    pub color: u32,
+    /// Diameter (side of a square), 4–64 CSS px; 0: 10.
+    pub marker_size: f32,
+    /// Image clipped to the shape (circles and squares), an id from
+    /// [`ferrochart_add_icon`]; 0: none.
+    pub icon: u64,
+    /// Border color inside the shape's edge, `0xRRGGBBAA`; 0: none.
+    pub border: u32,
+    /// Border width, CSS px; 0: 2.
+    pub border_width: f32,
+    /// Text next to the shape (UTF-8); null: none.
+    pub text: *const c_char,
+    /// Text centered in the shape (circles and squares, at most 8
+    /// characters, not with `icon`), e.g. `"DB"` (UTF-8); null: none.
+    pub label: *const c_char,
+}
+
+impl Default for FerroChartMarker {
+    fn default() -> Self {
+        Self {
+            size: size_of::<Self>() as u32,
+            reserved: 0,
+            time: 0,
+            position: FERROCHART_MARKER_ABOVE_BAR,
+            shape: FERROCHART_SHAPE_CIRCLE,
+            color: 0,
+            marker_size: 0.0,
+            icon: 0,
+            border: 0,
+            border_width: 0.0,
+            text: ptr::null(),
+            label: ptr::null(),
+        }
+    }
+}
+
+// SAFETY: repr(C), u32 size first; numbers and pointers (any bit pattern is
+// a valid raw pointer).
+unsafe impl Sized32 for FerroChartMarker {
+    fn set_size(&mut self) {
+        self.size = size_of::<Self>() as u32;
+    }
+}
+
+/// The C id of an image (core ids start at 0; C ids at 1, 0 means none).
+fn icon_c(id: IconId) -> u64 {
+    u64::from(id.0) + 1
+}
+
+fn icon_id(id: u64) -> Result<IconId> {
+    id.checked_sub(1)
+        .and_then(|i| u32::try_from(i).ok())
+        .map(IconId)
+        .ok_or_else(|| Error::new(FERROCHART_ERR_UNKNOWN_ID, format!("unknown icon {id}")))
+}
+
+/// A core marker from a C one.
+///
+/// # Safety
+///
+/// `text` and `label` are null or NUL-terminated strings.
+unsafe fn marker(
+    m: &FerroChartMarker,
+    icons: ferrochart_core::icon::IconsView<'_>,
+) -> Result<Marker> {
+    let mut out = Marker {
+        time: m.time,
+        position: match m.position {
+            FERROCHART_MARKER_ABOVE_BAR => MarkerPosition::AboveBar,
+            FERROCHART_MARKER_BELOW_BAR => MarkerPosition::BelowBar,
+            p => return Err(Error::invalid(format!("unknown marker position {p}"))),
+        },
+        shape: match m.shape {
+            FERROCHART_SHAPE_CIRCLE => MarkerShape::Circle,
+            FERROCHART_SHAPE_SQUARE => MarkerShape::Square,
+            FERROCHART_SHAPE_ARROW_UP => MarkerShape::ArrowUp,
+            FERROCHART_SHAPE_ARROW_DOWN => MarkerShape::ArrowDown,
+            s => return Err(Error::invalid(format!("unknown marker shape {s}"))),
+        },
+        color: color_opt(m.color),
+        border: color_opt(m.border),
+        ..Marker::default()
+    };
+    if m.marker_size != 0.0 {
+        out.size = Some(Css(m.marker_size));
+    }
+    if m.border_width != 0.0 {
+        out.border_width = Css(m.border_width);
+    }
+    if m.icon != 0 {
+        let id = icon_id(m.icon)?;
+        if icons.get(id).is_none() {
+            return Err(Error::new(
+                FERROCHART_ERR_UNKNOWN_ID,
+                format!("unknown icon {} (add it with ferrochart_add_icon)", m.icon),
+            ));
+        }
+        out.icon = Some(id);
+    }
+    // SAFETY: forwarded contract.
+    unsafe {
+        opt_text(m.text, "text")?
+            .unwrap_or_default()
+            .clone_into(&mut out.text);
+        opt_text(m.label, "label")?
+            .unwrap_or_default()
+            .clone_into(&mut out.label);
+    }
+    Ok(out)
+}
+
+/// Replaces the markers of a series with `len` markers (`len` 0 removes
+/// them). Each element has `size` set; elements are `markers[0].size`
+/// bytes apart (`sizeof(FerroChartMarker)` of the caller's header).
+///
+/// # Safety
+///
+/// `chart` is a valid chart; `markers` is null (with `len` 0) or points to
+/// `len` markers whose strings are null or NUL-terminated.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ferrochart_set_markers(
+    chart: *mut FerroChart,
+    series: u64,
+    markers: *const FerroChartMarker,
+    len: usize,
+) -> i32 {
+    with_chart(chart, |c| {
+        let id = series_id(series)?;
+        let mut out = Vec::new();
+        if len > 0 {
+            if markers.is_null() {
+                return Err(Error::null("markers"));
+            }
+            // SAFETY: the first field is a u32 per the contract.
+            let stride = unsafe { ptr::read_unaligned(markers.cast::<u32>()) } as usize;
+            if stride < size_of::<u32>() {
+                return Err(Error::invalid(
+                    "'markers->size' is not set (set it to sizeof(FerroChartMarker))",
+                ));
+            }
+            if len
+                .checked_mul(stride)
+                .is_none_or(|n| n > isize::MAX as usize)
+            {
+                return Err(Error::invalid("'markers' is too long"));
+            }
+            out.try_reserve(len)
+                .map_err(|_| Error::invalid("'markers' is too long"))?;
+            let icons = c.chart.data_view().icons();
+            for i in 0..len {
+                // SAFETY: `len` elements `stride` bytes apart per the
+                // contract (checked not to overflow).
+                let m = unsafe {
+                    // Unaligned when `stride` is: `read_sized` copies bytes.
+                    let p = markers.byte_add(i * stride);
+                    // Each element as long as the first, so none reads past
+                    // the array.
+                    if ptr::read_unaligned(p.cast::<u32>()) as usize != stride {
+                        return Err(Error::invalid(format!(
+                            "marker {i}: 'size' differs from markers[0].size"
+                        )));
+                    }
+                    read_sized(p, FerroChartMarker::default(), "markers")?
+                };
+                // SAFETY: forwarded contract.
+                out.push(unsafe { marker(&m, icons) }.map_err(|e| Error {
+                    message: format!("marker {i}: {}", e.message),
+                    ..e
+                })?);
+            }
+        }
+        c.chart.set_markers(id, out)?;
+        Ok(FERROCHART_OK)
+    })
+}
+
+/// Adds an image for markers: `width` × `height` pixels (1–256 each) of
+/// straight (not premultiplied) RGBA8, rows `stride` bytes apart (at least
+/// `width` × 4). Stores its id (never 0) in `*out_id`. The chart keeps a
+/// resampled copy; `rgba` can be freed after the call.
+///
+/// # Safety
+///
+/// `chart` is a valid chart; `rgba` has `stride` × (`height` − 1) +
+/// `width` × 4 readable bytes; `out_id` is valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ferrochart_add_icon(
+    chart: *mut FerroChart,
+    rgba: *const u8,
+    width: u32,
+    height: u32,
+    stride: usize,
+    out_id: *mut u64,
+) -> i32 {
+    with_chart(chart, |c| {
+        out_ptr(out_id, "out_id")?;
+        let side = 1..=ferrochart_core::icon::MAX_IMAGE_SIDE;
+        if !side.contains(&width) || !side.contains(&height) {
+            return Err(Error::invalid(format!(
+                "icon size {width} × {height} is out of range (1–256 px each)"
+            )));
+        }
+        let (w, h) = (width as usize, height as usize);
+        let row = w * 4;
+        if stride < row {
+            return Err(Error::invalid(format!("'stride' must be at least {row}")));
+        }
+        let len = stride
+            .checked_mul(h - 1)
+            .and_then(|n| n.checked_add(row))
+            .ok_or_else(|| Error::invalid("'stride' is too large"))?;
+        // SAFETY: `len` readable bytes per the contract.
+        let data = unsafe { slice(rgba, len, "rgba")? };
+        let mut pixels = Vec::with_capacity(row * h);
+        for y in 0..h {
+            pixels.extend_from_slice(&data[y * stride..y * stride + row]);
+        }
+        let id = c.chart.add_icon(ferrochart_core::icon::IconImage {
+            width,
+            height,
+            rgba: &pixels,
+        })?;
+        // SAFETY: checked.
+        unsafe { write(out_id, icon_c(id)) };
+        Ok(FERROCHART_OK)
+    })
+}
+
+/// Removes an image; markers that use it draw their shape alone.
+///
+/// # Safety
+///
+/// `chart` is a valid chart.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ferrochart_remove_icon(chart: *mut FerroChart, icon: u64) -> i32 {
+    with_chart(chart, |c| {
+        c.chart.remove_icon(icon_id(icon)?)?;
         Ok(FERROCHART_OK)
     })
 }

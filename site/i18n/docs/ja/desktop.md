@@ -1,4 +1,4 @@
-<!-- source: 0c5fc454f5 -->
+<!-- source: 084e0fa734 -->
 # デスクトップ（Rust + winit）
 
 `ferrochart-winit`はウィンドウを開き、wgpuでレンダリングし、マウス、トラックパッド、キーボードの入力を処理します。渡すのは`Chart`と、必要に応じてコールバックです。
@@ -32,6 +32,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 `show`はデフォルトのタイトルとサイズでウィンドウを開き、閉じられると戻ります。タイトル、サイズ、コールバック（リアルタイムデータ、イベント）を指定するには、後述の`ChartApp`とともに`run(WindowOptions, chart, app)`を使います。`run`はウィンドウが閉じられると戻ります。チャートは何かが変わったとき（入力、新しいデータ、慣性スクロール）にだけ再描画するので、アイドル状態のチャートはCPUを使いません。
+
+同梱フォントはラテン文字、数字、一般的な記号に対応しています。マーカーのテキスト、ラベル、タイトルで中国語、日本語、韓国語やその他の文字体系を使うには、フォールバックフォントを指定します。フォントは指定した順に検索されます（システムフォントは走査されず、どのフォントにもない文字は`□`として描画されます）。
+
+```rust,ignore
+let options = WindowOptions {
+    fonts: vec![std::fs::read("/System/Library/Fonts/Hiragino Sans GB.ttc")?],
+    ..WindowOptions::default()
+};
+ferrochart_winit::run(options, chart, app)?;
+```
+
+独自のイベントループを使う場合は、レンダラーに追加します：`renderer.text_engine_mut().add_fallback_font(data)`。
 
 ## リアルタイムデータ
 

@@ -13,6 +13,7 @@ pub mod error;
 pub mod format;
 pub mod frame;
 pub mod geom;
+pub mod icon;
 pub mod interaction;
 pub mod pane;
 pub mod plugin;

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import struct
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -162,7 +163,8 @@ def test_price_lines_markers_and_scales():
     when = dt.datetime.fromtimestamp(int(d["time"][10]) / 1000, dt.timezone.utc)
     s.set_markers([{"time": when, "position": "below_bar", "shape": "arrow_up", "text": "buy"}])
     assert s.markers == [
-        {"time": int(d["time"][10]), "position": "below_bar", "shape": "arrow_up", "color": None, "text": "buy"}
+        {"time": int(d["time"][10]), "position": "below_bar", "shape": "arrow_up", "color": None, "text": "buy",
+         "size": None, "icon": None, "label": "", "border": None, "border_width": 2.0}
     ]
     with pytest.raises(ValueError, match="'shape'"):
         s.set_markers([{"time": 0, "shape": "star"}])
@@ -275,3 +277,61 @@ def test_removed_series_report_errors():
     with pytest.raises(ValueError, match="removed"):
         s.kind
     assert "removed" in repr(s)
+
+
+# Image markers and fallback fonts (r21) ---------------------------------------
+
+CJK_FONT = Path(__file__).parents[2] / "ferrochart-render-cpu/tests/fonts/NotoSansSC-subset.otf"
+
+
+def avatar(n: int = 32, rgb: tuple[int, int, int] = (230, 20, 20)) -> np.ndarray:
+    a = np.zeros((n, n, 4), np.uint8)
+    a[..., :3] = rgb
+    a[..., 3] = 255
+    return a
+
+
+def test_icons_and_image_markers():
+    c, s = chart_with(bars(60))
+    red = c.add_icon(avatar())
+    rgb = c.add_icon(avatar(40)[..., :3])  # RGB: opaque
+    assert isinstance(red, int) and red != rgb
+    t = int(bars(60)["time"][20])
+    s.set_markers([
+        {"time": t, "icon": red, "size": 30, "border": "#00ff00", "border_width": 3},
+        {"time": t, "label": "DB", "color": "#2fbf71", "position": "below_bar"},
+    ])
+    s.apply_options(marker_stack_limit=3)
+    m = s.markers
+    assert m[0]["icon"] == red and m[0]["size"] == 30 and m[0]["border_width"] == 3
+    assert m[1]["label"] == "DB" and m[1]["icon"] is None
+    assert s.options["marker_stack_limit"] == 3
+    with_icon = c.to_png(backend="cpu")
+    c.remove_icon(red)
+    assert c.to_png(backend="cpu") != with_icon  # the shape only now
+    with pytest.raises(ValueError, match="unknown icon"):
+        s.set_markers([{"time": t, "icon": red}])
+    with pytest.raises(ValueError, match="not both"):
+        s.set_markers([{"time": t, "icon": rgb, "label": "x"}])
+    with pytest.raises(ValueError, match="marker_stack_limit"):
+        s.apply_options(marker_stack_limit=0)
+    with pytest.raises(ValueError, match="shape"):
+        c.add_icon(np.zeros((4, 4), np.uint8))
+    with pytest.raises(ValueError, match="1..=256"):
+        c.add_icon(np.zeros((300, 2, 4), np.uint8))
+
+
+def test_fallback_fonts_draw_cjk():
+    d = bars(60)
+    t = int(d["time"][30])
+    pngs = []
+    for fonts in ((), (CJK_FONT,), (CJK_FONT.read_bytes(),)):
+        c = fc.Chart(width=400, height=300, fonts=fonts)
+        s = c.add_series("candlestick")
+        s.set_data(d)
+        s.set_markers([{"time": t, "text": "买入"}])
+        pngs.append(c.to_png(backend="cpu"))
+    # Without the font the characters are boxes; with it (path or bytes) glyphs.
+    assert pngs[0] != pngs[1] and pngs[1] == pngs[2]
+    with pytest.raises(ValueError, match="font 0"):
+        fc.Chart(fonts=[b"not a font"])

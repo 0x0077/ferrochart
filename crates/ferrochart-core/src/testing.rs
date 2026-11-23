@@ -376,6 +376,7 @@ pub fn merged_axis_scene(chart: &mut Chart, start_time: Timestamp) -> Result<()>
         shape,
         color: Some(color),
         text: text.into(),
+        ..Marker::default()
     };
     let mut gap = marker(12, AboveBar, Circle, down, "gap");
     gap.time += HOUR / 2;
@@ -979,5 +980,231 @@ pub fn band_scene(chart: &mut Chart, start_time: Timestamp) -> Result<()> {
         },
     )?;
     chart.time_scale().set_bar_spacing(4.0);
+    Ok(())
+}
+
+/// A procedural avatar for image-marker tests: `n`×`n` pixels, a colored
+/// disc with a lighter ring and a dark diagonal band, transparent corners
+/// (so clipping, the border and premultiplied edges all show).
+pub fn test_avatar(n: u32, hue: u8) -> Vec<u8> {
+    let mut out = Vec::with_capacity((n * n * 4) as usize);
+    let c = (n as f32 - 1.0) * 0.5;
+    let base = [hue, 255 - hue / 2, 128u8.wrapping_add(hue)];
+    for y in 0..n {
+        for x in 0..n {
+            let (dx, dy) = (x as f32 - c, y as f32 - c);
+            let r = (dx * dx + dy * dy).sqrt() / (n as f32 * 0.5);
+            let px = if r > 1.0 {
+                [0, 0, 0, 0]
+            } else if r > 0.75 {
+                [255, 255, 255, 220]
+            } else if (dx - dy).abs() < n as f32 * 0.12 {
+                [20, 24, 32, 255]
+            } else {
+                [base[0], base[1], base[2], 255]
+            };
+            out.extend_from_slice(&px);
+        }
+    }
+    out
+}
+
+/// Fills an empty, sized chart with image markers and badges (r21):
+/// letter badges, wallet avatars with buy/sell borders stacked on bars (one
+/// stack folded by `marker_stack_limit`), a square image, a wide image and
+/// a removed one.
+///
+/// # Errors
+///
+/// The chart's errors.
+///
+/// # Examples
+///
+/// ```
+/// use ferrochart_core::geom::SizeCss;
+/// use ferrochart_core::testing::image_markers_scene;
+/// use ferrochart_core::{Chart, ChartOptions};
+///
+/// let mut chart = Chart::new(ChartOptions::default());
+/// chart.resize(SizeCss { w: 800.0, h: 450.0 }, 1.0);
+/// image_markers_scene(&mut chart, 0)?;
+/// # Ok::<(), ferrochart_core::Error>(())
+/// ```
+pub fn image_markers_scene(chart: &mut Chart, start_time: Timestamp) -> Result<()> {
+    use crate::chart::{
+        Marker,
+        MarkerPosition::{AboveBar, BelowBar},
+        MarkerShape::Square,
+    };
+    use crate::icon::IconImage;
+    let bars = random_walk(23, 60, start_time, 60_000)?;
+    let candles = chart.add_series(
+        chart.main_pane(),
+        SeriesKind::Candlestick,
+        SeriesOptions {
+            marker_stack_limit: Some(5),
+            ..SeriesOptions::default()
+        },
+    )?;
+    chart.set_data(candles, SeriesData::Ohlc(bars.clone()))?;
+    let mut avatars = Vec::new();
+    for (k, n) in [(0_u8, 48_u32), (70, 40), (140, 64), (210, 100)] {
+        let px = test_avatar(n, k);
+        avatars.push(chart.add_icon(IconImage {
+            width: n,
+            height: n,
+            rgba: &px,
+        })?);
+    }
+    // A 2:1 gradient: fitted into the middle half of the tile.
+    let wide: Vec<u8> = (0..16_u8)
+        .flat_map(|y| (0..32_u8).flat_map(move |x| [x * 8, y * 16, 200, 255]))
+        .collect();
+    let wide = chart.add_icon(IconImage {
+        width: 32,
+        height: 16,
+        rgba: &wide,
+    })?;
+    let gone = chart.add_icon(IconImage {
+        width: 1,
+        height: 1,
+        rgba: &[255, 255, 0, 255],
+    })?;
+    chart.remove_icon(gone)?;
+    let (buy, sell) = (Rgba::hex(0x0026_A69A), Rgba::hex(0x00EF_5350));
+    let t = |i: usize| bars.time[i];
+    let badge = |i: usize, label: &str, color: u32, position| Marker {
+        time: t(i),
+        position,
+        label: label.into(),
+        color: Some(Rgba::hex(color)),
+        size: Some(Css(18.0)),
+        border: Some(Rgba::hex(color).with_alpha(160)),
+        border_width: Css(1.5),
+        ..Marker::default()
+    };
+    let avatar = |i: usize, k: usize, sold: bool| Marker {
+        time: t(i),
+        position: if sold { AboveBar } else { BelowBar },
+        icon: Some(avatars[k % avatars.len()]),
+        size: Some(Css(20.0)),
+        border: Some(if sold { sell } else { buy }),
+        ..Marker::default()
+    };
+    let mut markers = vec![
+        badge(8, "DB", 0x002F_BF71, BelowBar),
+        badge(8, "M", 0x003B_82F6, BelowBar),
+        badge(16, "DS", 0x00D9_3B3B, AboveBar),
+        Marker {
+            time: t(24),
+            shape: Square,
+            icon: Some(avatars[2]),
+            size: Some(Css(24.0)),
+            text: "KOL".into(),
+            ..Marker::default()
+        },
+        Marker {
+            time: t(28),
+            icon: Some(wide),
+            size: Some(Css(22.0)),
+            color: Some(Rgba::hex(0x0013_1722)),
+            ..Marker::default()
+        },
+        Marker {
+            time: t(32),
+            icon: Some(gone),
+            size: Some(Css(16.0)),
+            ..Marker::default()
+        },
+    ];
+    for (i, n) in [(40, 3), (43, 7), (46, 4), (49, 2)] {
+        for k in 0..n {
+            markers.push(avatar(i, k, true));
+        }
+        markers.push(avatar(i + 1, n, false));
+    }
+    chart.set_markers(candles, markers)?;
+    chart.time_scale().set_bar_spacing(12.0);
+    chart.scroll_to_realtime();
+    Ok(())
+}
+
+/// The characters [`cjk_text_scene`] draws outside ASCII, for subsetting a
+/// test font (the golden tests load a Noto Sans SC subset of exactly these).
+pub const CJK_SCENE_CHARS: &str = "买入卖出狙聪明钱开发者加仓止盈";
+
+/// Fills an empty, sized chart with non-ASCII text (r21): Chinese
+/// marker texts, one-character Chinese badges, and a price line title that
+/// ends in an emoji no test font has (drawn as `□`). Rendered with a CJK
+/// fallback font holding [`CJK_SCENE_CHARS`].
+///
+/// # Errors
+///
+/// The chart's errors.
+///
+/// # Examples
+///
+/// ```
+/// use ferrochart_core::geom::SizeCss;
+/// use ferrochart_core::testing::cjk_text_scene;
+/// use ferrochart_core::{Chart, ChartOptions};
+///
+/// let mut chart = Chart::new(ChartOptions::default());
+/// chart.resize(SizeCss { w: 800.0, h: 450.0 }, 1.0);
+/// cjk_text_scene(&mut chart, 0)?;
+/// # Ok::<(), ferrochart_core::Error>(())
+/// ```
+pub fn cjk_text_scene(chart: &mut Chart, start_time: Timestamp) -> Result<()> {
+    use crate::chart::{
+        Marker,
+        MarkerPosition::{AboveBar, BelowBar},
+        MarkerShape::{ArrowDown, ArrowUp},
+        PriceLineOptions,
+    };
+    let bars = random_walk(31, 60, start_time, 60_000)?;
+    let candles = chart.add_series(
+        chart.main_pane(),
+        SeriesKind::Candlestick,
+        SeriesOptions::default(),
+    )?;
+    chart.set_data(candles, SeriesData::Ohlc(bars.clone()))?;
+    let t = |i: usize| bars.time[i];
+    let text = |i: usize, s: &str, sold: bool| Marker {
+        time: t(i),
+        position: if sold { AboveBar } else { BelowBar },
+        shape: if sold { ArrowDown } else { ArrowUp },
+        color: Some(Rgba::hex(if sold { 0x00EF_5350 } else { 0x0026_A69A })),
+        text: s.into(),
+        ..Marker::default()
+    };
+    let badge = |i: usize, s: &str, color: u32| Marker {
+        time: t(i),
+        position: AboveBar,
+        label: s.into(),
+        color: Some(Rgba::hex(color)),
+        size: Some(Css(18.0)),
+        ..Marker::default()
+    };
+    let markers = vec![
+        text(6, "买入", false),
+        badge(12, "狙", 0x00D9_3B3B),
+        text(18, "加仓 x2", false),
+        badge(24, "聪", 0x002F_BF71),
+        text(30, "开发者卖出", true),
+        text(40, "止盈 +12%", true),
+        badge(48, "DB", 0x003B_82F6),
+    ];
+    chart.set_markers(candles, markers)?;
+    let last = bars.close.last().copied().unwrap_or(100.0);
+    chart.create_price_line(
+        candles,
+        PriceLineOptions {
+            price: last + 1.5,
+            title: "聪明钱 🚀".into(),
+            ..PriceLineOptions::default()
+        },
+    )?;
+    chart.time_scale().set_bar_spacing(12.0);
+    chart.scroll_to_realtime();
     Ok(())
 }

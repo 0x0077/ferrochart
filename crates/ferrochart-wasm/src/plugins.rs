@@ -45,7 +45,13 @@ export type PluginCommand =
   | { type: 'polyline'; points: ({ x: number; y: number } | [number, number])[]; color: string; width?: number; dash?: LineStyle }
   | { type: 'polygon'; points: ({ x: number; y: number } | [number, number])[]; color: string }
   | { type: 'text'; x: number; y: number; text: string; color: string; size?: number; align?: 'left' | 'center' | 'right'; background?: string; padding?: number }
-  | { type: 'icon'; x: number; y: number; shape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown'; size?: number; color: string };
+  /**
+   * `image`: a name registered with `FerroChart.registerIcon`, drawn inside
+   * the shape (circle or square); `border`/`borderWidth` (default 2): a ring
+   * inside the edge; `label`: up to 8 characters inside the shape (not with
+   * `image`).
+   */
+  | { type: 'icon'; x: number; y: number; shape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown'; size?: number; color: string; image?: string; border?: string; borderWidth?: number; label?: string };
 
 /** What a JS plugin gets while the frame is built. The functions only work during the call. */
 export interface PluginCtx {
@@ -395,12 +401,67 @@ fn emit(cmds: &JsValue, dpr: f32, out: &mut FrameBuilder<'_>) -> Result<(), Stri
                         );
                     }
                 };
-                out.icon(IconInst {
+                let arrow = icon == ICON_ARROW_UP || icon == ICON_ARROW_DOWN;
+                let image = match get(&c, "image").as_string() {
+                    Some(name) => Some(
+                        crate::icons::lookup_current(&name)
+                            .ok_or_else(|| format!("unknown icon image '{name}'"))?,
+                    ),
+                    None => None,
+                };
+                let label = get(&c, "label").as_string().unwrap_or_default();
+                if arrow && (image.is_some() || !label.is_empty()) {
+                    return Err("'image' and 'label' need a circle or square shape".into());
+                }
+                if image.is_some() && !label.is_empty() {
+                    return Err("an icon has an 'image' or a 'label', not both".into());
+                }
+                if label.chars().count() > 8 {
+                    return Err("'label' is at most 8 characters".into());
+                }
+                let border = match get(&c, "border").as_string() {
+                    Some(b) => params::color(&b).ok_or("'border' must be a CSS color")?,
+                    None => Rgba::default(),
+                };
+                let border_width = opt_num(&c, "borderWidth")?.unwrap_or(2.0);
+                if !(border_width.is_finite() && border_width >= 0.0) {
+                    return Err("'borderWidth' must be finite and >= 0".into());
+                }
+                let size_css = opt_num(&c, "size")?.unwrap_or(8.0);
+                let inst = IconInst {
                     pos: p(&c, "x", "y")?,
-                    size: Px(opt_num(&c, "size")?.unwrap_or(8.0) as f32 * dpr),
+                    size: Px(size_css as f32 * dpr),
                     icon,
                     color: color(&c, "color")?,
-                });
+                    image,
+                    border,
+                    border_width: Px(if border.a == 0 {
+                        0.0
+                    } else {
+                        border_width as f32 * dpr
+                    }),
+                };
+                out.icon(inst);
+                if !label.is_empty() {
+                    // As marker labels: Latin at 0.45 × size, CJK at
+                    // 0.6, black or white by the fill's luminance.
+                    let ratio = if label.is_ascii() { 0.45 } else { 0.6 };
+                    let c8 = inst.color;
+                    let lum =
+                        0.299 * f64::from(c8.r) + 0.587 * f64::from(c8.g) + 0.114 * f64::from(c8.b);
+                    let ink = if lum > 150.0 {
+                        Rgba::hex(0x0013_1722)
+                    } else {
+                        Rgba::hex(0x00FF_FFFF)
+                    };
+                    let l = Label {
+                        font: font((size_css * ratio).round().max(7.0), f64::from(dpr)),
+                        color: ink,
+                        align: TextAlign::Center,
+                        bg: None,
+                    };
+                    out.text(inst.pos, &label, l);
+                }
             }
             other => {
                 return Err(format!(

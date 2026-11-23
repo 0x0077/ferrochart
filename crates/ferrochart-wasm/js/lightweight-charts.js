@@ -138,6 +138,10 @@ function markers(list) {
     shape: ['circle', 'square', 'arrowUp', 'arrowDown'].includes(m.shape) ? m.shape : 'circle',
     color: m.color ?? null,
     text: m.text ?? '',
+    // lightweight-charts' size is a multiple of its default; 1 is about
+    // 10 CSS px. Clamped to FerroChart's 4–64.
+    size: typeof m.size === 'number' && Number.isFinite(m.size)
+      ? Math.min(64, Math.max(4, m.size * 10)) : null,
   }));
 }
 

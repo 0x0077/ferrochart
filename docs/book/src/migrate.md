@@ -157,7 +157,8 @@ effect. `LineStyle.LargeDashed` draws dashed, `LineStyle.SparseDotted` dotted;
 **Markers**
 
 - `position: 'inBar'` is drawn above the bar, and an unknown `shape` as a
-  circle. `size` and `id` are ignored.
+  circle. `size` is a multiple of the default size (1 is 10 CSS px, kept
+  within 4–64 px); `id` is ignored.
 
 **Not supported yet**
 

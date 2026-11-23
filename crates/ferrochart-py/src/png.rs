@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 use ferrochart_core::render::Renderer;
 use ferrochart_render_cpu::CpuRenderer;
 use ferrochart_render_wgpu::{GpuContext, WgpuRenderer};
+use ferrochart_text::TextEngine;
 
 use crate::shared::Draw;
 
@@ -44,16 +45,34 @@ fn gpu() -> Result<&'static GpuContext, String> {
         .map_err(Clone::clone)
 }
 
-/// The CPU renderer of one chart or plot, created on first use.
+/// The CPU renderer of one chart or plot, created on first use, and the
+/// fallback fonts every renderer of it gets.
 #[derive(Default)]
 pub(crate) struct Renderers {
     cpu: Option<CpuRenderer>,
+    fonts: Vec<Vec<u8>>,
 }
 
 /// An image: PNG bytes and the backend that drew it (`"gpu"` or `"cpu"`).
 pub(crate) type Image = (Vec<u8>, &'static str);
 
 impl Renderers {
+    /// With fallback fonts (TTF/OTF data), checked now.
+    pub(crate) fn with_fonts(fonts: Vec<Vec<u8>>) -> Result<Self, String> {
+        let mut probe = TextEngine::new();
+        for (i, f) in fonts.iter().enumerate() {
+            probe
+                .add_fallback_font(f.clone())
+                .map_err(|e| format!("font {i}: {e}"))?;
+        }
+        Ok(Self { cpu: None, fonts })
+    }
+
+    /// The fallback fonts.
+    pub(crate) fn fonts(&self) -> &[Vec<u8>] {
+        &self.fonts
+    }
+
     /// Builds a frame of `chart` (a chart or plot, already sized) and
     /// encodes it as PNG.
     pub(crate) fn render<D: Draw>(
@@ -65,18 +84,31 @@ impl Renderers {
             match gpu() {
                 Ok(ctx) => {
                     let mut r = WgpuRenderer::offscreen(ctx);
+                    add_fonts(r.text_engine_mut(), &self.fonts);
                     return gpu_png(&mut r, chart).map(|png| (png, "gpu"));
                 }
                 Err(e) if backend == Backend::Gpu => return Err(format!("no GPU: {e}")),
                 Err(_) => {}
             }
         }
-        let r = self.cpu.get_or_insert_with(CpuRenderer::new);
+        let fonts = &self.fonts;
+        let r = self.cpu.get_or_insert_with(|| {
+            let mut engine = TextEngine::new();
+            add_fonts(&mut engine, fonts);
+            CpuRenderer::with_text_engine(engine)
+        });
         chart.build_frame(0.0, &r.measurer());
         r.render(chart.frame(), &chart.data_view())
             .map_err(|e| e.to_string())?;
         let png = r.encode_png().map_err(|e| e.to_string())?;
         Ok((png, "cpu"))
+    }
+}
+
+/// Adds `fonts` (checked by `Renderers::with_fonts`) as fallbacks.
+pub(crate) fn add_fonts(engine: &mut TextEngine, fonts: &[Vec<u8>]) {
+    for f in fonts {
+        let _ = engine.add_fallback_font(f.clone());
     }
 }
 

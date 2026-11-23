@@ -43,6 +43,11 @@ int main(void) {
     FerroChartEvent ev;
     int clicks = 0, i;
     char *state;
+    static uint8_t avatar[16 * 16 * 4];
+    uint64_t icon = 0;
+    FerroChartMarker marks[2];
+    FerroChartSeriesOptions so;
+    const uint8_t junk[3] = {1, 2, 3};
 
     printf("FerroChart %s\n", ferrochart_version());
 
@@ -114,6 +119,37 @@ int main(void) {
     EXPECT(state != NULL && strstr(state, "horizontal_line") != NULL);
     CHECK(ferrochart_load_state(chart, state));
     ferrochart_free_string(state);
+
+    /* Image markers and a badge (r21). */
+    for (i = 0; i < 16 * 16; i++) {
+        avatar[i * 4] = 230;
+        avatar[i * 4 + 1] = 20;
+        avatar[i * 4 + 2] = 20;
+        avatar[i * 4 + 3] = 255;
+    }
+    CHECK(ferrochart_add_icon(chart, avatar, 16, 16, 16 * 4, &icon));
+    EXPECT(icon != 0);
+    memset(marks, 0, sizeof marks);
+    marks[0].size = sizeof marks[0];
+    marks[0].time = t[N - 10];
+    marks[0].icon = icon;
+    marks[0].marker_size = 24;
+    marks[0].border = 0x00ff00ffu;
+    marks[1] = marks[0];
+    marks[1].icon = 0;
+    marks[1].label = "DB";
+    marks[1].position = FERROCHART_MARKER_BELOW_BAR;
+    CHECK(ferrochart_set_markers(chart, candles, marks, 2));
+    marks[1].icon = icon;
+    EXPECT(ferrochart_set_markers(chart, candles, marks, 2) == FERROCHART_ERR_INVALID_ARGUMENT);
+    memset(&so, 0, sizeof so);
+    so.size = sizeof so;
+    CHECK(ferrochart_series_options(chart, candles, &so));
+    so.marker_stack_limit = 3;
+    CHECK(ferrochart_apply_series_options(chart, candles, &so));
+    EXPECT(ferrochart_add_font(chart, junk, sizeof junk) == FERROCHART_ERR_INVALID_ARGUMENT);
+    CHECK(ferrochart_render_rgba(chart, 8, pixels, stride, len));
+    CHECK(ferrochart_remove_icon(chart, icon));
 
     if (ferrochart_needs_redraw(chart) == 1) {
         CHECK(ferrochart_render_rgba(chart, 16, pixels, stride, len));

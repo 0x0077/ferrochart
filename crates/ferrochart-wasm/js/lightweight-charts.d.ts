@@ -84,6 +84,8 @@ export interface SeriesMarker {
   shape: 'circle' | 'square' | 'arrowUp' | 'arrowDown';
   color?: string;
   text?: string;
+  /** Multiple of the default size (1 ≈ 10 CSS px). */
+  size?: number;
 }
 
 export interface PriceScaleOptions {

@@ -83,6 +83,11 @@ export interface SeriesOptions {
    * a subscript count of zeros for small prices (`0.0₄1234` is 0.00001234).
    */
   pricePrecision?: number | null;
+  /**
+   * Most markers stacked on one bar side; the rest fold into a "+k" badge
+   * (`ClickTarget` `'markerOverflow'`). `null` (default): no limit.
+   */
+  markerStackLimit?: number | null;
 }
 
 export interface PriceLineOptions {
@@ -112,8 +117,20 @@ export interface Marker {
   shape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown';
   /** `null` (default): the series' main color. */
   color?: Color | null;
-  /** Label text; empty (default) for none. */
+  /** Text next to the marker; empty (default) for none. */
   text?: string;
+  /** Diameter in CSS px, 4–64. `null` (default): the theme's size. */
+  size?: number | null;
+  /** Name of an image registered with `FerroChart.registerIcon`, drawn
+   *  inside the shape (circle or square). `null` (default): none. */
+  icon?: string | null;
+  /** Up to 8 characters drawn inside the shape (circle or square), e.g. a
+   *  badge `'DB'`; not with `icon`. Empty (default) for none. */
+  label?: string;
+  /** Ring inside the edge. `null` (default): none. */
+  border?: Color | null;
+  /** Ring width, CSS px. Default 2. */
+  borderWidth?: number;
 }
 
 export interface PriceScaleOptions {
@@ -403,6 +420,77 @@ impl FerroChart {
     pub fn remove_pane(&self, pane: u32) -> Result<(), JsError> {
         self.with_chart(|c| c.remove_pane(PaneId(pane)))?
             .map_err(js_err)
+    }
+
+    /// Registers an image under `name` for marker `icon`s and plugin `icon`
+    /// commands. `source` is a URL (fetched; a cross-origin image needs CORS
+    /// headers), an `HTMLImageElement`, `ImageBitmap`, `ImageData` or canvas.
+    /// The image is scaled to fit 64×64 (aspect ratio kept). Registering a
+    /// name again replaces its image, also in the markers using it. At most
+    /// 1024 images per chart.
+    ///
+    /// @param {string} name
+    /// @param {string | ImageBitmapSource} source
+    /// @returns {Promise<void>}
+    #[wasm_bindgen(js_name = registerIcon, unchecked_return_type = "Promise<void>")]
+    pub fn register_icon(
+        &self,
+        name: String,
+        #[wasm_bindgen(unchecked_param_type = "string | ImageBitmapSource")] source: JsValue,
+    ) -> js_sys::Promise {
+        let shared = Rc::downgrade(&self.shared);
+        wasm_bindgen_futures::future_to_promise(async move {
+            if name.is_empty() {
+                return Err(js_err("registerIcon: the name is empty").into());
+            }
+            let (width, height, rgba) = crate::icons::decode(source).await?;
+            crate::host::with_weak(&shared, |s| -> Result<(), JsError> {
+                let id = s
+                    .chart
+                    .add_icon(ferrochart_core::icon::IconImage {
+                        width,
+                        height,
+                        rgba: &rgba,
+                    })
+                    .map_err(js_err)?;
+                if let Some(old) = crate::icons::insert(s.icon_key, name, id) {
+                    // Markers keep ids: point the ones using the old image
+                    // at the new one, then drop the old image.
+                    let chart = &mut s.chart;
+                    s.icon_series.retain(|&series| {
+                        let Some(markers) = chart.markers(series) else {
+                            return false;
+                        };
+                        if markers.iter().any(|m| m.icon == Some(old)) {
+                            let moved = markers
+                                .iter()
+                                .cloned()
+                                .map(|mut m| {
+                                    if m.icon == Some(old) {
+                                        m.icon = Some(id);
+                                    }
+                                    m
+                                })
+                                .collect();
+                            let _ = chart.set_markers(series, moved);
+                        }
+                        true
+                    });
+                    let _ = chart.remove_icon(old);
+                }
+                Ok(())
+            })??;
+            Ok(JsValue::UNDEFINED)
+        })
+    }
+
+    /// Removes the image registered as `name`; markers using it draw their
+    /// shape only. Returns whether there was one.
+    #[wasm_bindgen(js_name = unregisterIcon)]
+    pub fn unregister_icon(&self, name: &str) -> Result<bool, JsError> {
+        self.shared.with_scene(|s| {
+            crate::icons::remove(s.icon_key, name).is_some_and(|id| s.chart.remove_icon(id).is_ok())
+        })
     }
 
     /// Adds a layer plugin: `plugin.build(ctx)` returns the commands
@@ -1094,9 +1182,15 @@ impl Series {
         &self,
         #[wasm_bindgen(unchecked_param_type = "Marker[]")] markers: &JsValue,
     ) -> Result<(), JsError> {
-        let m = js::markers(markers)?;
-        self.with_chart(|c| c.set_markers(self.id, m))?
-            .map_err(js_err)
+        crate::host::with_weak(&self.shared, |s| -> Result<(), JsError> {
+            let m = js::markers(markers, s.icon_key)?;
+            let icons = m.iter().any(|m| m.icon.is_some());
+            s.chart.set_markers(self.id, m).map_err(js_err)?;
+            if icons {
+                s.icon_series.insert(self.id);
+            }
+            Ok(())
+        })?
     }
 
     /// The markers, sorted by time.
@@ -1104,7 +1198,9 @@ impl Series {
     /// @returns {Required<Marker>[]}
     #[wasm_bindgen(unchecked_return_type = "Required<Marker>[]")]
     pub fn markers(&self) -> Result<JsValue, JsError> {
-        self.with_chart(|c| js::markers_js(c.markers(self.id).unwrap_or(&[])))
+        crate::host::with_weak(&self.shared, |s| {
+            js::markers_js(s.chart.markers(self.id).unwrap_or(&[]), s.icon_key)
+        })
     }
 
     /// Removes the series (an OHLC series also removes its volume series).

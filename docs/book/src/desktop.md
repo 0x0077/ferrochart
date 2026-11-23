@@ -37,6 +37,22 @@ closed. For a title, a size or callbacks (live data, events), use
 the window is closed. The chart redraws only when something
 changed (input, new data, kinetic scrolling), so an idle chart uses no CPU.
 
+The bundled font covers Latin letters, digits and common symbols. For Chinese,
+Japanese, Korean or other scripts in marker texts, labels and titles, give
+fallback fonts, searched in order (no system fonts are scanned; a character
+that no font has is drawn as `□`):
+
+```rust,ignore
+let options = WindowOptions {
+    fonts: vec![std::fs::read("/System/Library/Fonts/Hiragino Sans GB.ttc")?],
+    ..WindowOptions::default()
+};
+ferrochart_winit::run(options, chart, app)?;
+```
+
+With your own event loop, add them to the renderer:
+`renderer.text_engine_mut().add_fallback_font(data)`.
+
 ## Live data
 
 Implement `ChartApp::update`. It is called on every event-loop iteration; return

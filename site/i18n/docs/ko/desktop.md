@@ -1,4 +1,4 @@
-<!-- source: 0c5fc454f5 -->
+<!-- source: 084e0fa734 -->
 # 데스크톱 (Rust + winit)
 
 `ferrochart-winit`는 창을 열고, wgpu로 렌더링하며, 마우스·트랙패드·키보드 입력을
@@ -37,6 +37,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 `run(WindowOptions, chart, app)`을 사용하세요. `run`은 창이 닫히면 반환합니다.
 차트는 무언가 바뀌었을 때(입력, 새 데이터, 관성 스크롤)만 다시 그리므로 유휴
 상태의 차트는 CPU를 쓰지 않습니다.
+
+내장 폰트는 라틴 문자, 숫자, 일반 기호를 지원합니다. 마커 텍스트, 레이블, 제목에
+중국어, 일본어, 한국어 또는 다른 문자를 쓰려면 대체 폰트를 지정하세요. 지정한
+순서대로 검색합니다(시스템 폰트는 검색하지 않으며, 어떤 폰트에도 없는 문자는 `□`로
+그려집니다).
+
+```rust,ignore
+let options = WindowOptions {
+    fonts: vec![std::fs::read("/System/Library/Fonts/Hiragino Sans GB.ttc")?],
+    ..WindowOptions::default()
+};
+ferrochart_winit::run(options, chart, app)?;
+```
+
+직접 만든 이벤트 루프를 쓴다면 렌더러에 추가하세요.
+`renderer.text_engine_mut().add_fallback_font(data)`.
 
 ## 실시간 데이터
 

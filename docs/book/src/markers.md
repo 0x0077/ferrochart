@@ -1,7 +1,9 @@
 # Markers and price lines
 
-Markers are small icons with optional text attached to bars, such as buy and
-sell signals or news. Price lines are horizontal lines at a fixed price, such
+Markers are small shapes with optional text attached to bars, such as buy and
+sell signals or news. A marker can also show an image (a wallet or account
+avatar) or a short badge such as `DB`, and crowded bars can fold their markers
+into a "+k" badge. Price lines are horizontal lines at a fixed price, such
 as an order, a stop or a target. Both belong to a series. Each series also has
 a last-value label and a last-value line, which are switched on and off with
 series options.
@@ -35,9 +37,16 @@ candles.setMarkers([]);
 | `shape` | `'circle' \| 'square' \| 'arrowUp' \| 'arrowDown'` | `'circle'` | Filled icon |
 | `color` | `Color \| null` | `null` | Icon and text color; `null` uses the series' main color (the up color for candles and bars) |
 | `text` | `string` | `''` | Text next to the icon, on the side away from the bar; empty for none |
+| `size` | `number \| null` | `null` | Diameter (side of a square), 4–64 CSS px; `null` for 10 |
+| `icon` | `string \| null` | `null` | Name of an image added with `chart.registerIcon`, drawn inside a circle or square |
+| `label` | `string` | `''` | Up to 8 characters drawn inside a circle or square, such as `'DB'`; not with `icon` |
+| `border` | `Color \| null` | `null` | Ring inside the shape's edge; `null` for none |
+| `borderWidth` | `number` | `2` | Ring width, CSS px |
 
-An unknown `position` or `shape`, a missing or non-integer `time`, or an
-invalid color throws, and the markers are left as they were.
+An unknown `position` or `shape`, a missing or non-integer `time`, an
+invalid color, a `size` outside 4–64, a `label` longer than 8 characters, or
+an `icon` or `label` on an arrow or both on one marker throws, and the markers
+are left as they were.
 
 ### Reading markers
 
@@ -57,7 +66,8 @@ to `setMarkers`.
   bar. A time before the first bar snaps to the first bar.
 - If the series has no value at that bar (a gap), the marker is not drawn.
 - Markers follow the series' `shift` option.
-- The icon is 10 CSS px across, 4 CSS px away from the bar.
+- The icon is `size` CSS px across (10 by default), 4 CSS px away from the
+  bar.
 - Several markers on the same bar and side stack away from the bar, in the
   order of `markers()`. A marker with text takes the icon plus one line of
   text.
@@ -72,6 +82,127 @@ candles.setMarkers([
   { time: t, position: 'belowBar', shape: 'circle', text: 'Alert' },
 ]);
 ```
+
+### Images, badges and borders
+
+Register an image once under a name, then use the name in any number of
+markers. The source can be a URL (fetched; an image from another origin needs
+CORS headers), an `HTMLImageElement`, `ImageBitmap`, `ImageData` or a canvas.
+The chart keeps a copy scaled to fit 64 × 64 pixels:
+
+```ts
+await chart.registerIcon('whale', '/avatars/whale.png');
+await chart.registerIcon('dev', document.querySelector('img#dev') as HTMLImageElement);
+
+candles.setMarkers([
+  { time: t1, icon: 'whale', size: 24, border: '#2fbf71' },             // a buy
+  { time: t2, icon: 'whale', size: 24, border: '#ef5350' },             // a sell
+  { time: t2, position: 'belowBar', label: 'DB', color: '#2962ff', size: 20 },
+  { time: t3, position: 'belowBar', label: '狙', color: '#ff9800', size: 20 },
+]);
+```
+
+- The image fills a circle (clipped round) or a square, over the marker's
+  color, so a transparent image shows the color behind it. Arrows cannot have
+  an image or a label.
+- `registerIcon` returns a promise; wait for it before using the name.
+  `setMarkers` with a name that is not registered throws. The promise
+  rejects when the image cannot be loaded or read (a failed fetch, an image
+  from another origin without CORS headers): fall back to a `label` or a
+  plain shape for that marker.
+- Registering a name again replaces the image in every marker using it.
+  `chart.unregisterIcon(name)` removes it (it returns whether there was one);
+  markers that used it then draw the shape alone, and `markers()` reports
+  their `icon` as `null`. A chart holds at most 1024 images.
+- A `label` is drawn centered in a color that contrasts with the marker's,
+  sized to fit: about 0.45 of the diameter for Latin letters and 0.6 for
+  Chinese, Japanese or Korean characters, smaller when the text is wider.
+- The `border` ring is drawn inside the edge, so it does not change the
+  marker's size, for example a green ring for buys and a red one for sells.
+
+### Folding crowded bars
+
+When many markers land on one bar, such as a dozen traders buying in the same
+minute, set `markerStackLimit` on the series. At most that many places are
+used on each side of a bar; the last one shows "+k" for the k markers not
+drawn:
+
+```ts
+candles.applyOptions({ markerStackLimit: 4 });   // 3 markers, then "+k"
+candles.applyOptions({ markerStackLimit: null }); // no limit (the default)
+```
+
+The badge is a circle in the series' main color, as large as the marker it
+replaces. Clicking it sends a `click` whose target is
+`{ type: 'markerOverflow', series, first, count }`: the markers not drawn are
+`series.markers().slice(first, first + count)`, for example to list them in a
+popup.
+
+### Hovering markers
+
+The `markerHover` event fires when the pointer moves onto a marker or a "+k"
+badge, and with `null` when it leaves. It carries the marker's index, its
+center and diameter in CSS px, which is what a tooltip needs:
+
+```ts
+chart.on('markerHover', (e) => {
+  if (!e) return hideTooltip();
+  const list = e.series.markers();
+  if (e.overflow > 0) {
+    showTooltip(e.x, e.y - e.size / 2, `${e.overflow} more`, list.slice(e.index, e.index + e.overflow));
+  } else {
+    showTooltip(e.x, e.y - e.size / 2, list[e.index].text ?? '');
+  }
+});
+```
+
+`index` is the position in `series.markers()`; for a badge it is the first
+marker not drawn and `overflow` is k (0 for a marker). The hovered marker is
+found when a frame is drawn, so the event comes at most once per frame. While
+the intro animation plays, no marker counts as hovered. See
+[Crosshair and events](crosshair-events.md).
+
+### Chinese, Japanese, Korean and emoji
+
+Marker text and labels can use any script. The bundled font only covers
+Latin letters, digits and common symbols; other characters come from:
+
+- **Web**: the browser's own fonts (the system's CJK fonts and color
+  emoji), with nothing to configure and nothing added to the package.
+- **Desktop, Python and C**: fonts you add, searched in order:
+  `WindowOptions { fonts, .. }` with winit, `fc.Chart(fonts=[...])` in
+  Python, `ferrochart_add_font` in C. No system fonts are scanned. Fonts that
+  are usually present: `/System/Library/Fonts/Hiragino Sans GB.ttc` (macOS),
+  `C:/Windows/Fonts/msyh.ttc` (Windows),
+  `/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc` (Linux, with the
+  Noto CJK package); or ship Noto Sans SC/JP/KR with your application.
+
+A character that no font has is drawn as `□`. Natively, color emoji fonts are
+not supported: an outline emoji font (Noto Emoji) draws in the text color.
+Text is drawn character by character, without shaping: right-to-left scripts
+(Arabic, Hebrew) and emoji built from several characters (skin tones, family
+and flag sequences) do not come out right.
+
+### Python, C and Rust
+
+The fields are the same in every binding:
+
+```python
+red = chart.add_icon(avatar)          # a (height, width, 4) or (height, width, 3) uint8 array
+candles.set_markers([
+    {"time": t, "icon": red, "size": 24, "border": "#2fbf71"},
+    {"time": t, "position": "below_bar", "label": "DB", "color": "#2962ff"},
+])
+candles.apply_options(marker_stack_limit=4)
+chart.on("marker_hover", lambda e: print(e))   # None when the pointer leaves
+```
+
+In Python, `add_icon` returns an integer id and `remove_icon(id)` removes the
+image. In C, `ferrochart_add_icon` and `ferrochart_set_markers` take the same
+fields (see [C, C++ and C#](native.md)). In Rust, `Chart::add_icon` takes an
+`IconImage` (straight RGBA, up to 256 × 256) and returns an `IconId` for
+`Marker::icon`; `ChartEvent::MarkerHover` and `ClickTarget::MarkerOverflow`
+are the event and click target.
 
 ### Which series can have markers
 

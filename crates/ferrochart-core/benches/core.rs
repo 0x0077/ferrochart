@@ -8,7 +8,7 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use ferrochart_core::chart::{SeriesData, SeriesOptions};
+use ferrochart_core::chart::{Marker, MarkerPosition, MarkerShape, SeriesData, SeriesOptions};
 use ferrochart_core::data::{BarUpdate, OhlcColumns, SeriesId};
 use ferrochart_core::drawing::{Anchor, BUILTIN_KINDS, DrawingData};
 use ferrochart_core::frame::SeriesKind;
@@ -138,6 +138,45 @@ fn build_frame(c: &mut Criterion) {
     chart.build_frame(0.0, &MonoMeasurer);
     let (mut dir, mut moved) = (1.0_f32, 0);
     g.bench_function("pan_1M_drawings", |b| {
+        b.iter(|| {
+            moved += 1;
+            if moved % 400 == 0 {
+                dir = -dir;
+            }
+            chart.time_scale().scroll_by(Px(dir * 61.0));
+            chart.build_frame(0.0, &MonoMeasurer);
+            black_box(chart.frame().layers[1].cmds.len())
+        });
+    });
+    // The same pan over 4000 bars with markers: one, two or three per bar,
+    // every fifth with text.
+    let (mut chart, id) = loaded_chart(&data);
+    let times = &data.time;
+    let markers = (last - 4000..=last)
+        .step_by(2)
+        .flat_map(|i| {
+            let n = 1 + i % 3;
+            (0..n).map(move |k| Marker {
+                time: times[i],
+                position: if k % 2 == 0 {
+                    MarkerPosition::AboveBar
+                } else {
+                    MarkerPosition::BelowBar
+                },
+                shape: MarkerShape::Circle,
+                text: if i % 5 == 0 {
+                    "B 1.2M".into()
+                } else {
+                    String::new()
+                },
+                ..Marker::default()
+            })
+        })
+        .collect();
+    chart.set_markers(id, markers).unwrap();
+    chart.build_frame(0.0, &MonoMeasurer);
+    let (mut dir, mut moved) = (1.0_f32, 0);
+    g.bench_function("pan_1M_markers", |b| {
         b.iter(|| {
             moved += 1;
             if moved % 400 == 0 {

@@ -11,6 +11,8 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
+
 import ferrochart as fc
 from ferrochart import _jupyter
 
@@ -30,7 +32,17 @@ chart.add_indicator(s, "rsi", placement="new_pane")
 line = chart.add_series("line", color="#ff9800", line_width=2)
 line.set_data({"time": d["time"][:150], "value": d["close"][:150] + 3,
                "color": ["#2196f3" if i % 20 < 10 else None for i in range(150)]})
-s.set_markers([{"time": int(d["time"][120]), "position": "below_bar", "shape": "arrow_up", "text": "buy"}])
+# r21: an image marker with a ring and a letter badge (registerIcon is
+# asynchronous in the front end; the markers after it must wait for it).
+avatar = np.zeros((24, 24, 4), np.uint8)
+avatar[..., 0], avatar[..., 3] = 230, 255
+avatar[:, 12:, 2] = 230
+icon = chart.add_icon(avatar)
+s.set_markers([
+    {"time": int(d["time"][120]), "position": "below_bar", "shape": "arrow_up", "text": "buy"},
+    {"time": int(d["time"][100]), "icon": icon, "size": 28, "border": "#00c853", "border_width": 3},
+    {"time": int(d["time"][90]), "label": "DB", "size": 20, "color": "#2962ff"},
+])
 s.create_price_line(float(d["close"][100]), color="#4caf50", title="level")
 chart.apply_price_scale_options(margins=(0.15, 0.15))
 chart.set_visible_logical_range(40, 160)

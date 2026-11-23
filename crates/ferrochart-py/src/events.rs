@@ -43,6 +43,7 @@ pub(crate) fn name(e: &ChartEvent) -> Option<&'static str> {
         ChartEvent::DrawingRemoved(_) => "drawing_removed",
         ChartEvent::DrawingSelected(_) => "drawing_selected",
         ChartEvent::Sync(_) | ChartEvent::DrawingSync => return None,
+        ChartEvent::MarkerHover(_) => "marker_hover",
         _ => "warning",
     })
 }
@@ -84,16 +85,35 @@ fn target(py: Python<'_>, t: ClickTarget) -> PyResult<Option<Bound<'_, PyDict>>>
             d.set_item("type", "series")?;
             d.set_item("series", series.0)?;
         }
+        ClickTarget::MarkerOverflow {
+            series,
+            first,
+            count,
+        } => {
+            d.set_item("type", "marker_overflow")?;
+            d.set_item("series", series.0)?;
+            d.set_item("first", first)?;
+            d.set_item("count", count)?;
+        }
         _ => return Ok(None),
     }
     Ok(Some(d))
 }
 
 /// The payload of `e` (series as ids; the Python `Chart` turns them into
-/// `Series`).
-pub(crate) fn payload<'py>(py: Python<'py>, e: &ChartEvent) -> PyResult<Bound<'py, PyDict>> {
+/// `Series`); `None` for `marker_hover` leaving a marker.
+pub(crate) fn payload<'py>(py: Python<'py>, e: &ChartEvent) -> PyResult<Bound<'py, PyAny>> {
     let d = PyDict::new(py);
     match e {
+        ChartEvent::MarkerHover(None) => return Ok(py.None().into_bound(py)),
+        ChartEvent::MarkerHover(Some(hit)) => {
+            d.set_item("series", hit.series.0)?;
+            d.set_item("index", hit.index)?;
+            d.set_item("overflow", hit.overflow)?;
+            d.set_item("x", f64::from(hit.center.x))?;
+            d.set_item("y", f64::from(hit.center.y))?;
+            d.set_item("size", f64::from(hit.size.0))?;
+        }
         ChartEvent::Click {
             pos,
             pane,
@@ -126,7 +146,7 @@ pub(crate) fn payload<'py>(py: Python<'py>, e: &ChartEvent) -> PyResult<Bound<'p
         ChartEvent::DrawingSelected(id) => d.set_item("id", id.map(|i| i.0))?,
         other => d.set_item("kind", format!("{other:?}"))?,
     }
-    Ok(d)
+    Ok(d.into_any())
 }
 
 /// Calls the handler of `shared` for each event (errors are printed, like

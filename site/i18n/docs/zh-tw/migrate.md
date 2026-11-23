@@ -1,4 +1,4 @@
-<!-- source: 8bc24e37b6 -->
+<!-- source: 5a2a4a05ee -->
 # 從 lightweight-charts 遷移
 
 為 lightweight-charts 撰寫的程式碼有兩種方式可以接上 FerroChart：
@@ -116,7 +116,7 @@ console.log(chart.timeScale().getVisibleLogicalRange());
 
 **標記**
 
-- `position: 'inBar'` 會繪製在 K 線上方，未知的 `shape` 則畫成圓形。`size` 與 `id` 會被忽略。
+- `position: 'inBar'` 會繪製在 K 線上方，未知的 `shape` 則畫成圓形。`size` 是預設大小的倍數（1 為 10 CSS px，限制在 4–64 px 之間）；`id` 會被忽略。
 
 **尚未支援**
 

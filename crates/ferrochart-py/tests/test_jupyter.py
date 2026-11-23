@@ -229,3 +229,21 @@ def test_plot_widget_and_events(recording):
     w._on_msg(w, {"type": "event", "name": "click", "payload": {
         "hit": {"mark": m.id, "index": 1, "x": 1, "y": 2, "position": {"x": 5, "y": 6}}, "x": 1, "y": 2}}, [])
     assert got[0]["hit"]["mark"] == m and got[0]["hit"]["position"] == {"x": 5, "y": 6}
+
+
+def test_icons_are_recorded_by_name(recording):
+    c = fc.Chart()
+    s = c.add_series("candlestick")
+    s.set_data(fc.random_walk(1, 20, 0, HOUR))
+    img = np.zeros((8, 4, 3), np.uint8)
+    icon = c.add_icon(img)
+    s.set_markers([{"time": 0, "icon": icon, "border_width": 1}])
+    c.remove_icon(icon)
+    _, ops, bufs = c._rec.snapshot()
+    reg = next(o for o in ops if o["op"] == "registerIcon")
+    assert reg["name"] == str(icon) and (reg["width"], reg["height"]) == (4, 8)
+    # RGB becomes RGBA for ImageData.
+    assert len(bufs[reg["buffer"]]) == 4 * 8 * 4 and bufs[reg["buffer"]][3] == 255
+    marker = next(o for o in ops if o["op"] == "setMarkers")["markers"][0]
+    assert marker["icon"] == str(icon) and marker["borderWidth"] == 1
+    assert ops[-1] == {"op": "unregisterIcon", "name": str(icon)}

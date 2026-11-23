@@ -265,6 +265,7 @@ fn line(ctx: &Ctx<'_>, m: &MarkEntry, s: &mut Scratch, frame: &mut Frame) {
                     size: Px(size),
                     icon: m.opts.icon,
                     color: m.point_color(i),
+                    ..Default::default()
                 });
             }
         }
@@ -313,6 +314,7 @@ fn scatter(ctx: &Ctx<'_>, m: &MarkEntry, s: &mut Scratch, frame: &mut Frame) {
                 size: Px(size),
                 icon: m.opts.icon,
                 color: m.point_color(i),
+                ..Default::default()
             });
         }
     }
@@ -507,6 +509,7 @@ pub(crate) fn label(ctx: &Ctx<'_>, l: &LabelOptions, b: &mut FrameBuilder<'_>) {
             size: Px(ctx.px(Css(LABEL_ICON_CSS))),
             icon,
             color,
+            ..Default::default()
         });
     }
     if !l.text.is_empty() {
@@ -552,12 +555,14 @@ pub(crate) fn highlight(
                 size: Px(size + ctx.px(Css(HALO_CSS))),
                 icon,
                 color: color.with_alpha((f32::from(color.a) * 0.3).round() as u8),
+                ..Default::default()
             });
             b.icon(IconInst {
                 pos,
                 size: Px(size),
                 icon,
                 color,
+                ..Default::default()
             });
         }
         crate::hit::Shape::Rect(r) => b.rect(r, ctx.theme.text.with_alpha(40)),

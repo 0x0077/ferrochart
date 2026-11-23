@@ -1,4 +1,4 @@
-<!-- source: 9cee954393 -->
+<!-- source: 5f948529f4 -->
 # 十字光标与事件
 
 图表通过事件告诉你它上面发生了什么：十字光标移动、点击、可见范围变化、画线被创建或编辑，等等。本章列出所有事件、它们的载荷和触发时机，并演示两个常见用法：跟随十字光标的图例，以及响应对标记和系列的点击。
@@ -75,6 +75,7 @@ chart.destroy();
 | `sync` | `{ message: SyncMessage }` | 图表向其同步组发出了一条消息 |
 | `drawingSync` | `{}` | 图表有待取走的画线同步操作 |
 | `warning` | `ChartWarning` | 图表自行调整了某些内容 |
+| `markerHover` | `MarkerHoverEvent \| null` | 指针移到某个标记或“+k”徽标上，或从其上移开 |
 
 ### click
 
@@ -92,6 +93,7 @@ interface ClickEvent {
 type ClickTarget =
   | { type: 'drawing'; id: number }
   | { type: 'marker'; series: Series; index: number }
+  | { type: 'markerOverflow'; series: Series; first: number; count: number }
   | { type: 'series'; series: Series };
 ```
 
@@ -100,7 +102,7 @@ type ClickTarget =
 `target` 是指针下方的对象，按以下顺序检查：
 
 1. **画线**（其主体或某个控制点）：`{ type: 'drawing', id }`。按下画线也会选中它。
-2. **标记**：`{ type: 'marker', series, index }`，其中 `index` 是该标记在 `series.markers()`（按时间排序）中的位置。
+2. **标记**：`{ type: 'marker', series, index }`，其中 `index` 是该标记在 `series.markers()`（按时间排序）中的位置。被折叠标记的“+k”徽标给出 `{ type: 'markerOverflow', series, first, count }`：未绘制的标记是 `series.markers().slice(first, first + count)`（见[标记与价格线](markers.md)）。
 3. **系列**：当指针位于 K 线实体或影线上、距线条 4 CSS px 以内、在柱状图的柱内或在圆点上时，为 `{ type: 'series', series }`。系列重叠时，最后添加的那个胜出。
 4. 空白处为 `null`。
 
@@ -217,6 +219,21 @@ chart.on('warning', (w) => {
   if (w.kind === 'timeAxisMerged') console.warn(`time axis rebuilt: ${w.count} bars inserted by series ${w.series.id}`);
 });
 ```
+
+### markerHover
+
+```ts
+interface MarkerHoverEvent {
+  series: Series;
+  index: number;          // position in series.markers(); for a badge, the first marker not drawn
+  overflow: number;       // k for a "+k" badge, 0 for a marker
+  x: number;              // center, CSS px from the canvas' top-left corner
+  y: number;
+  size: number;           // diameter, CSS px
+}
+```
+
+指针离开标记时，载荷为 `null`。从一个标记直接移到另一个标记时，只发送新的那个。指针下方的标记在绘制帧时确定，因此该事件每帧最多发送一次；不考虑画线，入场动画播放期间也不会有标记被视为悬停。可用于在头像或徽标上显示提示框（见[标记与价格线](markers.md)）。
 
 ## 示例：跟随十字光标的图例
 

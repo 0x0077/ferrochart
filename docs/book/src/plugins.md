@@ -108,7 +108,10 @@ chart.removeLayer(id);
 
 `build(ctx)` returns an array of commands in CSS pixels from the canvas'
 top-left corner: `rect`, `line`, `polyline`, `polygon`, `text` and `icon` (the
-`PluginCommand` type lists their fields). The `ctx` functions (`timeToX`,
+`PluginCommand` type lists their fields). An `icon` takes the same extras as a
+marker: `image` (a name registered with `chart.registerIcon`), `label`,
+`border` and `borderWidth`, so a layer can draw avatars anywhere, not only at
+bars (see [Markers](markers.md)). The `ctx` functions (`timeToX`,
 `priceToY`, `xToTime`, `yToPrice`, `textWidth`, `formatPrice`) work only during
 the call. A plugin that throws or returns an invalid command draws nothing for
 that frame (the commands before the bad one are kept); its first error is logged

@@ -19,12 +19,14 @@ use ferrochart_core::pane::PaneOptions;
 use ferrochart_core::price_scale::{PriceScaleMode, ScaleSide};
 use ferrochart_core::render::Renderer;
 use ferrochart_core::testing::{
-    band_scene, drawings_scene, drawings2_scene, merged_axis_scene, percentage_scene, points_scene,
-    random_walk, series_kinds_scene, synced_scene, transform_scene,
+    band_scene, cjk_text_scene, drawings_scene, drawings2_scene, image_markers_scene,
+    merged_axis_scene, percentage_scene, points_scene, random_walk, series_kinds_scene,
+    synced_scene, transform_scene,
 };
 use ferrochart_core::theme::Theme;
 use ferrochart_core::{Chart, ChartOptions};
 use ferrochart_render_wgpu::{GpuContext, WgpuRenderer};
+use ferrochart_text::{GlyphBitmap, GlyphSource};
 
 /// Must match `crates/ferrochart-render-cpu/tests/golden.rs`.
 const START: i64 = 1_704_067_200_000;
@@ -70,6 +72,12 @@ enum Density {
     Transform(SeriesKind),
     /// Candles with `Points` series: SAR-like dots and large marks.
     Points,
+    /// Image markers, letter badges, borders and a folded stack (r21).
+    ImageMarkers,
+    /// Chinese marker texts and badges, an emoji drawn as `□`.
+    Cjk,
+    /// As `Cjk`, with a color glyph source: the emoji is a color disc.
+    ColorGlyphs,
     /// Bands under candles and between crossing lines.
     Bands,
     /// As `Drawings`, revealed to 55 % with a pen line.
@@ -131,6 +139,14 @@ fn chart(theme: Theme, density: Density) -> Chart {
         points_scene(&mut chart, START).unwrap();
         return chart;
     }
+    if let Density::ImageMarkers = density {
+        image_markers_scene(&mut chart, START).unwrap();
+        return chart;
+    }
+    if let Density::Cjk | Density::ColorGlyphs = density {
+        cjk_text_scene(&mut chart, START).unwrap();
+        return chart;
+    }
     if let Density::Transform(kind) = density {
         transform_scene(&mut chart, START, kind).unwrap();
         return chart;
@@ -182,6 +198,9 @@ fn chart(theme: Theme, density: Density) -> Chart {
         | Density::Synced
         | Density::Transform(_)
         | Density::Points
+        | Density::ImageMarkers
+        | Density::Cjk
+        | Density::ColorGlyphs
         | Density::Bands
         | Density::Revealed
         | Density::Percentage => random_walk(12, 500, START, 60_000),
@@ -201,6 +220,9 @@ fn chart(theme: Theme, density: Density) -> Chart {
         | Density::Synced
         | Density::Transform(_)
         | Density::Points
+        | Density::ImageMarkers
+        | Density::Cjk
+        | Density::ColorGlyphs
         | Density::Bands
         | Density::Revealed
         | Density::Percentage => {}
@@ -209,8 +231,62 @@ fn chart(theme: Theme, density: Density) -> Chart {
     chart
 }
 
+/// A deterministic stand-in for the browser's color glyphs: every
+/// character is a gradient disc 1.1 em wide, its colors kept as is. Must
+/// match the copy in the other backend's golden tests.
+struct DiscGlyphs;
+
+impl GlyphSource for DiscGlyphs {
+    fn advance(&self, _: char, size: f32) -> f32 {
+        (size * 1.1).round() + 1.0
+    }
+
+    fn rasterize(&self, _: char, size: f32) -> Option<GlyphBitmap> {
+        let n = (size * 1.1).round() as u32;
+        let r = n as f32 * 0.5;
+        let mut rgba = Vec::new();
+        for y in 0..n {
+            for x in 0..n {
+                let (dx, dy) = (x as f32 + 0.5 - r, y as f32 + 0.5 - r);
+                let a = (r - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+                rgba.extend_from_slice(&[
+                    (255 * x / n) as u8,
+                    160,
+                    (255 * y / n) as u8,
+                    (a * 255.0).round() as u8,
+                ]);
+            }
+        }
+        Some(GlyphBitmap {
+            width: n,
+            height: n,
+            left: 0,
+            top: -((size * 0.9).round() as i32),
+            coverage: rgba.chunks_exact(4).map(|p| p[3]).collect(),
+            rgba: Some(rgba),
+        })
+    }
+}
+
+/// As the CPU goldens: the bundled font plus the Noto Sans SC subset of
+/// `ferrochart-render-cpu/tests/fonts` as fallback.
 fn render(ctx: &GpuContext, chart: &mut Chart) -> Vec<u8> {
+    render_with(ctx, chart, false)
+}
+
+fn render_with(ctx: &GpuContext, chart: &mut Chart, discs: bool) -> Vec<u8> {
     let mut renderer = WgpuRenderer::offscreen(ctx);
+    if discs {
+        renderer
+            .text_engine_mut()
+            .set_glyph_source(Some(Box::new(DiscGlyphs)));
+    }
+    let font = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../ferrochart-render-cpu/tests/fonts/NotoSansSC-subset.otf");
+    renderer
+        .text_engine_mut()
+        .add_fallback_font(std::fs::read(font).unwrap())
+        .unwrap();
     chart.build_frame(0.0, &renderer.measurer());
     renderer.render(chart.frame(), &chart.data_view()).unwrap();
     renderer.read_pixels().unwrap()
@@ -237,7 +313,8 @@ fn check(name: &str, theme: Theme, density: Density) {
     let Some(ctx) = ctx() else {
         return;
     };
-    let actual = render(ctx, &mut chart(theme, density));
+    let discs = matches!(density, Density::ColorGlyphs);
+    let actual = render_with(ctx, &mut chart(theme, density), discs);
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../ferrochart-render-cpu/tests/golden")
         .join(format!("{name}.png"));
@@ -512,6 +589,31 @@ fn golden_light_points() {
 #[test]
 fn golden_dark_points() {
     check("dark_points", Theme::dark(), Density::Points);
+}
+
+#[test]
+fn golden_light_image_markers() {
+    check("light_image_markers", Theme::light(), Density::ImageMarkers);
+}
+
+#[test]
+fn golden_dark_image_markers() {
+    check("dark_image_markers", Theme::dark(), Density::ImageMarkers);
+}
+
+#[test]
+fn golden_light_cjk_text() {
+    check("light_cjk_text", Theme::light(), Density::Cjk);
+}
+
+#[test]
+fn golden_dark_cjk_text() {
+    check("dark_cjk_text", Theme::dark(), Density::Cjk);
+}
+
+#[test]
+fn golden_dark_color_glyphs() {
+    check("dark_color_glyphs", Theme::dark(), Density::ColorGlyphs);
 }
 
 #[test]

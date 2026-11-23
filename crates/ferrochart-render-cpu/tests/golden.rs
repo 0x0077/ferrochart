@@ -16,12 +16,14 @@ use ferrochart_core::geom::{Rgba, SizeCss};
 use ferrochart_core::pane::PaneOptions;
 use ferrochart_core::render::Renderer;
 use ferrochart_core::testing::{
-    band_scene, drawings_scene, drawings2_scene, merged_axis_scene, percentage_scene, points_scene,
-    random_walk, series_kinds_scene, synced_scene, transform_scene,
+    band_scene, cjk_text_scene, drawings_scene, drawings2_scene, image_markers_scene,
+    merged_axis_scene, percentage_scene, points_scene, random_walk, series_kinds_scene,
+    synced_scene, transform_scene,
 };
 use ferrochart_core::theme::Theme;
 use ferrochart_core::{Chart, ChartOptions};
 use ferrochart_render_cpu::CpuRenderer;
+use ferrochart_text::{GlyphBitmap, GlyphSource, TextEngine};
 use tiny_skia::Pixmap;
 
 /// 2024-01-01T00:00:00Z.
@@ -71,15 +73,73 @@ enum Density {
     Transform(SeriesKind),
     /// Candles with `Points` series: SAR-like dots and large marks.
     Points,
+    /// Image markers, letter badges, borders and a folded stack (r21).
+    ImageMarkers,
     /// Bands under candles and between crossing lines.
     Bands,
     /// As `Drawings`, revealed to 55 % with a pen line.
     Revealed,
+    /// Chinese marker texts and badges, an emoji drawn as `□`.
+    Cjk,
+    /// As `Cjk`, with a color glyph source: the emoji is a color disc.
+    ColorGlyphs,
+}
+
+/// A deterministic stand-in for the browser's color glyphs: every
+/// character is a gradient disc 1.1 em wide, its colors kept as is. Must
+/// match the copy in the other backend's golden tests.
+struct DiscGlyphs;
+
+impl GlyphSource for DiscGlyphs {
+    fn advance(&self, _: char, size: f32) -> f32 {
+        (size * 1.1).round() + 1.0
+    }
+
+    fn rasterize(&self, _: char, size: f32) -> Option<GlyphBitmap> {
+        let n = (size * 1.1).round() as u32;
+        let r = n as f32 * 0.5;
+        let mut rgba = Vec::new();
+        for y in 0..n {
+            for x in 0..n {
+                let (dx, dy) = (x as f32 + 0.5 - r, y as f32 + 0.5 - r);
+                let a = (r - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+                rgba.extend_from_slice(&[
+                    (255 * x / n) as u8,
+                    160,
+                    (255 * y / n) as u8,
+                    (a * 255.0).round() as u8,
+                ]);
+            }
+        }
+        Some(GlyphBitmap {
+            width: n,
+            height: n,
+            left: 0,
+            top: -((size * 0.9).round() as i32),
+            coverage: rgba.chunks_exact(4).map(|p| p[3]).collect(),
+            rgba: Some(rgba),
+        })
+    }
+}
+
+/// The text engine of every golden: the bundled font plus a Noto Sans SC
+/// subset (`tests/fonts`, the characters of `CJK_SCENE_CHARS`) as fallback.
+fn text_engine() -> TextEngine {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/NotoSansSC-subset.otf");
+    let mut engine = TextEngine::new();
+    engine
+        .add_fallback_font(std::fs::read(path).unwrap())
+        .unwrap();
+    engine
 }
 
 /// Renders the chart with the CPU backend.
-fn finish(mut chart: Chart) -> Pixmap {
-    let mut renderer = CpuRenderer::new();
+fn finish(chart: Chart) -> Pixmap {
+    finish_with(chart, text_engine())
+}
+
+fn finish_with(mut chart: Chart, engine: TextEngine) -> Pixmap {
+    let mut renderer = CpuRenderer::with_text_engine(engine);
     chart.build_frame(0.0, &renderer.measurer());
     renderer.render(chart.frame(), &chart.data_view()).unwrap();
     renderer.pixmap().unwrap().clone()
@@ -153,6 +213,28 @@ fn render(theme: Theme, density: Density) -> Pixmap {
         });
         chart.resize(SizeCss { w: W, h: H }, 1.0);
         points_scene(&mut chart, START).unwrap();
+        return finish(chart);
+    }
+    if let Density::Cjk | Density::ColorGlyphs = density {
+        let mut chart = Chart::new(ChartOptions {
+            theme,
+            ..ChartOptions::default()
+        });
+        chart.resize(SizeCss { w: W, h: H }, 1.0);
+        cjk_text_scene(&mut chart, START).unwrap();
+        let mut engine = text_engine();
+        if let Density::ColorGlyphs = density {
+            engine.set_glyph_source(Some(Box::new(DiscGlyphs)));
+        }
+        return finish_with(chart, engine);
+    }
+    if let Density::ImageMarkers = density {
+        let mut chart = Chart::new(ChartOptions {
+            theme,
+            ..ChartOptions::default()
+        });
+        chart.resize(SizeCss { w: W, h: H }, 1.0);
+        image_markers_scene(&mut chart, START).unwrap();
         return finish(chart);
     }
     if let Density::Transform(kind) = density {
@@ -234,6 +316,9 @@ fn render(theme: Theme, density: Density) -> Pixmap {
         | Density::Synced
         | Density::Transform(_)
         | Density::Points
+        | Density::ImageMarkers
+        | Density::Cjk
+        | Density::ColorGlyphs
         | Density::Bands
         | Density::Revealed
         | Density::Percentage => random_walk(12, 500, START, 60_000),
@@ -253,6 +338,9 @@ fn render(theme: Theme, density: Density) -> Pixmap {
         | Density::Synced
         | Density::Transform(_)
         | Density::Points
+        | Density::ImageMarkers
+        | Density::Cjk
+        | Density::ColorGlyphs
         | Density::Bands
         | Density::Revealed
         | Density::Percentage => {}
@@ -469,6 +557,31 @@ fn golden_light_points() {
 #[test]
 fn golden_dark_points() {
     check("dark_points", Theme::dark(), Density::Points);
+}
+
+#[test]
+fn golden_light_image_markers() {
+    check("light_image_markers", Theme::light(), Density::ImageMarkers);
+}
+
+#[test]
+fn golden_dark_image_markers() {
+    check("dark_image_markers", Theme::dark(), Density::ImageMarkers);
+}
+
+#[test]
+fn golden_light_cjk_text() {
+    check("light_cjk_text", Theme::light(), Density::Cjk);
+}
+
+#[test]
+fn golden_dark_cjk_text() {
+    check("dark_cjk_text", Theme::dark(), Density::Cjk);
+}
+
+#[test]
+fn golden_dark_color_glyphs() {
+    check("dark_color_glyphs", Theme::dark(), Density::ColorGlyphs);
 }
 
 #[test]

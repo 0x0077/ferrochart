@@ -6,7 +6,7 @@
 //! errors as rejected promises / thrown exceptions, hence the allowed lints.
 #![allow(clippy::doc_markdown, clippy::missing_errors_doc)]
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::rc::{Rc, Weak};
 
 use ferrochart_core::chart::{
@@ -47,6 +47,17 @@ pub(crate) struct ChartScene {
     pub(crate) sync_ops_reported: bool,
     /// Plots attached with `attachSidePlot`, drawn right after the chart.
     pub(crate) side_plots: Vec<Weak<Host<PlotScene>>>,
+    /// Key of this chart's icon names (`crate::icons`).
+    pub(crate) icon_key: u32,
+    /// Series whose markers were set with icons: their markers follow an
+    /// icon re-registered under the same name.
+    pub(crate) icon_series: HashSet<SeriesId>,
+}
+
+impl Drop for ChartScene {
+    fn drop(&mut self) {
+        crate::icons::drop_key(self.icon_key);
+    }
 }
 
 impl Scene for ChartScene {
@@ -63,6 +74,7 @@ impl Scene for ChartScene {
         "sync",
         "drawingSync",
         "warning",
+        "markerHover",
     ];
 
     fn resize(&mut self, size: SizeCss, dpr: f32) {
@@ -78,6 +90,8 @@ impl Scene for ChartScene {
     }
 
     fn build_frame(&mut self, now_ms: f64, renderer: &WgpuRenderer) {
+        // Plugin `icon` commands look image names up in this chart's table.
+        crate::icons::set_current(self.icon_key);
         self.chart.build_frame(now_ms, &renderer.measurer());
     }
 
@@ -255,7 +269,24 @@ export interface CrosshairPoint {
 export type ClickTarget =
   | { type: 'drawing'; id: number }
   | { type: 'marker'; series: Series; index: number }
+  /** A "+k" badge of a folded marker stack: `count` markers from index `first` are not drawn. */
+  | { type: 'markerOverflow'; series: Series; first: number; count: number }
   | { type: 'series'; series: Series };
+
+/**
+ * The marker (or "+k" badge) under the pointer. `index` is the marker's
+ * index in `series.markers()` (for a badge, the first one not drawn);
+ * `overflow` is `k` for a badge, 0 for a marker; `x`, `y` its center and
+ * `size` its diameter, CSS px.
+ */
+export interface MarkerHoverEvent {
+  series: Series;
+  index: number;
+  overflow: number;
+  x: number;
+  y: number;
+  size: number;
+}
 
 /**
  * A press and release in a plot that moved at most 3 CSS px (not sent while a
@@ -288,6 +319,8 @@ export interface ChartEventMap {
   /** The chart sent drawing sync operations; take them with `takeDrawingSyncOps()`. Once until taken. */
   drawingSync: {};
   warning: ChartWarning;
+  /** The pointer moved onto a marker or "+k" badge, or off it (`null`). Drawings are not considered. */
+  markerHover: MarkerHoverEvent | null;
 }
 
 /**
@@ -330,6 +363,7 @@ fn event_name(e: &ChartEvent) -> &'static str {
         ChartEvent::DrawingSelected(_) => "drawingSelected",
         ChartEvent::Sync(_) => "sync",
         ChartEvent::DrawingSync => "drawingSync",
+        ChartEvent::MarkerHover(_) => "markerHover",
         _ => "warning",
     }
 }
@@ -387,6 +421,16 @@ fn click_target_js(shared: &Rc<Shared>, t: ClickTarget) -> JsValue {
             set(&o, "type", &"series".into());
             set(&o, "series", &series(s));
         }
+        ClickTarget::MarkerOverflow {
+            series: s,
+            first,
+            count,
+        } => {
+            set(&o, "type", &"markerOverflow".into());
+            set(&o, "series", &series(s));
+            set(&o, "first", &JsValue::from_f64(first as f64));
+            set(&o, "count", &JsValue::from_f64(f64::from(count)));
+        }
         _ => return JsValue::NULL,
     }
     o.into()
@@ -429,6 +473,19 @@ fn event_js(shared: &Rc<Shared>, e: &ChartEvent, pointer: Option<(f64, f64)>) ->
         ChartEvent::DrawingSelected(d) => set(&o, "id", &d.map_or(JsValue::NULL, id)),
         ChartEvent::Sync(m) => set(&o, "message", &crate::js::sync_message_js(*m)),
         ChartEvent::DrawingSync => {}
+        ChartEvent::MarkerHover(None) => return JsValue::NULL,
+        ChartEvent::MarkerHover(Some(hit)) => {
+            set(
+                &o,
+                "series",
+                &JsValue::from(crate::api::series(shared, hit.series)),
+            );
+            set(&o, "index", &JsValue::from_f64(hit.index as f64));
+            set(&o, "overflow", &JsValue::from_f64(f64::from(hit.overflow)));
+            set(&o, "x", &JsValue::from_f64(f64::from(hit.center.x)));
+            set(&o, "y", &JsValue::from_f64(f64::from(hit.center.y)));
+            set(&o, "size", &JsValue::from_f64(f64::from(hit.size.0)));
+        }
         ChartEvent::VisibleRangeChanged { from, to } => {
             set(&o, "from", &JsValue::from_f64(*from));
             set(&o, "to", &JsValue::from_f64(*to));
@@ -507,6 +564,8 @@ impl FerroChart {
             sync_ops: VecDeque::new(),
             sync_ops_reported: false,
             side_plots: Vec::new(),
+            icon_key: crate::icons::new_key(),
+            icon_series: HashSet::new(),
         };
         let shared = Host::start(surface, &canvas, scene)?;
         Ok(FerroChart { shared })

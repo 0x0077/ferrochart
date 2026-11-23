@@ -19,8 +19,9 @@ use raw_window_handle::{
 
 use crate::{
     Error, FERROCHART_ERR_BUFFER_TOO_SMALL, FERROCHART_ERR_RENDER, FERROCHART_OK, FerroChart,
-    Result, Sized32, out_ptr, read_sized, with_chart, write,
+    Result, Sized32, out_ptr, read_sized, slice, with_chart, write,
 };
+use ferrochart_text::TextEngine;
 
 /// Window system: macOS (`window`: the `NSView*` to draw into).
 pub const FERROCHART_PLATFORM_APPKIT: u32 = 1;
@@ -104,12 +105,27 @@ struct Window {
 pub(crate) struct Renderers {
     cpu: Option<CpuRenderer>,
     window: Option<Window>,
+    /// Fallback fonts (r21), given to every renderer.
+    fonts: Vec<Vec<u8>>,
 }
 
 fn device_size(size: SizeCss, dpr: f32) -> SizePx {
     SizePx {
         w: (size.w * dpr).round().max(1.0),
         h: (size.h * dpr).round().max(1.0),
+    }
+}
+
+fn text_engine(fonts: &[Vec<u8>]) -> TextEngine {
+    let mut engine = TextEngine::new();
+    add_fonts(&mut engine, fonts);
+    engine
+}
+
+/// Adds fonts checked by `ferrochart_add_font` as fallbacks.
+fn add_fonts(engine: &mut TextEngine, fonts: &[Vec<u8>]) {
+    for f in fonts {
+        let _ = engine.add_fallback_font(f.clone());
     }
 }
 
@@ -218,7 +234,11 @@ pub unsafe extern "C" fn ferrochart_render_rgba(
             ));
         }
         let now = if now_ms.is_finite() { now_ms } else { 0.0 };
-        let r = c.renderers.cpu.get_or_insert_with(CpuRenderer::new);
+        let fonts = &c.renderers.fonts;
+        let r = c
+            .renderers
+            .cpu
+            .get_or_insert_with(|| CpuRenderer::with_text_engine(text_engine(fonts)));
         c.chart.build_frame(now, &r.measurer());
         let rendered = r.render(c.chart.frame(), &c.chart.data_view());
         c.collect_events();
@@ -270,8 +290,9 @@ pub unsafe extern "C" fn ferrochart_attach_window(
         }
         .map_err(render_error)?;
         let ctx = GpuContext::with_instance(instance, Some(&surface)).map_err(render_error)?;
-        let renderer = WgpuRenderer::with_surface(&ctx, surface, device_size(c.size, c.dpr))
+        let mut renderer = WgpuRenderer::with_surface(&ctx, surface, device_size(c.size, c.dpr))
             .map_err(render_error)?;
+        add_fonts(renderer.text_engine_mut(), &c.renderers.fonts);
         c.renderers.window = Some(Window {
             renderer,
             _ctx: ctx,
@@ -339,5 +360,42 @@ pub unsafe extern "C" fn ferrochart_render(chart: *mut FerroChart, now_ms: f64) 
         c.collect_events();
         result.map_err(render_error)?;
         Ok(1)
+    })
+}
+
+/// Adds a fallback font (TrueType or OpenType data, copied): characters
+/// that the bundled font lacks (CJK, other scripts) are looked up in the
+/// fallback fonts in the order they were added, then drawn as `□`.
+/// Applies to the CPU renderer and an attached window. Color emoji fonts
+/// (sbix, COLR, CBDT) are not supported; an outline emoji font draws in the
+/// text color.
+///
+/// # Safety
+///
+/// `chart` is a valid chart; `data` has `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ferrochart_add_font(
+    chart: *mut FerroChart,
+    data: *const u8,
+    len: usize,
+) -> i32 {
+    with_chart(chart, |c| {
+        if len == 0 {
+            return Err(Error::invalid("'len' is 0"));
+        }
+        // SAFETY: `len` readable bytes per the contract.
+        let font = unsafe { slice(data, len, "data")? }.to_vec();
+        // Checked on a scratch engine first, so a bad font changes nothing.
+        TextEngine::new()
+            .add_fallback_font(font.clone())
+            .map_err(|e| Error::invalid(format!("not a usable font: {e}")))?;
+        // The CPU renderer is cheap to make: the next one gets the fonts.
+        c.renderers.cpu = None;
+        if let Some(w) = &mut c.renderers.window {
+            let _ = w.renderer.text_engine_mut().add_fallback_font(font.clone());
+            w.fresh = true;
+        }
+        c.renderers.fonts.push(font);
+        Ok(FERROCHART_OK)
     })
 }

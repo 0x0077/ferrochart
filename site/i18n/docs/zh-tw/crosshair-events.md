@@ -1,4 +1,4 @@
-<!-- source: 9cee954393 -->
+<!-- source: 5f948529f4 -->
 # 十字游標與事件
 
 圖表透過事件回報其上發生的事情：十字游標移動、點擊、可見範圍變更、繪圖被建立或編輯，以及其他幾種事件。本章列出所有事件、其內容（payload）與觸發時機，並示範兩種常見用法：跟隨十字游標的圖例，以及回應對標記與系列的點擊。
@@ -75,6 +75,7 @@ chart.destroy();
 | `sync` | `{ message: SyncMessage }` | 圖表向其同步群組發送了一則訊息 |
 | `drawingSync` | `{}` | 圖表有等待取用的繪圖同步操作 |
 | `warning` | `ChartWarning` | 圖表自行調整了某些東西 |
+| `markerHover` | `MarkerHoverEvent \| null` | 指標移到某個標記或「+k」徽章上，或從其上移開 |
 
 ### click
 
@@ -92,6 +93,7 @@ interface ClickEvent {
 type ClickTarget =
   | { type: 'drawing'; id: number }
   | { type: 'marker'; series: Series; index: number }
+  | { type: 'markerOverflow'; series: Series; first: number; count: number }
   | { type: 'series'; series: Series };
 ```
 
@@ -100,7 +102,7 @@ type ClickTarget =
 `target` 是指標下方的物件，依下列順序判斷：
 
 1. **繪圖**（其本體或任一控制點）：`{ type: 'drawing', id }`。按下繪圖也會選取它。
-2. **標記**：`{ type: 'marker', series, index }`，其中 `index` 是該標記在 `series.markers()`（依時間排序）中的位置。
+2. **標記**：`{ type: 'marker', series, index }`，其中 `index` 是該標記在 `series.markers()`（依時間排序）中的位置。點擊收合標記的「+k」徽章會得到 `{ type: 'markerOverflow', series, first, count }`：未繪製的標記為 `series.markers().slice(first, first + count)`（參見[標記](markers.md)）。
 3. **系列**：當指標位於 K 線實體或影線上、距離線條 4 CSS px 以內、在直方圖柱內或在點上時，為 `{ type: 'series', series }`。若系列互相重疊，以最後加入者為準。
 4. 空白處則為 `null`。
 
@@ -217,6 +219,21 @@ chart.on('warning', (w) => {
   if (w.kind === 'timeAxisMerged') console.warn(`time axis rebuilt: ${w.count} bars inserted by series ${w.series.id}`);
 });
 ```
+
+### markerHover
+
+```ts
+interface MarkerHoverEvent {
+  series: Series;
+  index: number;          // position in series.markers(); for a badge, the first marker not drawn
+  overflow: number;       // k for a "+k" badge, 0 for a marker
+  x: number;              // center, CSS px from the canvas' top-left corner
+  y: number;
+  size: number;           // diameter, CSS px
+}
+```
+
+指標離開標記時，事件內容為 `null`。從一個標記直接移到另一個標記時，只會傳送新的那一個。指標下方的標記是在繪製幀時判定的，因此此事件每幀最多觸發一次；不考慮繪圖，且在開場動畫播放期間，不會有任何標記被視為懸停中。可用於在頭像或徽章上顯示提示框（參見[標記](markers.md)）。
 
 ## 範例：跟隨十字游標的圖例
 

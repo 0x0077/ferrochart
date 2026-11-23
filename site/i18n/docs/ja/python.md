@@ -1,4 +1,4 @@
-<!-- source: acdcedb855 -->
+<!-- source: 4bfbed7d9a -->
 # Python
 
 `ferrochart`パッケージは、Pythonからネイティブウィンドウ、Jupyter、またはPNGにチャートを描画します。描画にはGPU（Metal、Vulkan、DirectX 12）を使い、CPUへのフォールバックもあります。pandasやpolarsのDataFrame、またはNumPy配列のdictを受け取ります。
@@ -48,6 +48,10 @@ line = chart.add_series("line", color="#ff9800", line_width=2)
 candles.apply_options(down_color="#e91e63")
 candles.create_price_line(101.5, title="target", line_style="dashed")
 candles.set_markers([{"time": t, "position": "below_bar", "shape": "arrow_up", "text": "buy"}])
+whale = chart.add_icon(avatar)       # a (height, width, 4) uint8 array; RGB works too
+candles.set_markers([{"time": t, "icon": whale, "size": 24, "border": "#2fbf71"},
+                     {"time": t, "label": "DB", "position": "below_bar"}])
+candles.apply_options(marker_stack_limit=4)   # 3 markers per bar side, then "+k"
 chart.apply_price_scale_options(mode="logarithmic")
 
 rsi = chart.add_indicator(candles, "rsi", n=14)
@@ -78,7 +82,18 @@ def clicked(e):
 chart.on("crosshair_move", lambda e: print(e["point"]))
 ```
 
-イベント：`click`、`crosshair_move`、`visible_range_changed`、`need_more_history`、`drawing_created`、`drawing_modified`、`drawing_removed`、`drawing_selected`、`warning`。コールバックはチャートの表示中にメインスレッドで実行されます。
+イベント：`click`、`crosshair_move`、`visible_range_changed`、`need_more_history`、`drawing_created`、`drawing_modified`、`drawing_removed`、`drawing_selected`、`warning`、`marker_hover`（`series`、`index`、`overflow`、`x`、`y`、`size`を持つdict。ポインターがマーカーから離れたときは`None`）。コールバックはチャートの表示中にメインスレッドで実行されます。
+
+## 中国語、日本語、韓国語のテキスト
+
+同梱フォントはラテン文字、数字、一般的な記号に対応しています。その他の文字体系には、フォントファイル（パスまたはバイト列）を渡します。フォントは指定した順に検索され、どのフォントにもない文字は`□`として描画されます。
+
+```python
+chart = fc.Chart(fonts=["/System/Library/Fonts/Hiragino Sans GB.ttc"])  # macOS
+chart = fc.Chart(fonts=["NotoSansSC-Regular.otf"])                     # any system
+```
+
+フォントは`show()`と`to_png()`で使われます。Jupyterではブラウザーが自身のフォントで描画するため、`fonts`は不要です。[マーカー](markers.md)を参照してください。
 
 ## ウィンドウ
 

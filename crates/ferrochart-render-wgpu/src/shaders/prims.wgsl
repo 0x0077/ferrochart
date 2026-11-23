@@ -146,8 +146,9 @@ fn vs_icon(@builtin(vertex_index) vi: u32, @location(0) center: vec2<f32>,
     return out;
 }
 
-// Mirrors `transform_helpers::icon_coverage` line by line.
-fn icon_coverage(icon: u32, dx: f32, dy: f32, size: f32) -> f32 {
+// Mirrors `transform_helpers::icon_distance` line by line; a large distance
+// (no coverage) for unknown icons.
+fn icon_distance(icon: u32, dx: f32, dy: f32, size: f32) -> f32 {
     let h = size * 0.5;
     let ax = abs(dx);
     var d: f32;
@@ -163,9 +164,14 @@ fn icon_coverage(icon: u32, dx: f32, dy: f32, size: f32) -> f32 {
         let shaft = max(ax - h * 0.35, abs(ty - q) - q);
         d = min(head, shaft);
     } else {
-        return 0.0;
+        d = 1.0e9;
     }
-    return clamp(0.5 - d, 0.0, 1.0);
+    return d;
+}
+
+// Mirrors `transform_helpers::icon_coverage`.
+fn icon_coverage(icon: u32, dx: f32, dy: f32, size: f32) -> f32 {
+    return clamp(0.5 - icon_distance(icon, dx, dy, size), 0.0, 1.0);
 }
 
 @fragment
@@ -180,6 +186,102 @@ fn fs_icon(in: IconOut) -> @location(0) vec4<f32> {
         discard;
     }
     return vec4<f32>(in.color.rgb, a);
+}
+
+// ---- icons with an image or a border (r21) ---------------------------------
+
+struct RichIconOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) @interpolate(flat) color: vec4<f32>,
+    // (center, size, icon)
+    @location(1) @interpolate(flat) shape: vec4<f32>,
+    @location(2) @interpolate(flat) border: vec4<f32>,
+    // (border width, tile x, tile y, has tile)
+    @location(3) @interpolate(flat) extra: vec4<f32>,
+}
+
+@vertex
+fn vs_icon_rich(@builtin(vertex_index) vi: u32, @location(0) center: vec2<f32>,
+                @location(1) size: f32, @location(2) icon: u32,
+                @location(3) color: vec4<f32>, @location(4) border: vec4<f32>,
+                @location(5) border_width: f32, @location(6) tile: vec2<u32>) -> RichIconOut {
+    let reach = size * 0.5 + 1.0;
+    let lo = floor(center - vec2<f32>(reach));
+    let hi = ceil(center + vec2<f32>(reach));
+    var out: RichIconOut;
+    out.pos = to_clip(lo + CORNERS[vi] * (hi - lo));
+    out.color = color;
+    out.shape = vec4<f32>(center, size, f32(icon));
+    out.border = border;
+    let has = select(0.0, 1.0, tile.x != 0xFFFFFFFFu);
+    out.extra = vec4<f32>(border_width, f32(tile.x & 0xFFFFu), f32(tile.y), has);
+    return out;
+}
+
+// Mirrors `transform_helpers::icon_image_half`; 0 for icons without images.
+fn icon_image_half(icon: u32, size: f32) -> f32 {
+    if icon == 0u {
+        return size * 0.5;
+    } else if icon == 1u {
+        return size * 0.5 * 0.8;
+    }
+    return 0.0;
+}
+
+// Mirrors `transform_helpers::sample_tile`: four loads, f32 weights.
+fn sample_tile(origin: vec2<f32>, u: f32, v: f32) -> vec4<f32> {
+    let x = clamp(u - 0.5, 0.0, 63.0);
+    let y = clamp(v - 0.5, 0.0, 63.0);
+    let x0 = floor(x);
+    let y0 = floor(y);
+    let fx = x - x0;
+    let fy = y - y0;
+    let x1 = min(x0 + 1.0, 63.0);
+    let y1 = min(y0 + 1.0, 63.0);
+    let o = vec2<i32>(origin);
+    let a = textureLoad(tex, o + vec2<i32>(i32(x0), i32(y0)), 0);
+    let b = textureLoad(tex, o + vec2<i32>(i32(x1), i32(y0)), 0);
+    let c = textureLoad(tex, o + vec2<i32>(i32(x0), i32(y1)), 0);
+    let d = textureLoad(tex, o + vec2<i32>(i32(x1), i32(y1)), 0);
+    let top = a * (1.0 - fx) + b * fx;
+    let bottom = c * (1.0 - fx) + d * fx;
+    return top * (1.0 - fy) + bottom * fy;
+}
+
+// Mirrors `transform_helpers::icon_shade` and `unpremultiply_8`.
+@fragment
+fn fs_icon_rich(in: RichIconOut) -> @location(0) vec4<f32> {
+    let p = in.pos.xy - in.shape.xy;
+    let icon = u32(in.shape.w);
+    let size = in.shape.z;
+    let d = icon_distance(icon, p.x, p.y, size);
+    // Colors arrive as unorm8: premultiply like the CPU (f32 of u8 / 255).
+    let fa = in.color.a;
+    let fill = vec4<f32>(in.color.rgb * fa, fa);
+    var inner = fill;
+    let half = icon_image_half(icon, size);
+    if in.extra.w > 0.5 && half > 0.0 {
+        let u = (p.x / (2.0 * half) + 0.5) * 64.0;
+        let v = (p.y / (2.0 * half) + 0.5) * 64.0;
+        let s = sample_tile(in.extra.yz, u, v);
+        inner = s + fill * (1.0 - s.a);
+    }
+    let cov = clamp(0.5 - d, 0.0, 1.0);
+    var out: vec4<f32>;
+    let bw = in.extra.x;
+    if in.border.a > 0.0 && bw > 0.0 {
+        let ic = clamp(0.5 - (d + bw), 0.0, 1.0);
+        let b = vec4<f32>(in.border.rgb * in.border.a, in.border.a);
+        out = inner * ic + b * (cov - ic);
+    } else {
+        out = inner * cov;
+    }
+    let a8 = clamp(floor(out.a * 255.0 + 0.5), 0.0, 255.0);
+    if a8 <= 0.0 {
+        discard;
+    }
+    let rgb = clamp(floor((out.rgb / out.a) * 255.0 + 0.5), vec3<f32>(0.0), vec3<f32>(255.0));
+    return vec4<f32>(rgb / 255.0, a8 / 255.0);
 }
 
 // ---- text ------------------------------------------------------------------
@@ -215,6 +317,21 @@ fn fs_glyph(in: GlyphOut) -> @location(0) vec4<f32> {
         discard;
     }
     return vec4<f32>(in.color.rgb, a);
+}
+
+// A color glyph (straight RGBA, from a GlyphSource): its own colors, the text
+// color's alpha. Same integer math as fs_glyph with coverage = texel alpha,
+// as CpuRenderer::draw_text.
+@fragment
+fn fs_glyph_color(in: GlyphOut) -> @location(0) vec4<f32> {
+    let texel = textureLoad(tex, vec2<i32>(floor(in.pos.xy - in.origin.xy + in.origin.zw)), 0);
+    let a8 = floor(in.color.a * 255.0 + 0.5);
+    let c8 = floor(texel.a * 255.0 + 0.5);
+    let a = floor(a8 * c8 / 255.0) / 255.0;
+    if a <= 0.0 {
+        discard;
+    }
+    return vec4<f32>(texel.rgb, a);
 }
 
 // ---- composite -------------------------------------------------------------
