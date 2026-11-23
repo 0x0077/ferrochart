@@ -165,7 +165,7 @@
   "demos": {
     "candles": {
       "title": "Candlesticks + volume",
-      "about": "The classic view. Five thousand one-minute bars on a GPU-rendered price scale with a volume histogram below. Drag to pan, scroll or pinch to zoom."
+      "about": "The classic view. A day of real one-minute bars, updating every second, on a GPU-rendered price scale with a volume histogram below. Drag to pan, scroll or pinch to zoom."
     },
     "live": {
       "title": "Real-time stream",

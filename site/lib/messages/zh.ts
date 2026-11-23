@@ -96,6 +96,8 @@ export const zh: Messages = {
     starting: '启动中…',
     failed: '启动失败',
     live: '实时 · {r}',
+    dataLive: '实时数据 · OKX',
+    dataSimulated: '模拟数据',
     copy: '复制',
     copied: '已复制',
     copyFailed: '复制失败',

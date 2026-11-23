@@ -99,6 +99,8 @@ export const en = {
     starting: 'Starting…',
     failed: 'Failed',
     live: 'Live · {r}',
+    dataLive: 'Live data · OKX',
+    dataSimulated: 'Simulated data',
     copy: 'Copy',
     copied: 'Copied',
     copyFailed: 'Copy failed',

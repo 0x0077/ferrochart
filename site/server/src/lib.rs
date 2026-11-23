@@ -5,12 +5,15 @@
 //!   time: every visitor sees the same market, history never changes, and
 //!   the live feed continues the history.
 //! - responses are reused for a while (`cache`).
+//! - `/api/live/*`: real bars and a live stream of a few crypto pairs
+//!   (OKX), for the examples marked live (`live`).
 //! - `/api/github/stars`: the repository's star count for the site header.
 //! - everything else: the static site (`next build` output).
 
 pub mod api;
 pub mod cache;
 pub mod github;
+pub mod live;
 pub mod market;
 pub mod site;
 pub mod stream;
@@ -47,6 +50,8 @@ pub struct AppState {
     pub star_fetch: github::StarFetch,
     pub star_cache: Arc<github::StarCache>,
     pub response_cache: Arc<cache::ResponseCache>,
+    /// Real data for `/api/live/*`.
+    pub live: Arc<live::LiveHub>,
 }
 
 impl AppState {
@@ -64,6 +69,10 @@ pub struct Config {
     pub clock: Clock,
     /// Where `/api/github/stars` gets the count (GitHub; a stub in tests).
     pub star_fetch: github::StarFetch,
+    /// Where `/api/live/*` gets real data (OKX; a fake in tests).
+    pub live: Arc<dyn live::Upstream>,
+    /// Fetch the live examples' bars when the app starts (needs a Tokio runtime).
+    pub warm_live: bool,
 }
 
 impl Default for Config {
@@ -74,6 +83,8 @@ impl Default for Config {
             max_streams: 500,
             clock: system_clock(),
             star_fetch: github::github_fetch(),
+            live: live::okx(),
+            warm_live: false,
         }
     }
 }
@@ -92,7 +103,11 @@ pub fn app(config: Config) -> Router {
         star_fetch: config.star_fetch,
         star_cache: Arc::default(),
         response_cache: cache::shared(),
+        live: Arc::new(live::LiveHub::new(config.live)),
     };
+    if config.warm_live {
+        tokio::spawn(live::warm(state.live.clone(), state.now()));
+    }
     let mut api = api::router()
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),

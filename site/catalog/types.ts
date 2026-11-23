@@ -15,6 +15,8 @@ export interface Demo {
   /** A second canvas, `side`, right of the chart: for a FerroPlot attached
    * with `chart.attachSidePlot`. */
   side?: boolean;
+  /** Real market data (`/api/live/*`, OKX) instead of the simulated market. */
+  live?: boolean;
 }
 
 export interface Category {

@@ -66,7 +66,7 @@ pub async fn handler(
         .into_response())
 }
 
-async fn run(
+pub(crate) async fn run(
     mut socket: WebSocket,
     st: AppState,
     sym: &'static Symbol,

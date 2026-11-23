@@ -465,7 +465,8 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
           <div ref={host} id="canvas-host" className="canvas-host relative min-h-0 flex-1 overflow-hidden rounded-[14px] border border-line bg-chart" />
           <p className="shell-hint mx-1 mt-2.5 mb-0 flex gap-4 text-xs text-faint">
             <span>{t.viewer.hint}</span>
-            <span className="ml-auto hidden font-mono tab:inline">{demo.id}</span>
+            <span className={`ml-auto ${demo.live ? 'text-[#0f9f7a]' : ''}`}>{demo.live ? t.viewer.dataLive : t.viewer.dataSimulated}</span>
+            <span className="hidden font-mono tab:inline">{demo.id}</span>
           </p>
 
           <div

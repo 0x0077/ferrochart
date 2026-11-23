@@ -22,7 +22,10 @@ async fn main() -> ExitCode {
         .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stdout()))
         .init();
     let mut addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 8080));
-    let mut config = Config::default();
+    let mut config = Config {
+        warm_live: true,
+        ..Config::default()
+    };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {

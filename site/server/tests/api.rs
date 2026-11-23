@@ -2,12 +2,15 @@
 
 #![allow(clippy::unwrap_used)]
 
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use ferrochart_site_server::live::{Candle, Trade};
 use ferrochart_site_server::{Config, app};
 use futures_util::StreamExt;
 use http_body_util::BodyExt;
@@ -24,7 +27,27 @@ fn test_app(site: Option<PathBuf>) -> Router {
         max_streams: 4,
         clock: Arc::new(|| NOW),
         star_fetch: Arc::new(|| Box::pin(async { Some(42) })),
+        live: Arc::new(Offline),
+        warm_live: false,
     })
+}
+
+/// No real data: `/api/live/*` falls back to the simulated market.
+struct Offline;
+
+impl ferrochart_site_server::live::Upstream for Offline {
+    fn candles(
+        &self,
+        _: &'static str,
+        _: &'static str,
+        _: Option<i64>,
+        _: usize,
+    ) -> Pin<Box<dyn Future<Output = Option<Vec<Candle>>> + Send>> {
+        Box::pin(async { None })
+    }
+    fn trades(&self, _: &'static str) -> Pin<Box<dyn Future<Output = Option<Vec<Trade>>> + Send>> {
+        Box::pin(async { None })
+    }
 }
 
 async fn get(app: &Router, uri: &str) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {

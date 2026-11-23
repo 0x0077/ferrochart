@@ -121,9 +121,10 @@ ${view(9)}`,
       id: 'spread',
       title: 'Ratio with bands',
       group: 'Derived series',
+      live: true,
       code: `${create()}
-${bars({ symbol: 'ETHUSD', interval: '1h', count: 1500 }, 'eth')}
-${bars({ symbol: 'BTCUSD', interval: '1h', count: 1500 }, 'btc')}
+${bars({ symbol: 'ETHUSD', interval: '1h', count: 1440, live: true }, 'eth')}
+${bars({ symbol: 'BTCUSD', interval: '1h', count: 1440, live: true }, 'btc')}
 const ratio = eth.close.map((c, i) => c / btc.close[i]);
 // Rolling 100-bar mean and two standard deviations.
 const n = 100, mean = [], upper = [], lower = [];

@@ -96,6 +96,8 @@ export const ko: Messages = {
     starting: '시작하는 중…',
     failed: '실패',
     live: '라이브 · {r}',
+    dataLive: '실시간 데이터 · OKX',
+    dataSimulated: '시뮬레이션 데이터',
     copy: '복사',
     copied: '복사됨',
     copyFailed: '복사 실패',

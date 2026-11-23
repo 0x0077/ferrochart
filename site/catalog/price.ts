@@ -1,5 +1,10 @@
-import { bars, candles, create, view } from './build';
+import { bars, candles, create, stream, view } from './build';
+import type { BarsSpec } from './build';
 import type { Category } from './types';
+
+/** Real data (OKX) for the examples that stream. */
+const ETH5M: BarsSpec = { symbol: 'ETHUSD', interval: '5m', count: 1440, live: true };
+const BTC1H: BarsSpec = { symbol: 'BTCUSD', interval: '1h', count: 1440, live: true };
 
 /** Plugin helper: `inView(ctx)` gives the bars on screen and the bar spacing. */
 const IN_VIEW = `// The bars on screen (a binary search on time) and the bar spacing, in CSS px.
@@ -29,24 +34,17 @@ export const price: Category = {
       id: 'candles',
       title: 'Candlesticks + volume',
       group: 'Candles & bars',
-      code: candles({ symbol: 'BTCUSD', interval: '1m', count: 5000, volume: true, spacing: 9 }),
-      about: 'The classic view. Five thousand one-minute bars on a GPU-rendered price scale with a volume histogram below. Drag to pan, scroll or pinch to zoom.',
+      code: candles({ symbol: 'BTCUSD', interval: '1m', count: 1440, volume: true, spacing: 9, live: true, stream: true }),
+      about: 'The classic view. A day of real one-minute bars, updating every second, on a GPU-rendered price scale with a volume histogram below. Drag to pan, scroll or pinch to zoom.',
+      live: true,
       api: ['FerroChart.create', 'addCandlestickSeries', 'addVolumeSeries'],
     },
     {
       id: 'live',
       title: 'Real-time stream',
       group: 'Candles & bars',
-      code: `${candles({ symbol: 'BTCUSD', interval: '1m', count: 2000, spacing: 10, extra: "chart.addIndicator(candles, 'ema', { n: 21 });" })}
-
-// The forming bar, four times a second; \`since\` completes bars that closed
-// after the history was loaded.
-const ws = new WebSocket(\`/api/stream?symbol=BTCUSD&interval=1m&trades=false&since=\${bars.time.at(-1)}\`);
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.type === 'bar') candles.update(msg); // zero allocations per update
-};
-const stop = () => ws.close(); // call before chart.destroy()`,
+      code: candles({ symbol: 'BTCUSD', interval: '1m', count: 1440, spacing: 10, live: true, stream: true, extra: "chart.addIndicator(candles, 'ema', { n: 21 });" }),
+      live: true,
       about: '`update` replaces the last bar or appends a new one. Indicators update incrementally with it, so a tick costs microseconds, not a redraw of history.',
       api: ['Series.update', 'addIndicator'],
     },
@@ -86,7 +84,8 @@ const stop = () => clearInterval(timer); // pause; call before chart.destroy()`,
       id: 'heikin',
       title: 'Heikin-Ashi',
       group: 'Candles & bars',
-      code: [create(), bars({ symbol: 'ETHUSD', interval: '5m', count: 3000 }), "chart.addSeries('heikinAshi').setData(bars);", view(8)].join('\n'),
+      code: [create(), bars(ETH5M), "const ha = chart.addSeries('heikinAshi');", 'ha.setData(bars);', view(8), '', stream('ha', ETH5M)].join('\n'),
+      live: true,
       about: 'Averaged candles that make trends easier to read. Computed from the same OHLC columns; the crosshair still reports real prices.',
       api: ["addSeries('heikinAshi')"],
     },
@@ -131,8 +130,9 @@ ${view(11)}`,
       id: 'volcandles',
       title: 'Volume-width candles',
       group: 'Candle styles',
+      live: true,
       code: `${create()}
-${bars({ symbol: 'SOLUSD', interval: '15m', count: 1200 })}
+${bars({ symbol: 'SOLUSD', interval: '15m', count: 1200, live: true })}
 ${HIDDEN}
 ${IN_VIEW}
 const up = '#2ee6b6', down = '#ff5d73';
@@ -274,9 +274,13 @@ ${view(44)}`,
       title: 'Line',
       group: 'Lines & columns',
       code: `${create()}
-${bars({ symbol: 'BTCUSD', interval: '1h', count: 2000 })}
-chart.addSeries('line', { color: '#4cc9f0', lineWidth: 2 }).setData({ time: bars.time, value: bars.close });
-${view(4)}`,
+${bars(BTC1H)}
+const line = chart.addSeries('line', { color: '#4cc9f0', lineWidth: 2 });
+line.setData({ time: bars.time, value: bars.close });
+${view(4)}
+
+${stream('line', BTC1H, { value: true })}`,
+      live: true,
       about: 'Closing prices as a single line: the cleanest view of a trend.',
       api: ["addSeries('line')", 'setData'],
     },
@@ -310,8 +314,9 @@ ${view(6)}`,
       id: 'hlcarea',
       title: 'HLC area',
       group: 'Lines & columns',
+      live: true,
       code: `${create()}
-${bars({ symbol: 'SOLUSD', interval: '1h', count: 1500 })}
+${bars({ symbol: 'SOLUSD', interval: '1h', count: 1440, live: true })}
 const high = chart.addSeries('line', { color: 'rgba(46, 230, 182, 0.5)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
 const low = chart.addSeries('line', { color: 'rgba(255, 93, 115, 0.5)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
 const close = chart.addSeries('line', { color: '#e6e9ef', lineWidth: 2 });
@@ -410,9 +415,10 @@ chart.fitContent();`,
       id: 'overlaycandles',
       title: 'Two markets as candles',
       group: 'Overlays & context',
+      live: true,
       code: `${create()}
-${bars({ symbol: 'BTCUSD', interval: '1h', count: 600 }, 'btc')}
-${bars({ symbol: 'ETHUSD', interval: '1h', count: 600 }, 'eth')}
+${bars({ symbol: 'BTCUSD', interval: '1h', count: 600, live: true }, 'btc')}
+${bars({ symbol: 'ETHUSD', interval: '1h', count: 600, live: true }, 'eth')}
 chart.addCandlestickSeries().setData(btc);
 chart.addCandlestickSeries({ color: '#4cc9f0', downColor: '#b388ff' }).setData(eth);
 // One scale per pane: compare both in percent from the first visible bar.
@@ -425,8 +431,9 @@ chart.setVisibleLogicalRange(500, 605);`,
       id: 'htfcandles',
       title: 'Higher-timeframe candles',
       group: 'Overlays & context',
+      live: true,
       code: `${create()}
-${bars({ symbol: 'BTCUSD', interval: '15m', count: 1500 })}
+${bars({ symbol: 'BTCUSD', interval: '15m', count: 1440, live: true })}
 chart.addCandlestickSeries().setData(bars);
 // Four-hour candles built from the 15-minute bars.
 const H4 = 4 * 3_600_000;

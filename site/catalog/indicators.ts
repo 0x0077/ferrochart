@@ -23,7 +23,8 @@ export const indicators: Category = {
       id: 'macd-rsi',
       title: 'Bollinger · MACD · RSI',
       group: 'Panes & oscillators',
-      code: withIndicators({ symbol: 'BTCUSD', interval: '5m', count: 3000, spacing: 7 }, [['boll'], ['macd', {}, 'newPane'], ['rsi', {}, 'newPane']]),
+      live: true,
+      code: withIndicators({ symbol: 'BTCUSD', interval: '5m', count: 1440, spacing: 7, live: true, stream: true }, [['boll'], ['macd', {}, 'newPane'], ['rsi', {}, 'newPane']]),
       about: 'Each indicator keeps its own state and updates with the last bar in O(1). Panes resize by dragging their separators.',
       api: ['addIndicator', "placement 'newPane'"],
     },
@@ -39,7 +40,8 @@ export const indicators: Category = {
       id: 'ichimoku',
       title: 'Ichimoku cloud',
       group: 'Overlays',
-      code: withIndicators({ symbol: 'ETHUSD', interval: '1h', count: 2000, spacing: 7 }, [['ichimoku']]),
+      live: true,
+      code: withIndicators({ symbol: 'ETHUSD', interval: '1h', count: 1440, spacing: 7, live: true, stream: true }, [['ichimoku']]),
       about: 'Five lines and the cloud between them, displaced forward in time. The cloud is a band fill drawn by the core, identical on every backend.',
       api: ["addIndicator('ichimoku')"],
     },
@@ -55,11 +57,13 @@ export const indicators: Category = {
       id: 'supertrend',
       title: 'Supertrend signals',
       group: 'Overlays',
+      live: true,
       code: candles({
         symbol: 'ETHUSD',
         interval: '1h',
-        count: 1500,
+        count: 1440,
         spacing: 8,
+        live: true,
         extra: `const st = chart.addIndicator(candles, 'supertrend', { atrN: 10, m: 3 });
 // Outputs: the long stop (NaN while short) and the short stop. A flip starts or ends the long line.
 const [long] = st.outputs();
@@ -88,11 +92,13 @@ candles.setMarkers(markers);`,
       id: 'donchian',
       title: 'Donchian breakouts',
       group: 'Overlays',
+      live: true,
       code: candles({
         symbol: 'BTCUSD',
         interval: '4h',
         count: 1200,
         spacing: 7,
+        live: true,
         extra: `chart.addIndicator(candles, 'donchian', { n: 20 });
 // A breakout: the close leaves the channel of the previous 20 bars.
 const n = 20, markers = [];

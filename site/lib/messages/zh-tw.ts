@@ -96,6 +96,8 @@ export const zhTw: Messages = {
     starting: '啟動中…',
     failed: '啟動失敗',
     live: '即時 · {r}',
+    dataLive: '即時資料 · OKX',
+    dataSimulated: '模擬資料',
     copy: '複製',
     copied: '已複製',
     copyFailed: '複製失敗',

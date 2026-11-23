@@ -96,6 +96,8 @@ export const ja: Messages = {
     starting: '起動中…',
     failed: '起動に失敗しました',
     live: 'ライブ · {r}',
+    dataLive: 'リアルタイムデータ · OKX',
+    dataSimulated: 'シミュレーションデータ',
     copy: 'コピー',
     copied: 'コピーしました',
     copyFailed: 'コピーできませんでした',
