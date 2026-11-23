@@ -4,6 +4,8 @@ import { HTML_LANG, LOCALES, OG_LOCALE, englishOnly, localePath, type Locale } f
 /** The canonical origin of the site. */
 export const SITE_URL = 'https://ferrochart.com';
 export const SITE_NAME = 'FerroChart';
+/** Release shared by the website's structured data and text documentation. */
+export const SITE_VERSION = '0.5.0';
 export const REPO_URL = 'https://github.com/0x0077/ferrochart';
 
 /** The share image (1200×630, public/og.png). */

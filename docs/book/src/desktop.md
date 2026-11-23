@@ -5,8 +5,8 @@ trackpad and keyboard input. You give it a `Chart` and, optionally, callbacks.
 
 ```toml
 [dependencies]
-ferrochart-core = "0.1"
-ferrochart-winit = "0.1"
+ferrochart-core = "0.5"
+ferrochart-winit = "0.5"
 ```
 
 ## A window with data

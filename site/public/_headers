@@ -27,3 +27,11 @@
   X-Robots-Tag: noindex
 /thumb.html
   X-Robots-Tag: noindex
+
+# Generated text documentation: revalidate after each deployment.
+/llms.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=0, must-revalidate
+/llms-full.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=0, must-revalidate
