@@ -1,4 +1,6 @@
 //! Live feed over WebSocket: `/api/stream?symbol=BTCUSD&interval=1m`.
+//! With `live=true`, the real market instead (`live.rs`): one path, so a
+//! proxy that upgrades `/api/stream` serves both.
 //!
 //! Every 250 ms the server sends the forming bar and the trades since the
 //! last message, read from the same deterministic path as the history, so a
@@ -35,12 +37,14 @@ pub const MAX_CATCH_UP: i64 = 120;
 
 #[derive(Deserialize)]
 pub struct StreamQuery {
-    symbol: Option<String>,
-    interval: Option<String>,
+    pub(crate) symbol: Option<String>,
+    pub(crate) interval: Option<String>,
     /// Send trades too. Default true.
-    trades: Option<bool>,
+    pub(crate) trades: Option<bool>,
     /// Time of the client's last bar, UTC ms.
-    since: Option<i64>,
+    pub(crate) since: Option<i64>,
+    /// Real data (BTCUSD, ETHUSD, SOLUSD from OKX). Default false.
+    pub(crate) live: Option<bool>,
 }
 
 pub async fn handler(
@@ -48,6 +52,9 @@ pub async fn handler(
     Query(q): Query<StreamQuery>,
     ws: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
+    if q.live.unwrap_or(false) {
+        return crate::live::stream(st, q, ws).await;
+    }
     let sym = symbol(q.symbol.as_deref())?;
     let iv = interval(q.interval.as_deref())?;
     let Ok(permit) = st.streams.clone().try_acquire_owned() else {

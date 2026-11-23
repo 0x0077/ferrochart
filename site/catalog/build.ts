@@ -73,7 +73,7 @@ export function stream(series: string, spec: BarsSpec, o: { from?: string; value
   const update = o.value ? `${series}.update({ time: msg.time, value: msg.close })` : `${series}.update(msg)`;
   return `// Real time: the forming bar every second; \`since\` completes bars that
 // closed after the history was loaded.
-const ws = new WebSocket(\`/api/live/stream?symbol=${spec.symbol ?? 'BTCUSD'}&interval=${spec.interval ?? '1m'}&trades=false&since=\${${o.from ?? 'bars'}.time.at(-1)}\`);
+const ws = new WebSocket(\`/api/stream?symbol=${spec.symbol ?? 'BTCUSD'}&interval=${spec.interval ?? '1m'}&live=true&trades=false&since=\${${o.from ?? 'bars'}.time.at(-1)}\`);
 ws.onmessage = (e) => {
   const msg = JSON.parse(e.data);
   if (msg.type === 'bar') ${update};

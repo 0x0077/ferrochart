@@ -1,5 +1,6 @@
 //! Real market data for a few examples: `/api/live/bars` and the WebSocket
-//! `/api/live/stream`, from the public OKX spot market (no key).
+//! `/api/stream?…&live=true` (the simulated stream's path, which proxies
+//! already upgrade), from the public OKX spot market (no key).
 //!
 //! - Symbols `BTCUSD`, `ETHUSD`, `SOLUSD` (OKX `BTC-USDT` …); intervals
 //!   from one minute to one week.
@@ -345,19 +346,10 @@ pub async fn get_bars(
     Ok(resp)
 }
 
-#[derive(Deserialize)]
-pub struct StreamQuery {
-    symbol: Option<String>,
-    interval: Option<String>,
-    /// Send trades too. Default true.
-    trades: Option<bool>,
-    /// Time of the client's last bar, UTC ms.
-    since: Option<i64>,
-}
-
-pub async fn stream(
-    State(st): State<AppState>,
-    Query(q): Query<StreamQuery>,
+/// `/api/stream?…&live=true`.
+pub(crate) async fn stream(
+    st: AppState,
+    q: crate::stream::StreamQuery,
     ws: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
     let (sym, iv, inst, bar) = live_key(q.symbol.as_deref(), q.interval.as_deref())?;

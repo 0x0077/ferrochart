@@ -175,7 +175,7 @@ async fn stream_sends_bars_and_new_trades() {
     let app = test_app(Fake::new(), NOW);
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let url = format!(
-        "ws://{addr}/api/live/stream?symbol=BTCUSD&interval=1m&since={}",
+        "ws://{addr}/api/stream?symbol=BTCUSD&interval=1m&live=true&since={}",
         NOW - 3 * MIN
     );
     let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
