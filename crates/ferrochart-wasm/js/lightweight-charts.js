@@ -131,10 +131,19 @@ function priceLineOptions(o) {
   return out;
 }
 
+// v5's 'atPriceTop' / 'atPriceBottom' / 'atPriceMiddle' (with `price`) are
+// all drawn centered on the price.
+const AT_PRICE = ['atPriceTop', 'atPriceBottom', 'atPriceMiddle'];
+
 function markers(list) {
   return list.map((m) => ({
     time: toMs(m.time),
-    position: m.position === 'belowBar' ? 'belowBar' : 'aboveBar',
+    ...(AT_PRICE.includes(m.position) && Number.isFinite(m.price)
+      ? { position: 'atPrice', price: m.price }
+      : { position: m.position === 'belowBar' ? 'belowBar' : 'aboveBar' }),
+    // FerroChart ids are integers; lightweight-charts' string ids are kept
+    // only in `markers()`.
+    ...(Number.isSafeInteger(m.id) && m.id >= 0 ? { id: m.id } : {}),
     shape: ['circle', 'square', 'arrowUp', 'arrowDown'].includes(m.shape) ? m.shape : 'circle',
     color: m.color ?? null,
     text: m.text ?? '',

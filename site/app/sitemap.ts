@@ -15,12 +15,13 @@ type Freq = Entry['changeFrequency'];
  * every language (each listing the others), and the API reference (English).
  */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date();
   const everywhere = (path: string, changeFrequency: Freq, priority: number): Entry[] => {
-    const languages = Object.fromEntries(LOCALES.map((l) => [HTML_LANG[l], SITE_URL + localePath(l, path)]));
+    const languages = {
+      ...Object.fromEntries(LOCALES.map((l) => [HTML_LANG[l], SITE_URL + localePath(l, path)])),
+      'x-default': SITE_URL + path,
+    };
     return LOCALES.map((l) => ({
       url: SITE_URL + localePath(l, path),
-      lastModified,
       changeFrequency,
       priority: l === 'en' ? priority : Math.round(priority * 8) / 10,
       alternates: { languages },
@@ -31,8 +32,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...everywhere('/', 'weekly', 1),
     ...categories.flatMap((c) => c.demos.flatMap((d) => everywhere(`/charts/${c.id}/${d.id}`, 'monthly', 0.6))),
     ...docs.flatMap((p) => everywhere(p.slug ? `/docs/${p.slug}` : '/docs', 'weekly', p.slug ? 0.7 : 0.9)),
-    { url: `${SITE_URL}/docs/api`, lastModified, changeFrequency: 'weekly', priority: 0.8 },
-    ...apiItems().map((i) => ({ url: `${SITE_URL}/docs/api/${i.name}`, lastModified, changeFrequency: 'monthly' as const, priority: 0.4 })),
+    { url: `${SITE_URL}/docs/api`, changeFrequency: 'weekly', priority: 0.8 },
+    ...apiItems().map((i) => ({ url: `${SITE_URL}/docs/api/${i.name}`, changeFrequency: 'monthly' as const, priority: 0.4 })),
     ...everywhere('/pro', 'monthly', 0.6),
   ];
 }

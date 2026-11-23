@@ -76,10 +76,11 @@ fn target(py: Python<'_>, t: ClickTarget) -> PyResult<Option<Bound<'_, PyDict>>>
             d.set_item("type", "drawing")?;
             d.set_item("id", id.0)?;
         }
-        ClickTarget::Marker { series, index } => {
+        ClickTarget::Marker { series, index, id } => {
             d.set_item("type", "marker")?;
             d.set_item("series", series.0)?;
             d.set_item("index", index)?;
+            d.set_item("id", id)?;
         }
         ClickTarget::Series(series) => {
             d.set_item("type", "series")?;
@@ -89,11 +90,15 @@ fn target(py: Python<'_>, t: ClickTarget) -> PyResult<Option<Bound<'_, PyDict>>>
             series,
             first,
             count,
+            id,
+            bars,
         } => {
             d.set_item("type", "marker_overflow")?;
             d.set_item("series", series.0)?;
             d.set_item("first", first)?;
             d.set_item("count", count)?;
+            d.set_item("id", id)?;
+            d.set_item("bars", (bars.start, bars.end - 1))?;
         }
         _ => return Ok(None),
     }
@@ -109,7 +114,9 @@ pub(crate) fn payload<'py>(py: Python<'py>, e: &ChartEvent) -> PyResult<Bound<'p
         ChartEvent::MarkerHover(Some(hit)) => {
             d.set_item("series", hit.series.0)?;
             d.set_item("index", hit.index)?;
+            d.set_item("id", hit.id)?;
             d.set_item("overflow", hit.overflow)?;
+            d.set_item("bars", (hit.bars.start, hit.bars.end - 1))?;
             d.set_item("x", f64::from(hit.center.x))?;
             d.set_item("y", f64::from(hit.center.y))?;
             d.set_item("size", f64::from(hit.size.0))?;

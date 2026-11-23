@@ -394,6 +394,9 @@ class View {
         case 'setMarkers':
           this.s(op.series).setMarkers(op.markers);
           break;
+        case 'setBarFlags':
+          this.s(op.series).setBarFlags(op.flags);
+          break;
         case 'priceScale':
           c.applyPriceScaleOptions(op.options, pane);
           break;

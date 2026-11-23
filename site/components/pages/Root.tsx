@@ -13,6 +13,7 @@ export function rootMeta(locale: Locale): Metadata {
     ...pageMeta({ title: t.title, description: t.description, path: '/', locale }),
     metadataBase: new URL(SITE_URL),
     applicationName: SITE_NAME,
+    verification: { google: 'WgIYO7PxH75SoTw8gFLAWtsOZcDrblcKtwQ5HgInWFs' },
     keywords: [
       'financial charts',
       'candlestick chart',
@@ -39,9 +40,24 @@ export const rootViewport: Viewport = {
   themeColor: '#f8f7f4',
 };
 
+/** Origin of the data API when it is not the page's own (`NEXT_PUBLIC_API_BASE`). */
+const API_ORIGIN = (() => {
+  try {
+    return process.env.NEXT_PUBLIC_API_BASE ? new URL(process.env.NEXT_PUBLIC_API_BASE).origin : null;
+  } catch {
+    return null;
+  }
+})();
+
 export function RootDocument({ locale, children }: { locale: Locale; children: ReactNode }) {
   return (
     <html lang={HTML_LANG[locale]}>
+      {API_ORIGIN && (
+        <head>
+          {/* The data API is on another host: connect while the page loads. */}
+          <link rel="preconnect" href={API_ORIGIN} crossOrigin="anonymous" />
+        </head>
+      )}
       <body>
         <I18nProvider locale={locale} t={messages(locale)}>
           {children}

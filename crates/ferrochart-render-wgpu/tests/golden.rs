@@ -19,9 +19,9 @@ use ferrochart_core::pane::PaneOptions;
 use ferrochart_core::price_scale::{PriceScaleMode, ScaleSide};
 use ferrochart_core::render::Renderer;
 use ferrochart_core::testing::{
-    band_scene, cjk_text_scene, drawings_scene, drawings2_scene, image_markers_scene,
-    merged_axis_scene, percentage_scene, points_scene, random_walk, series_kinds_scene,
-    synced_scene, transform_scene,
+    at_price_markers_scene, band_scene, bar_flags_scene, cjk_text_scene, clustered_markers_scene,
+    drawings_scene, drawings2_scene, image_markers_scene, merged_axis_scene, percentage_scene,
+    points_scene, random_walk, series_kinds_scene, synced_scene, transform_scene,
 };
 use ferrochart_core::theme::Theme;
 use ferrochart_core::{Chart, ChartOptions};
@@ -74,6 +74,12 @@ enum Density {
     Points,
     /// Image markers, letter badges, borders and a folded stack (r21).
     ImageMarkers,
+    /// `at_price_markers_scene` (r22).
+    AtPriceMarkers,
+    /// `clustered_markers_scene` at this bar spacing, px (r22).
+    Clustered(u8),
+    /// `bar_flags_scene`, dense or not (r22).
+    BarFlags(bool),
     /// Chinese marker texts and badges, an emoji drawn as `□`.
     Cjk,
     /// As `Cjk`, with a color glyph source: the emoji is a color disc.
@@ -143,6 +149,18 @@ fn chart(theme: Theme, density: Density) -> Chart {
         image_markers_scene(&mut chart, START).unwrap();
         return chart;
     }
+    if let Density::AtPriceMarkers = density {
+        at_price_markers_scene(&mut chart, START).unwrap();
+        return chart;
+    }
+    if let Density::Clustered(spacing) = density {
+        clustered_markers_scene(&mut chart, START, f64::from(spacing)).unwrap();
+        return chart;
+    }
+    if let Density::BarFlags(dense) = density {
+        bar_flags_scene(&mut chart, START, dense).unwrap();
+        return chart;
+    }
     if let Density::Cjk | Density::ColorGlyphs = density {
         cjk_text_scene(&mut chart, START).unwrap();
         return chart;
@@ -199,6 +217,9 @@ fn chart(theme: Theme, density: Density) -> Chart {
         | Density::Transform(_)
         | Density::Points
         | Density::ImageMarkers
+        | Density::AtPriceMarkers
+        | Density::Clustered(_)
+        | Density::BarFlags(_)
         | Density::Cjk
         | Density::ColorGlyphs
         | Density::Bands
@@ -221,6 +242,9 @@ fn chart(theme: Theme, density: Density) -> Chart {
         | Density::Transform(_)
         | Density::Points
         | Density::ImageMarkers
+        | Density::AtPriceMarkers
+        | Density::Clustered(_)
+        | Density::BarFlags(_)
         | Density::Cjk
         | Density::ColorGlyphs
         | Density::Bands
@@ -599,6 +623,54 @@ fn golden_light_image_markers() {
 #[test]
 fn golden_dark_image_markers() {
     check("dark_image_markers", Theme::dark(), Density::ImageMarkers);
+}
+
+#[test]
+fn golden_light_at_price_markers() {
+    check(
+        "light_at_price_markers",
+        Theme::light(),
+        Density::AtPriceMarkers,
+    );
+}
+
+#[test]
+fn golden_dark_at_price_markers() {
+    check(
+        "dark_at_price_markers",
+        Theme::dark(),
+        Density::AtPriceMarkers,
+    );
+}
+
+#[test]
+fn golden_light_clustered_markers_narrow() {
+    // 6 px bars: buckets of 5.
+    check(
+        "light_clustered_markers_narrow",
+        Theme::light(),
+        Density::Clustered(6),
+    );
+}
+
+#[test]
+fn golden_dark_clustered_markers_wide() {
+    // 12 px bars: buckets of 3.
+    check(
+        "dark_clustered_markers_wide",
+        Theme::dark(),
+        Density::Clustered(12),
+    );
+}
+
+#[test]
+fn golden_light_bar_flags() {
+    check("light_bar_flags", Theme::light(), Density::BarFlags(false));
+}
+
+#[test]
+fn golden_dark_bar_flags_lod() {
+    check("dark_bar_flags_lod", Theme::dark(), Density::BarFlags(true));
 }
 
 #[test]

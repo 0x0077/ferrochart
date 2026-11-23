@@ -112,7 +112,7 @@ fn color_py(py: Python<'_>, c: Option<Rgba>) -> Py<PyAny> {
     }
 }
 
-const SERIES_KEYS: [&str; 13] = [
+const SERIES_KEYS: [&str; 15] = [
     "color",
     "down_color",
     "top_fill",
@@ -126,6 +126,8 @@ const SERIES_KEYS: [&str; 13] = [
     "shift",
     "price_precision",
     "marker_stack_limit",
+    "marker_cluster",
+    "filled_bar_color",
 ];
 
 /// `base` with the keys of `d` applied.
@@ -196,6 +198,14 @@ pub(crate) fn series_options(
         }
         o.marker_stack_limit = Some(v as u16);
     }
+    if let Some(c) = opt_color(d, "filled_bar_color")? {
+        o.filled_bar_color = c;
+    }
+    if d.get_item("marker_cluster")?.is_some_and(|v| v.is_none()) {
+        o.marker_cluster = None;
+    } else if let Some(v) = opt_f64(d, "marker_cluster")? {
+        o.marker_cluster = Some(Css(v as f32));
+    }
     Ok(o)
 }
 
@@ -217,6 +227,8 @@ pub(crate) fn series_options_py<'py>(
     d.set_item("shift", o.shift)?;
     d.set_item("price_precision", o.price_precision)?;
     d.set_item("marker_stack_limit", o.marker_stack_limit)?;
+    d.set_item("marker_cluster", o.marker_cluster.map(|d| f64::from(d.0)))?;
+    d.set_item("filled_bar_color", color_py(py, o.filled_bar_color))?;
     Ok(d)
 }
 
@@ -274,7 +286,8 @@ pub(crate) fn price_line_options_py<'py>(
 }
 
 /// Markers from dicts `{time (int ms), position?, shape?, color?, text?,
-/// size?, icon? (an add_icon id), label?, border?, border_width?}`.
+/// size?, icon? (an add_icon id), label?, border?, border_width?, id?,
+/// price? (for position 'at_price')}`.
 pub(crate) fn markers(list: &Bound<'_, PyList>) -> PyResult<Vec<Marker>> {
     let mut out = Vec::with_capacity(list.len());
     for m in list.iter() {
@@ -294,6 +307,8 @@ pub(crate) fn markers(list: &Bound<'_, PyList>) -> PyResult<Vec<Marker>> {
                 "label",
                 "border",
                 "border_width",
+                "id",
+                "price",
             ],
             "marker key",
         )?;
@@ -323,7 +338,13 @@ pub(crate) fn markers(list: &Bound<'_, PyList>) -> PyResult<Vec<Marker>> {
         }
         if let Some(p) = opt_str(d, "position")? {
             marker.position = params::marker_position(&camel(&p))
-                .ok_or_else(|| err("'position' must be 'above_bar' or 'below_bar'"))?;
+                .ok_or_else(|| err("'position' must be 'above_bar', 'below_bar' or 'at_price'"))?;
+        }
+        marker.price = opt_f64(d, "price")?;
+        if let Some(id) = item(d, "id")?.filter(|v| !v.is_none()) {
+            marker.id = id
+                .extract()
+                .map_err(|_| err("marker 'id' must be an integer from 0 to 2**64 - 1"))?;
         }
         if let Some(s) = opt_str(d, "shape")? {
             marker.shape = params::marker_shape(&camel(&s)).ok_or_else(|| {
@@ -343,6 +364,7 @@ pub(crate) fn markers_py<'py>(py: Python<'py>, markers: &[Marker]) -> PyResult<B
         let position = match m.position {
             MarkerPosition::AboveBar => "above_bar",
             MarkerPosition::BelowBar => "below_bar",
+            MarkerPosition::AtPrice => "at_price",
         };
         let shape = match m.shape {
             MarkerShape::Circle => "circle",
@@ -359,6 +381,8 @@ pub(crate) fn markers_py<'py>(py: Python<'py>, markers: &[Marker]) -> PyResult<B
         d.set_item("label", &m.label)?;
         d.set_item("border", color_py(py, m.border))?;
         d.set_item("border_width", f64::from(m.border_width.0))?;
+        d.set_item("id", m.id)?;
+        d.set_item("price", m.price)?;
         list.append(d)?;
     }
     Ok(list)

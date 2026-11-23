@@ -79,6 +79,10 @@
 // Marker position: below the bar.
 #define FERROCHART_MARKER_BELOW_BAR 1
 
+// Marker position: centered on `FerroChartMarker::price` (r22); not
+// stacked or clustered, text on the right.
+#define FERROCHART_MARKER_AT_PRICE 2
+
 // Marker shape: filled circle (the default).
 #define FERROCHART_SHAPE_CIRCLE 0
 
@@ -90,6 +94,12 @@
 
 // Marker shape: arrow pointing down.
 #define FERROCHART_SHAPE_ARROW_DOWN 3
+
+// Bar flag: filled in by the data source without trades, drawn hollow (r22).
+#define FERROCHART_BAR_FILLED 1
+
+// Bar flag: the caller clipped an outlier wick; a tick marks each end (r22).
+#define FERROCHART_BAR_CLIPPED 2
 
 // Input: pointer pressed.
 #define FERROCHART_INPUT_POINTER_DOWN 1
@@ -334,6 +344,13 @@ typedef struct FerroChartSeriesOptions {
   // Most markers drawn per bar and side (1–65535); beyond it a "+k"
   // badge stands for the rest. 0: no limit (the default; r21).
   uint32_t marker_stack_limit;
+  // Cluster markers across bars closer than this many CSS px (r22): a
+  // side of a bucket of bars shows its first marker and a "+k" badge.
+  // 0: no clustering (the default).
+  float marker_cluster;
+  // Color of bars flagged `FERROCHART_BAR_FILLED`, drawn hollow,
+  // `0xRRGGBBAA`; 0: the main color at 40% opacity (r22).
+  uint32_t filled_bar_color;
 } FerroChartSeriesOptions;
 
 // A marker for [`ferrochart_set_markers`]. Zero-initialize it, set `size`
@@ -345,7 +362,8 @@ typedef struct FerroChartMarker {
   uint32_t reserved;
   // Time of the bar, UTC ms; a time between bars snaps to the next bar.
   int64_t time;
-  // `FERROCHART_MARKER_ABOVE_BAR` or `FERROCHART_MARKER_BELOW_BAR`.
+  // `FERROCHART_MARKER_ABOVE_BAR`, `FERROCHART_MARKER_BELOW_BAR` or
+  // `FERROCHART_MARKER_AT_PRICE`.
   uint32_t position;
   // `FERROCHART_SHAPE_*`.
   uint32_t shape;
@@ -365,6 +383,12 @@ typedef struct FerroChartMarker {
   // Text centered in the shape (circles and squares, at most 8
   // characters, not with `icon`), e.g. `"DB"` (UTF-8); null: none.
   const char *label;
+  // The caller's own identifier, reported in marker events and click
+  // targets as `marker_id`; 0: none (r22).
+  uint64_t id;
+  // Price of a `FERROCHART_MARKER_AT_PRICE` marker, in series units
+  // (must be finite); ignored for the other positions (r22).
+  double price;
 } FerroChartMarker;
 
 // An input event; zero it, set `size = sizeof(FerroChartInput)` and the
@@ -478,6 +502,15 @@ typedef struct FerroChartEvent {
   uint8_t has_drawing;
   // Reserved.
   uint8_t reserved[4];
+  // `id` of the marker of a marker click or hover target (for a "+k"
+  // badge, of the first marker not drawn); 0: none (r22).
+  uint64_t marker_id;
+  // First and last logical index of the bars of a marker hover, or of
+  // the bars whose markers a `FERROCHART_TARGET_MARKER_OVERFLOW` badge
+  // hides on its side (r22); 0 otherwise.
+  int64_t bars_from;
+  // See `bars_from`.
+  int64_t bars_to;
 } FerroChartEvent;
 
 // A native window to draw into (see `FERROCHART_PLATFORM_*`).
@@ -502,7 +535,7 @@ extern "C" {
 // string stays valid until the next failing call on this thread.
 const char *ferrochart_last_error(void);
 
-// The library version, e.g. `"0.4.0"` (static string).
+// The library version, e.g. `"0.5.0"` (static string).
 const char *ferrochart_version(void);
 
 // Fills `out` with the default options. Set `out->size =
@@ -632,6 +665,21 @@ int32_t ferrochart_series_options(struct FerroChart *chart,
 int32_t ferrochart_apply_series_options(struct FerroChart *chart,
                                         uint64_t series,
                                         const struct FerroChartSeriesOptions *options);
+
+// Replaces the bar quality flags of a candlestick, OHLC bar or
+// Heikin-Ashi series (r22): `len` times (UTC ms) and flags
+// (`FERROCHART_BAR_*`, or-ed together). Of equal times the last wins; 0 flags are
+// dropped. At most 1 000 000.
+//
+// # Safety
+//
+// `chart` is a valid chart; `time` and `flags` are null with `len` 0, or
+// arrays of `len` elements.
+int32_t ferrochart_set_bar_flags(struct FerroChart *chart,
+                                 uint64_t series,
+                                 const int64_t *time,
+                                 const uint8_t *flags,
+                                 size_t len);
 
 // Replaces the markers of a series with `len` markers (`len` 0 removes
 // them). Each element has `size` set; elements are `markers[0].size`

@@ -180,6 +180,7 @@ pub(crate) fn marker_position(s: &str) -> Option<MarkerPosition> {
     Some(match s {
         "aboveBar" => MarkerPosition::AboveBar,
         "belowBar" => MarkerPosition::BelowBar,
+        "atPrice" => MarkerPosition::AtPrice,
         _ => return None,
     })
 }

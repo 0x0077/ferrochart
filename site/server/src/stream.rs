@@ -2,7 +2,12 @@
 //!
 //! Every 250 ms the server sends the forming bar and the trades since the
 //! last message, read from the same deterministic path as the history, so a
-//! chart loaded from `/api/bars` continues seamlessly:
+//! chart loaded from `/api/bars` continues seamlessly. `since` (the time of
+//! the last bar the client has) first sends the bars from that one on: the
+//! history may come from the response cache and be up to 30 s old, so a
+//! bar that closed meanwhile is completed rather than left short. At most
+//! [`MAX_CATCH_UP`] bars are sent; an older `since` is ignored.
+//!
 //!
 //! ```json
 //! { "type": "bar", "time": 1763683200000, "open": …, "high": …, "low": …, "close": …, "volume": … }
@@ -25,6 +30,8 @@ use crate::market::flow;
 use crate::market::symbols::Symbol;
 
 pub const TICK: Duration = Duration::from_millis(250);
+/// Most bars sent for `since`.
+pub const MAX_CATCH_UP: i64 = 120;
 
 #[derive(Deserialize)]
 pub struct StreamQuery {
@@ -32,6 +39,8 @@ pub struct StreamQuery {
     interval: Option<String>,
     /// Send trades too. Default true.
     trades: Option<bool>,
+    /// Time of the client's last bar, UTC ms.
+    since: Option<i64>,
 }
 
 pub async fn handler(
@@ -51,7 +60,7 @@ pub async fn handler(
     Ok(ws
         .max_message_size(4096)
         .on_upgrade(move |socket| async move {
-            run(socket, st, sym, iv, with_trades).await;
+            run(socket, st, sym, iv, with_trades, q.since).await;
             drop(permit);
         })
         .into_response())
@@ -63,8 +72,29 @@ async fn run(
     sym: &'static Symbol,
     iv: Interval,
     with_trades: bool,
+    since: Option<i64>,
 ) {
     let mut last = st.now();
+    // The bars from `since` up to the forming one, which the first tick sends.
+    if let Some(since) = since {
+        let current = iv.floor(last);
+        let mut t = iv.floor(since);
+        if t < current && (current - t) / iv.ms() <= MAX_CATCH_UP {
+            while t < current {
+                if let Some([o, h, l, c, v]) = bars::bar(sym, iv, t, last) {
+                    let m = json!({ "type": "bar", "time": t, "open": o, "high": h, "low": l, "close": c, "volume": v });
+                    if socket
+                        .send(Message::Text(m.to_string().into()))
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                t += iv.ms();
+            }
+        }
+    }
     let mut tick = tokio::time::interval(TICK);
     loop {
         tokio::select! {

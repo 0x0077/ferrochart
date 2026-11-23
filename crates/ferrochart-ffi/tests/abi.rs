@@ -1018,6 +1018,12 @@ fn marker_hover_and_overflow_click() {
             m.marker_size = 24.0;
             [m; 3]
         })
+        .enumerate()
+        // Ids (r22): the position plus one, as markers are already in order.
+        .map(|(n, m)| FerroChartMarker {
+            id: n as u64 + 1,
+            ..m
+        })
         .collect();
     assert_eq!(set_markers(&ch, s, &markers), FERROCHART_OK);
     let mut o = FerroChartSeriesOptions {
@@ -1049,12 +1055,16 @@ fn marker_hover_and_overflow_click() {
         .expect("hover on a marker");
     assert_eq!(on_marker.target_id, s);
     assert_eq!(on_marker.count, 0);
+    assert_eq!(on_marker.marker_id, on_marker.target_index + 1);
+    let bar = (on_marker.target_index / 3) as i64;
+    assert_eq!((on_marker.bars_from, on_marker.bars_to), (bar, bar));
     let on_badge = *hovers
         .iter()
         .find(|e| e.target_type == FERROCHART_TARGET_MARKER_OVERFLOW)
         .expect("hover on a badge");
     assert_eq!((on_badge.target_id, on_badge.count), (s, 2));
     assert_eq!(on_badge.target_index % 3, 1, "the second of three");
+    assert_eq!(on_badge.marker_id, on_badge.target_index + 1);
     assert!(
         hovers
             .iter()
@@ -1080,4 +1090,103 @@ fn marker_hover_and_overflow_click() {
         (click.target_id, click.target_index, click.count),
         (s, on_badge.target_index, 2)
     );
+    assert_eq!(
+        (click.marker_id, click.bars_from, click.bars_to),
+        (on_badge.marker_id, on_badge.bars_from, on_badge.bars_to)
+    );
+}
+
+/// r22: `FERROCHART_MARKER_AT_PRICE` needs a finite price; other positions
+/// ignore `price`, so zeroed structs still work.
+#[test]
+fn at_price_markers() {
+    let ch = chart(FERROCHART_THEME_LIGHT, 400.0, 300.0, 1.0);
+    let (s, time) = candles(&ch, 10);
+    let at = |price: f64| FerroChartMarker {
+        position: FERROCHART_MARKER_AT_PRICE,
+        price,
+        id: 9,
+        ..marker(time[2])
+    };
+    assert_eq!(
+        set_markers(&ch, s, &[at(f64::NAN)]),
+        FERROCHART_ERR_INVALID_ARGUMENT
+    );
+    let zero_price = FerroChartMarker {
+        price: 0.0,
+        ..marker(time[3])
+    };
+    assert_eq!(set_markers(&ch, s, &[at(100.0), zero_price]), FERROCHART_OK);
+    let mut bad = marker(time[3]);
+    bad.position = 7;
+    assert_eq!(set_markers(&ch, s, &[bad]), FERROCHART_ERR_INVALID_ARGUMENT);
+}
+
+/// r22: `marker_cluster` in the series options (0: none).
+#[test]
+fn marker_cluster_option() {
+    let ch = chart(FERROCHART_THEME_LIGHT, 400.0, 300.0, 1.0);
+    let (s, _) = candles(&ch, 10);
+    let mut o = FerroChartSeriesOptions {
+        size: size_of::<FerroChartSeriesOptions>() as u32,
+        ..unsafe { std::mem::zeroed() }
+    };
+    unsafe {
+        assert_eq!(ferrochart_series_options(ch.0, s, &mut o), FERROCHART_OK);
+        assert_eq!(o.marker_cluster.to_bits(), 0.0_f32.to_bits());
+        o.marker_cluster = 24.0;
+        assert_eq!(ferrochart_apply_series_options(ch.0, s, &o), FERROCHART_OK);
+        o.marker_cluster = 0.0;
+        assert_eq!(ferrochart_series_options(ch.0, s, &mut o), FERROCHART_OK);
+        assert_eq!(o.marker_cluster.to_bits(), 24.0_f32.to_bits());
+        o.marker_cluster = -1.0;
+        assert_eq!(
+            ferrochart_apply_series_options(ch.0, s, &o),
+            FERROCHART_ERR_INVALID_ARGUMENT
+        );
+    }
+}
+
+/// r22: `ferrochart_set_bar_flags` and `filled_bar_color`.
+#[test]
+fn bar_flags() {
+    let ch = chart(FERROCHART_THEME_LIGHT, 400.0, 300.0, 1.0);
+    let (s, time) = candles(&ch, 20);
+    let before = render(&ch);
+    let t = [time[5], time[9]];
+    let f = [
+        FERROCHART_BAR_FILLED,
+        FERROCHART_BAR_CLIPPED | FERROCHART_BAR_FILLED,
+    ];
+    unsafe {
+        assert_eq!(
+            ferrochart_set_bar_flags(ch.0, s, t.as_ptr(), f.as_ptr(), 2),
+            FERROCHART_OK,
+            "{}",
+            last_error()
+        );
+        assert_eq!(
+            ferrochart_set_bar_flags(ch.0, s, ptr::null(), ptr::null(), 1),
+            FERROCHART_ERR_NULL
+        );
+        let bad = [8_u8];
+        assert_eq!(
+            ferrochart_set_bar_flags(ch.0, s, t.as_ptr(), bad.as_ptr(), 1),
+            FERROCHART_ERR_INVALID_ARGUMENT
+        );
+    }
+    assert_ne!(render(&ch), before);
+    let mut o = FerroChartSeriesOptions {
+        size: size_of::<FerroChartSeriesOptions>() as u32,
+        ..unsafe { std::mem::zeroed() }
+    };
+    unsafe {
+        assert_eq!(ferrochart_series_options(ch.0, s, &mut o), FERROCHART_OK);
+        assert_eq!(o.filled_bar_color, 0);
+        o.filled_bar_color = 0x8888_88FF;
+        assert_eq!(ferrochart_apply_series_options(ch.0, s, &o), FERROCHART_OK);
+        o.filled_bar_color = 0;
+        ferrochart_series_options(ch.0, s, &mut o);
+        assert_eq!(o.filled_bar_color, 0x8888_88FF);
+    }
 }

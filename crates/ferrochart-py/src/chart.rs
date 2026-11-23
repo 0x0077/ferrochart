@@ -745,6 +745,21 @@ impl Series {
         })
     }
 
+    /// Bar quality flags (r22): `times` (ms) and `flags` (bit 0
+    /// filled, bit 1 clipped), the same length.
+    fn set_bar_flags(&self, times: Vec<i64>, flags: Vec<u8>) -> PyResult<()> {
+        use ferrochart_core::chart::BarFlags;
+        if times.len() != flags.len() {
+            return Err(err("times and flags differ in length"));
+        }
+        let f = times
+            .into_iter()
+            .zip(flags)
+            .map(|(t, f)| (t, BarFlags(f)))
+            .collect();
+        self.with(|c| c.set_bar_flags(self.id, f).map_err(err))
+    }
+
     fn set_markers(&self, markers: &Bound<'_, PyList>) -> PyResult<()> {
         let m = opts::markers(markers)?;
         self.with(|c| {

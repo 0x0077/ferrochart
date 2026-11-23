@@ -635,6 +635,10 @@
       "title": "LP range on pool candles",
       "about": "One-hour pool candles with a liquidity position: two dashed lines from the entry bar with `addBand` between them mark the range, and markers show where the price left it and came back."
     },
+    "lp-risk": {
+      "title": "LP risk canvas",
+      "about": "One position with its risks on one chart. A concentrated-liquidity range is a band from the entry bar; a 10x short hedge has price lines for its entry and its liquidation. The opens, every exit and return of the range and, if the price gets there, the liquidation are `atPrice` markers at the exact price. The second pane shows the position against holding the tokens (impermanent loss) and the hedged P&L, before fees: a short of the starting ETH leaves about the impermanent loss."
+    },
     "lanes": {
       "title": "LP positions",
       "about": "Six liquidity positions of one pool over a month of one-hour candles. A layer plugin draws each one as a rectangle from its open to its close time, between its lower and upper price."
@@ -730,6 +734,10 @@
     "meme-kol": {
       "title": "KOL and smart-money wallets",
       "about": "One-minute candles with the largest trades of 16 tracked wallets as avatars: influencers (KOL) with a thin ring, smart money with a thick one, green for buys and red for sells. Each bar side shows three avatars and folds the rest into a \"+k\" badge; hovering an avatar or a badge shows who traded and how much (`markerHover`). The wallets are synthetic."
+    },
+    "meme-reality": {
+      "title": "Meme reality layer",
+      "about": "What the feed shows against what traded. Minutes the indexer filled without swaps are hollow bars, and wicks the page clipped as bad prints get a tick at each end, with the printed values in a tooltip (`setBarFlags`). The 300 largest trades of 16 tracked wallets are avatars clustered across bars (`markerCluster`). Clicking a \"+k\" badge zooms into its bars; clicking an avatar opens that wallet's card from the marker object the event hands back. Your own fills sit at their exact price (`atPrice`). All data is synthetic."
     },
     "meme-line": {
       "title": "Market cap step line",

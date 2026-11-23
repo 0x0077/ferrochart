@@ -143,7 +143,11 @@ class Chart:
         at least 2 decimals and 4 significant digits, with subscript zeros
         for small prices such as 0.0₄1234), `marker_stack_limit` (most
         markers stacked on one side of a bar, the rest folding into a "+k"
-        badge; None, the default, for no limit)."""
+        badge; None, the default, for no limit), `marker_cluster` (CSS px:
+        markers on bars closer than this cluster into the first marker and
+        a "+k" badge; None, the default, for no clustering),
+        `filled_bar_color` (bars flagged filled with `set_bar_flags`; None,
+        the default, is the main color at 40% opacity)."""
         s = Series(self, self._native.add_series(kind, options, pane))
         self._record({"op": "addSeries", "id": s.id, "kind": camel(kind),
                       "options": _jupyter.series_options(options), "pane": pane})
@@ -313,11 +317,13 @@ class Chart:
 
         Payloads (dicts): `click`: `x`, `y` (CSS px), `pane`, `logical_index`,
         `time` (ms or None), `price`, `target` (None or a dict with `type`
-        'series', 'marker' or 'drawing' and `series` / `index` / `id`, or
-        'marker_overflow' with `series`, `first`, `count` for a "+k" badge);
+        'series', 'marker' or 'drawing' and `series` / `index` / `id` (a
+        marker's `id`), or 'marker_overflow' with `series`, `first`, `count`,
+        `id` (of marker `first`) and `bars` (first and last logical index)
+        for a "+k" badge);
         `marker_hover`: None when the pointer leaves a marker, else
-        `series`, `index`, `overflow` (k of a "+k" badge, else 0), `x`, `y`
-        (center, CSS px) and `size` (diameter);
+        `series`, `index`, `id`, `overflow` (k of a "+k" badge, else 0),
+        `bars`, `x`, `y` (center, CSS px) and `size` (diameter);
         `crosshair_move`: `point` (None or `logical_index`, `time`, `pane`,
         `price`, `bar`); `visible_range_changed`: `from`, `to`;
         `need_more_history`: `bars_before_start`; `drawing_*`: `id`.
@@ -591,7 +597,9 @@ class Series:
 
     def set_markers(self, markers: Iterable[Mapping[str, Any]]) -> None:
         """Replaces the markers: dicts with `time`, `position` ('above_bar',
-        'below_bar'), `shape` ('circle', 'square', 'arrow_up', 'arrow_down'),
+        'below_bar', or 'at_price' with `price`: centered on that price, not
+        stacked), `id` (your own integer, reported back in `click` and
+        `marker_hover`; 0 for none), `shape` ('circle', 'square', 'arrow_up', 'arrow_down'),
         `color`, `text` (beside the marker), `size` (diameter, 4–64 CSS px),
         `icon` (an id from `Chart.add_icon`, drawn inside a circle or
         square), `label` (up to 8 characters inside it, not with `icon`),
@@ -604,6 +612,26 @@ class Series:
             out.append(m)
         self._native.set_markers(out)
         self._chart._record({"op": "setMarkers", "series": self.id, "markers": _jupyter.markers(out)})
+
+    def set_bar_flags(self, times: Any, filled: Any = None, clipped: Any = None) -> None:
+        """Replaces the bar quality flags (candlestick, OHLC bar and
+        Heikin-Ashi series): `times` (datetimes or ms, any array-like) with
+        boolean arrays `filled` (bars the data source filled in without
+        trades, drawn hollow) and `clipped` (bars whose outlier wick you
+        clipped; a tick marks each end of the wick). A bar without trades
+        is a gap bar (NaN prices), not a flag. Zoomed out, a merged bar is
+        filled when all its bars are, clipped when any is."""
+        t = _data.times(times)
+        f = np.zeros(len(t), np.uint8)
+        for bit, col in ((1, filled), (2, clipped)):
+            if col is not None:
+                b = np.asarray(col, dtype=bool)
+                if b.shape != (len(t),):
+                    raise ValueError("filled and clipped must have one value per time")
+                f |= b.astype(np.uint8) * bit
+        self._native.set_bar_flags(t.tolist(), f.tolist())
+        self._chart._record({"op": "setBarFlags", "series": self.id, "flags": [
+            {"time": int(ti), "filled": bool(fi & 1), "clipped": bool(fi & 2)} for ti, fi in zip(t, f)]})
 
     @property
     def markers(self) -> list[dict[str, Any]]:

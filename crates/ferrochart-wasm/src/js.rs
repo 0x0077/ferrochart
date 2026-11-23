@@ -226,6 +226,14 @@ pub(crate) fn series_options(base: SeriesOptions, o: &JsValue) -> Result<SeriesO
         }
         opts.marker_stack_limit = Some(v as u16);
     }
+    if let Some(c) = opt_color(o, "filledBarColor")? {
+        opts.filled_bar_color = c;
+    }
+    if get(o, "markerCluster").is_null() {
+        opts.marker_cluster = None;
+    } else if let Some(v) = opt_f64(o, "markerCluster")? {
+        opts.marker_cluster = Some(Css(v as f32));
+    }
     Ok(opts)
 }
 
@@ -254,6 +262,11 @@ pub(crate) fn series_options_js(o: &SeriesOptions) -> JsValue {
         .marker_stack_limit
         .map_or(JsValue::NULL, |n| f64::from(n).into());
     set(&js, "markerStackLimit", &limit);
+    let cluster = o
+        .marker_cluster
+        .map_or(JsValue::NULL, |d| f64::from(d.0).into());
+    set(&js, "markerCluster", &cluster);
+    set(&js, "filledBarColor", &color_js(o.filled_bar_color));
     js.into()
 }
 
@@ -360,7 +373,14 @@ pub(crate) fn markers(v: &JsValue, icon_key: u32) -> Result<Vec<Marker>, JsError
         }
         if let Some(p) = opt_string(&m, "position")? {
             marker.position = params::marker_position(&p)
-                .ok_or_else(|| js_err("'position' must be 'aboveBar' or 'belowBar'"))?;
+                .ok_or_else(|| js_err("'position' must be 'aboveBar', 'belowBar' or 'atPrice'"))?;
+        }
+        marker.price = opt_f64(&m, "price")?;
+        if let Some(id) = opt_f64(&m, "id")? {
+            if !(id >= 0.0 && id.fract() == 0.0 && id <= 9_007_199_254_740_991.0) {
+                return Err(js_err("marker 'id' must be an integer from 0 to 2^53 - 1"));
+            }
+            marker.id = id as u64;
         }
         if let Some(s) = opt_string(&m, "shape")? {
             marker.shape = params::marker_shape(&s).ok_or_else(|| {
@@ -368,6 +388,27 @@ pub(crate) fn markers(v: &JsValue, icon_key: u32) -> Result<Vec<Marker>, JsError
             })?;
         }
         out.push(marker);
+    }
+    Ok(out)
+}
+
+/// Bar quality flags `[{ time, filled?, clipped? }]` (r22).
+pub(crate) fn bar_flags(
+    v: &JsValue,
+) -> Result<Vec<(i64, ferrochart_core::chart::BarFlags)>, JsError> {
+    use ferrochart_core::chart::BarFlags;
+    let arr = array(v, "flags")?;
+    let mut out = Vec::with_capacity(arr.length() as usize);
+    for f in arr.iter() {
+        let time = time_ms(&get(&f, "time"), "time")?;
+        let mut flags = BarFlags::NONE;
+        if opt_bool(&f, "filled")? == Some(true) {
+            flags = flags | BarFlags::FILLED;
+        }
+        if opt_bool(&f, "clipped")? == Some(true) {
+            flags = flags | BarFlags::CLIPPED;
+        }
+        out.push((time, flags));
     }
     Ok(out)
 }
@@ -383,6 +424,7 @@ pub(crate) fn markers_js(markers: &[Marker], icon_key: u32) -> JsValue {
             let position = match m.position {
                 MarkerPosition::AboveBar => "aboveBar",
                 MarkerPosition::BelowBar => "belowBar",
+                MarkerPosition::AtPrice => "atPrice",
             };
             let shape = match m.shape {
                 MarkerShape::Circle => "circle",
@@ -407,6 +449,12 @@ pub(crate) fn markers_js(markers: &[Marker], icon_key: u32) -> JsValue {
             set(&o, "label", &JsValue::from_str(&m.label));
             set(&o, "border", &color_js(m.border));
             set(&o, "borderWidth", &f64::from(m.border_width.0).into());
+            set(&o, "id", &JsValue::from_f64(m.id as f64));
+            set(
+                &o,
+                "price",
+                &m.price.map_or(JsValue::UNDEFINED, JsValue::from_f64),
+            );
             JsValue::from(o)
         })
         .collect::<Array>()

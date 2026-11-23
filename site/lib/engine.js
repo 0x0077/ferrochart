@@ -50,10 +50,49 @@ function gpuSlot(fn) {
  */
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
 
+/**
+ * Responses of the running example's requests, started before the engine
+ * is ready (`prefetch`); each is used once by `apiFetch`.
+ */
+const prefetched = new Map();
+
+/**
+ * Starts the requests `code` makes with a constant URL
+ * (`fetch('/api/...')`), so the data downloads while the engine loads and
+ * the GPU starts, not after. Forgets those of the previous example.
+ */
+function prefetch(code) {
+  prefetched.clear();
+  for (const m of code.matchAll(/fetch\(\s*(['"`])(\/api\/[^'"`$\\]*)\1\s*\)/g)) {
+    const url = m[2];
+    if (!prefetched.has(url)) prefetched.set(url, fetch(API_BASE + url).catch(() => null));
+  }
+}
+
 /** `fetch` for the examples: `/api/...` resolved against the API. */
 export function apiFetch(input, init) {
-  const url = typeof input === 'string' && input.startsWith('/api/') ? API_BASE + input : input;
-  return fetch(url, init);
+  if (typeof input === 'string' && input.startsWith('/api/')) {
+    const early = init ? undefined : prefetched.get(input);
+    if (early) {
+      prefetched.delete(input);
+      // A failed early request is made again.
+      return early.then((r) => r ?? fetch(API_BASE + input));
+    }
+    return fetch(API_BASE + input, init);
+  }
+  return fetch(input, init);
+}
+
+/**
+ * Loads and compiles the engine in the background once the page is idle, so
+ * opening a chart does not wait for it. Skipped with Save-Data.
+ */
+export function warm() {
+  if (navigator.connection?.saveData) return;
+  const go = () => boot().catch(() => { booted = null; });
+  const idle = () => (window.requestIdleCallback ? requestIdleCallback(go, { timeout: 5000 }) : setTimeout(go, 2000));
+  if (document.readyState === 'complete') idle();
+  else addEventListener('load', idle, { once: true });
 }
 
 /** `WebSocket` for the examples: relative URLs against the API, ws(s). */
@@ -76,6 +115,7 @@ const MAIN_SHARE = 72;
  * soon as it exists, before the example gives it data.
  */
 export async function run(demo, canvas, { onCreate } = {}) {
+  prefetch(demo.code);
   const { FerroChart, FerroPlot } = await boot();
   const forced = forcedRenderer();
   const made = [];

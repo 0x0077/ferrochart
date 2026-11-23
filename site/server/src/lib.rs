@@ -4,9 +4,13 @@
 //!   order books, derived series, a live WebSocket feed). Deterministic in
 //!   time: every visitor sees the same market, history never changes, and
 //!   the live feed continues the history.
+//! - responses are reused for a while (`cache`).
+//! - `/api/github/stars`: the repository's star count for the site header.
 //! - everything else: the static site (`next build` output).
 
 pub mod api;
+pub mod cache;
+pub mod github;
 pub mod market;
 pub mod site;
 pub mod stream;
@@ -40,6 +44,9 @@ pub struct AppState {
     clock: Clock,
     /// Live streams left.
     pub streams: Arc<Semaphore>,
+    pub star_fetch: github::StarFetch,
+    pub star_cache: Arc<github::StarCache>,
+    pub response_cache: Arc<cache::ResponseCache>,
 }
 
 impl AppState {
@@ -55,6 +62,8 @@ pub struct Config {
     pub cors: bool,
     pub max_streams: usize,
     pub clock: Clock,
+    /// Where `/api/github/stars` gets the count (GitHub; a stub in tests).
+    pub star_fetch: github::StarFetch,
 }
 
 impl Default for Config {
@@ -64,6 +73,7 @@ impl Default for Config {
             cors: false,
             max_streams: 500,
             clock: system_clock(),
+            star_fetch: github::github_fetch(),
         }
     }
 }
@@ -79,8 +89,15 @@ pub fn app(config: Config) -> Router {
     let state = AppState {
         clock: config.clock,
         streams: Arc::new(Semaphore::new(config.max_streams)),
+        star_fetch: config.star_fetch,
+        star_cache: Arc::default(),
+        response_cache: cache::shared(),
     };
     let mut api = api::router()
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            cache::layer,
+        ))
         .with_state(state)
         .layer(CompressionLayer::new().quality(CompressionLevel::Fastest));
     if config.cors {

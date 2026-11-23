@@ -53,6 +53,70 @@ chart.setVisibleLogicalRange(entry - 40, bars.time.length + 4);`,
       api: ['addBand', 'setMarkers', 'NaN gaps'],
     },
     {
+      id: 'lp-risk',
+      title: 'LP risk canvas',
+      group: 'Liquidity',
+      code: `${create()}
+${bars(HOUR)}
+const candles = chart.addCandlestickSeries();
+candles.setData(bars);
+const n = bars.time.length;
+// An ETH/USDC concentrated-liquidity position opened 12 days ago, ±8% around
+// the entry, hedged two hours later with a 10x short of its ETH.
+const entry = n - 288, p0 = bars.close[entry], pa = p0 * 0.92, pb = p0 * 1.08;
+const amounts = (p) => { // ETH and USDC of one unit of liquidity at price p
+  const s = Math.sqrt(Math.min(Math.max(p, pa), pb));
+  return [1 / s - 1 / Math.sqrt(pb), s - Math.sqrt(pa)];
+};
+const [x0, y0] = amounts(p0);
+const hedgeAt = entry + 2, ph = bars.close[hedgeAt], margin = (x0 * ph) / 10;
+const liq = ph * (1 + 1 / 10 - 0.005); // maintenance margin 0.5%
+// The range as a band from the entry bar; the short's entry and liquidation as price lines.
+const edge = (price) => bars.time.map((t, i) => (i < entry ? NaN : price));
+const style = { color: '#7ee787', lineWidth: 1, lineStyle: 'dashed', priceLineVisible: false, lastValueVisible: false };
+const hi = chart.addSeries('line', style), lo = chart.addSeries('line', style);
+hi.setData({ time: bars.time, value: edge(pb) });
+lo.setData({ time: bars.time, value: edge(pa) });
+chart.addBand(hi, lo, { fill: 'rgba(126, 231, 135, 0.08)' });
+candles.createPriceLine({ price: ph, color: '#b388ff', title: 'short entry' });
+candles.createPriceLine({ price: liq, color: '#ff5d73', lineStyle: 'solid', lineWidth: 2, title: 'short liquidation' });
+// Events at the price they happened: the opens, the range exits and returns, a liquidation.
+const at = (i, price, color, text) => ({ time: bars.time[i], position: 'atPrice', price, shape: 'circle', size: 9, color, text });
+const markers = [at(entry, p0, '#7ee787', 'LP open'), at(hedgeAt, ph, '#b388ff', 'short')];
+const lp = [], net = [];
+let zone = 0, streak = 0, liquidated = false; // zone: -1 below the range, 0 in it, 1 above
+for (let i = 0; i < n; i++) {
+  if (i < entry) { lp.push(NaN); net.push(NaN); continue; }
+  const p = bars.close[i], [x, y] = amounts(p);
+  if (i >= hedgeAt && !liquidated && bars.high[i] >= liq) { liquidated = true; markers.push(at(i, liq, '#ff5d73', 'liquidated')); }
+  const now = p > pb ? 1 : p < pa ? -1 : 0;
+  streak = now === zone ? 0 : streak + 1; // a new zone counts after 12 closes
+  if (streak === 12) {
+    const j = i - 11, edge = (now || zone) > 0 ? pb : pa;
+    markers.push(now ? at(j, edge, '#ffb547', 'out of range') : at(j, edge, '#2ee6b6', 'back in range'));
+    zone = now;
+    streak = 0;
+  }
+  const hedge = i < hedgeAt ? 0 : liquidated ? -margin : x0 * (ph - p);
+  lp.push(((x * p + y) / (x0 * p + y0) - 1) * 100); // against holding the tokens
+  net.push(((x * p + y + hedge) / (x0 * p0 + y0) - 1) * 100); // LP and short, of the capital
+}
+candles.setMarkers(markers.sort((a, b) => a.time - b.time));
+// Second pane: what the position earns, before fees.
+const pane = chart.addPane(0.5);
+chart.addSeries('baseline', { baseValue: 0, color: '#2ee6b6', downColor: '#ff5d73', topFill: 'rgba(46, 230, 182, 0.2)', bottomFill: 'rgba(255, 93, 115, 0.2)', pricePrecision: 2 }, pane)
+  .setData({ time: bars.time, value: net });
+chart.addSeries('line', { color: '#ffb547', lineWidth: 1.5, pricePrecision: 2 }, pane).setData({ time: bars.time, value: lp });
+chart.applyPriceScaleOptions({ margins: { top: 0.22, bottom: 0.05 } }, pane);
+chart.addLayer({ pane, build: (ctx) => [
+  { type: 'text', x: ctx.rect.x + 8, y: ctx.rect.y + 6, text: 'LP + short, % of capital', color: '#2ee6b6', size: 11 },
+  { type: 'text', x: ctx.rect.x + 8, y: ctx.rect.y + 22, text: 'LP vs holding (impermanent loss), %', color: '#ffb547', size: 11 },
+] });
+chart.setVisibleLogicalRange(entry - 40, n + 4);`,
+      about: 'One position with its risks on one chart. A concentrated-liquidity range is a band from the entry bar; a 10x short hedge has price lines for its entry and its liquidation. The opens, every exit and return of the range and, if the price gets there, the liquidation are `atPrice` markers at the exact price. The second pane shows the position against holding the tokens (impermanent loss) and the hedged P&L, before fees: a short of the starting ETH leaves about the impermanent loss.',
+      api: ["position: 'atPrice'", 'addBand', 'createPriceLine', "addSeries('baseline')"],
+    },
+    {
       id: 'lanes',
       title: 'LP positions',
       group: 'Liquidity',

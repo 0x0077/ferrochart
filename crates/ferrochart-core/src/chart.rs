@@ -23,7 +23,7 @@ use crate::format::auto_decimals;
 use crate::frame::{
     CustomDraw, DrawCmd, FontId, FontStyleRef, Frame, Invalidation, LabelBg, LayerId, LineDash,
     LineInst, Reveal, SeriesDraw, SeriesKind, SeriesStyle, StrokeStyle, TextAlign, TextRun,
-    XTransform,
+    XTransform, YTransform,
 };
 use crate::geom::{Css, PointCss, PointPx, Px, RectPx, Rgba, SizeCss, SizePx, Span};
 use crate::interaction::{CrosshairMode, Drag, Interaction};
@@ -144,6 +144,17 @@ pub struct SeriesOptions {
     /// last place shows a "+k" badge for the `k` markers not drawn. `None`
     /// (the default) draws all; `Some(0)` is invalid.
     pub marker_stack_limit: Option<u16>,
+    /// Cross-bar clustering of markers (r22): with `Some(d)`, bars
+    /// fall into buckets of `ceil(d / bar spacing)` logical indices
+    /// (aligned to the index, so panning does not regroup them); a side of
+    /// a bucket whose markers sit on two or more bars shows its first marker
+    /// and a "+k" badge, on the bar with the most of them. `AtPrice` markers
+    /// are not clustered. `None` (the default) does not cluster; non-finite
+    /// or <= 0 is invalid.
+    pub marker_cluster: Option<Css>,
+    /// Color of bars flagged [`BarFlags::FILLED`] (r22), drawn
+    /// hollow; `None` (the default) is the main color at 40% opacity.
+    pub filled_bar_color: Option<Rgba>,
 }
 
 impl Default for SeriesOptions {
@@ -163,6 +174,8 @@ impl Default for SeriesOptions {
             price_line_visible: true,
             shift: 0,
             marker_stack_limit: None,
+            marker_cluster: None,
+            filled_bar_color: None,
         }
     }
 }
@@ -214,6 +227,8 @@ fn volume_like(e: &SeriesEntry) -> bool {
 struct MarkerSpot {
     /// `Marker` or `MarkerOverflow`.
     target: ClickTarget,
+    /// The bars it stands for.
+    bars: IdxSpan,
     pane: PaneId,
     pos: PointPx,
     radius: f32,
@@ -300,6 +315,9 @@ pub enum MarkerPosition {
     AboveBar,
     /// Below the bar's low.
     BelowBar,
+    /// Centered on [`Marker::price`] at the bar's x (r22): not stacked,
+    /// folded or clustered; its text is on the right.
+    AtPrice,
 }
 
 /// Shape of a [`Marker`].
@@ -376,6 +394,15 @@ pub struct Marker {
     pub border: Option<Rgba>,
     /// Border width; default 2 CSS px. Used when `border` is set.
     pub border_width: Css,
+    /// The host's own identifier, 0 for none (r22). Reported back in
+    /// [`MarkerHit`] and [`ClickTarget`]: their `index` is the position after
+    /// sorting by time, which the host cannot map back reliably. Not checked
+    /// for uniqueness.
+    pub id: u64,
+    /// Price of a [`MarkerPosition::AtPrice`] marker, in series units
+    /// (normalized with the series on relative scales, like price lines);
+    /// `None` for the other positions (r22).
+    pub price: Option<f64>,
 }
 
 impl Default for Marker {
@@ -391,9 +418,55 @@ impl Default for Marker {
             label: String::new(),
             border: None,
             border_width: Css(2.0),
+            id: 0,
+            price: None,
         }
     }
 }
+
+/// Quality of a bar (r22), set sparsely with
+/// [`Chart::set_bar_flags`]. A bar without trades is a gap bar (all prices
+/// NaN), not a flag.
+///
+/// # Examples
+///
+/// ```
+/// use ferrochart_core::chart::BarFlags;
+///
+/// let f = BarFlags::FILLED | BarFlags::CLIPPED;
+/// assert!(f.contains(BarFlags::CLIPPED));
+/// assert!(!BarFlags::NONE.contains(BarFlags::FILLED));
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct BarFlags(pub u8);
+
+impl BarFlags {
+    /// A real bar.
+    pub const NONE: Self = Self(0);
+    /// Filled in by the data source (no real trades, usually O=H=L=C):
+    /// drawn hollow in `SeriesOptions::filled_bar_color`.
+    pub const FILLED: Self = Self(1);
+    /// The host clipped an outlier wick; the bar holds the clipped values.
+    /// A short tick marks each end of the wick.
+    pub const CLIPPED: Self = Self(2);
+    /// All flags.
+    pub const ALL: Self = Self(3);
+
+    /// Whether all flags of `other` are set.
+    pub fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+}
+
+impl core::ops::BitOr for BarFlags {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+/// Most bar flags per series.
+const MAX_BAR_FLAGS: usize = 1_000_000;
 
 /// Marker icon size and gap to the bar or the next marker, in CSS pixels.
 const MARKER_SIZE: f32 = 10.0;
@@ -405,7 +478,136 @@ const MARKER_LABEL_CHARS: usize = 8;
 /// Smallest label font, CSS px.
 const MARKER_LABEL_MIN_FONT: f32 = 7.0;
 
-/// Checks the r21 marker fields.
+/// Markers of one side of a bucket of bars, while they are drawn:
+/// a bucket is one bar unless `marker_cluster` is set.
+#[derive(Clone, Copy)]
+struct MarkerGroup {
+    /// Bucket: logical index `div_euclid` bars per bucket.
+    key: i64,
+    /// Markers of the side on bars that are not gaps.
+    total: u32,
+    /// The markers sit on two or more bars of a clustering bucket.
+    clustered: bool,
+    /// The bar drawn on: the one with the most markers (the earliest of
+    /// equals).
+    at: i64,
+    /// The bars of the markers.
+    bars: IdxSpan,
+    /// Markers drawn so far.
+    drawn: u32,
+    /// Stack offset taken so far, px.
+    off: f32,
+}
+
+impl MarkerGroup {
+    const EMPTY: Self = Self {
+        key: i64::MIN,
+        total: 0,
+        clustered: false,
+        at: 0,
+        bars: IdxSpan { start: 0, end: 0 },
+        drawn: 0,
+        off: 0.0,
+    };
+
+    /// A group of one bar `j` whose markers need not be counted (no
+    /// clustering, no stack limit).
+    fn single(j: i64) -> Self {
+        Self {
+            key: j,
+            at: j,
+            bars: IdxSpan {
+                start: j,
+                end: j + 1,
+            },
+            ..Self::EMPTY
+        }
+    }
+
+    /// The group of side `side` starting at `markers[0]` (sorted by time,
+    /// on bar `j0`): counts forward through the markers of bucket `key`.
+    /// `ix` maps times to bars (markers snap to the next bar) and back, and
+    /// tells gaps; bars are looked up only when the time passes the current
+    /// one.
+    fn scan(markers: &[Marker], side: usize, kb: i64, j0: i64, ix: &MarkerBars<'_>) -> Self {
+        let key = j0.div_euclid(kb);
+        // Markers up to this time snap into the bucket.
+        let t_last = ix.last_time((key + 1) * kb - 1);
+        let mut g = Self { key, ..Self::EMPTY };
+        let (mut j, mut t_j, mut ok) = (j0, ix.time(j0), ix.has_bar(j0));
+        let (mut run_bar, mut run, mut best, mut distinct) = (i64::MIN, 0_u32, 0_u32, 0_u32);
+        for m in markers {
+            if m.time > t_last {
+                break;
+            }
+            if m.time > t_j {
+                j = ix.bar_of(m.time);
+                (t_j, ok) = (ix.time(j), ix.has_bar(j));
+            }
+            if !ok || stack_side(m.position) != Some(side) {
+                continue;
+            }
+            if j != run_bar {
+                (run_bar, run) = (j, 0);
+                distinct += 1;
+                if distinct == 1 {
+                    g.bars.start = j;
+                }
+            }
+            run += 1;
+            if run > best {
+                (best, g.at) = (run, j);
+            }
+            g.bars.end = j + 1;
+            g.total += 1;
+        }
+        g.clustered = kb > 1 && distinct >= 2;
+        g
+    }
+}
+
+/// Bars of markers: times to bars (snapping to the next bar, the
+/// last one after the end), bar times, and gaps.
+struct MarkerBars<'a> {
+    index: &'a TimeIndex,
+    store: &'a Store,
+    end: i64,
+}
+
+impl MarkerBars<'_> {
+    fn bar_of(&self, t: Timestamp) -> i64 {
+        self.index.lower_bound(t).min(self.end - 1)
+    }
+
+    /// Time of bar `j`; the last bar takes every later time.
+    fn time(&self, j: i64) -> Timestamp {
+        if j >= self.end - 1 {
+            return Timestamp::MAX;
+        }
+        self.index.time_at(j).unwrap_or(Timestamp::MAX)
+    }
+
+    /// The last time that snaps to bar `j` or before.
+    fn last_time(&self, j: i64) -> Timestamp {
+        self.time(j.min(self.end - 1))
+    }
+
+    fn has_bar(&self, j: i64) -> bool {
+        self.store.bar_at(j).is_some()
+    }
+}
+
+/// The stacking side of a marker position (0 above, 1 below); `None` for
+/// `AtPrice`, which does not stack (r22).
+fn stack_side(p: MarkerPosition) -> Option<usize> {
+    match p {
+        MarkerPosition::AboveBar => Some(0),
+        MarkerPosition::BelowBar => Some(1),
+        MarkerPosition::AtPrice => None,
+    }
+}
+
+/// Checks the r21 and r22 marker fields.
 fn check_marker(m: &Marker) -> Result<()> {
     if let Some(s) = m.size
         && !(s.0.is_finite() && MARKER_SIZE_RANGE.contains(&s.0))
@@ -433,6 +635,18 @@ fn check_marker(m: &Marker) -> Result<()> {
             "marker border width must be finite and >= 0",
         ));
     }
+    match (m.position, m.price) {
+        (MarkerPosition::AtPrice, Some(p)) if p.is_finite() => {}
+        (MarkerPosition::AtPrice, _) => {
+            return Err(Error::InvalidArgument(
+                "an atPrice marker needs a finite price",
+            ));
+        }
+        (_, Some(_)) => {
+            return Err(Error::InvalidArgument("only atPrice markers have a price"));
+        }
+        (_, None) => {}
+    }
     Ok(())
 }
 
@@ -441,6 +655,13 @@ fn check_series_options(o: &SeriesOptions) -> Result<()> {
     if o.marker_stack_limit == Some(0) {
         return Err(Error::InvalidArgument(
             "marker_stack_limit must be at least 1",
+        ));
+    }
+    if o.marker_cluster
+        .is_some_and(|d| !(d.0.is_finite() && d.0 > 0.0))
+    {
+        return Err(Error::InvalidArgument(
+            "marker_cluster must be finite and > 0",
         ));
     }
     Ok(())
@@ -546,9 +767,12 @@ pub enum ClickTarget {
         series: SeriesId,
         /// Its index in [`Chart::markers`].
         index: usize,
+        /// Its [`Marker::id`] (r22).
+        id: u64,
     },
     /// The "+k" badge of a folded marker stack (r21): `count` markers
-    /// from index `first` of [`Chart::markers`] are not drawn.
+    /// on its side of the bars in `bars` are not drawn, the first of them
+    /// being index `first` of [`Chart::markers`].
     MarkerOverflow {
         /// The series the markers belong to.
         series: SeriesId,
@@ -556,6 +780,11 @@ pub enum ClickTarget {
         first: usize,
         /// How many are not drawn.
         count: u32,
+        /// [`Marker::id`] of marker `first` (r22).
+        id: u64,
+        /// Logical indices of the bars whose markers the badge stands for
+        /// (r22): one bar for a folded stack.
+        bars: IdxSpan,
     },
     /// A series: a candle's body or wick, within 4 CSS px of a line, inside
     /// a histogram bar, or on a dot.
@@ -638,8 +867,13 @@ pub struct MarkerHit {
     /// Its index in [`Chart::markers`]; for a "+k" badge the first marker
     /// not drawn.
     pub index: usize,
+    /// [`Marker::id`] of that marker (r22).
+    pub id: u64,
     /// For a "+k" badge, `k`; 0 for a marker.
     pub overflow: u32,
+    /// Logical indices of the bars it stands for (r22): the marker's bar,
+    /// or those of the markers a "+k" badge hides (on its side).
+    pub bars: IdxSpan,
     /// Center, CSS px from the chart's top left.
     pub center: PointCss,
     /// Diameter, CSS px.
@@ -670,6 +904,8 @@ struct SeriesEntry {
     norm: Option<Normalize>,
     /// Markers, sorted by time.
     markers: Vec<Marker>,
+    /// Bar quality flags, sorted by time, one per time (r22).
+    bar_flags: Vec<(Timestamp, BarFlags)>,
     /// An output of an indicator: follows its source, so it is left
     /// out of the time-axis union and recomputed after a rebuild.
     derived: bool,
@@ -1358,6 +1594,7 @@ impl Chart {
             store: Store::for_kind(kind),
             norm: None,
             markers: Vec::new(),
+            bar_flags: Vec::new(),
             derived: false,
             volume_scale: false,
             auto_decimals: 2,
@@ -1974,6 +2211,7 @@ impl Chart {
             store: Store::Transform(Box::new(TransformStore::new(t))),
             norm: None,
             markers: Vec::new(),
+            bar_flags: Vec::new(),
             derived: false,
             volume_scale: false,
             auto_decimals: 2,
@@ -2068,6 +2306,7 @@ impl Chart {
             store: Store::Custom(Box::new(CustomStore::new(series))),
             norm: None,
             markers: Vec::new(),
+            bar_flags: Vec::new(),
             derived: false,
             volume_scale: false,
             auto_decimals: 2,
@@ -2883,6 +3122,64 @@ impl Chart {
         self.entry(series).ok().map(|e| e.markers.as_slice())
     }
 
+    /// Replaces the bar quality flags of an OHLC series (r22):
+    /// [`BarFlags::FILLED`] bars are drawn hollow, [`BarFlags::CLIPPED`]
+    /// bars get a tick at each end of the wick. Sorted by time; of equal
+    /// times the last wins; [`BarFlags::NONE`] entries are dropped. Times
+    /// that are not bars of the series are ignored when drawing. At an LOD
+    /// level a merged bar is `FILLED` when all its bars are, `CLIPPED` when
+    /// any is.
+    ///
+    /// # Errors
+    ///
+    /// The series' lookup error; [`Error::InvalidArgument`] for a series
+    /// that is not candlestick, OHLC bar or Heikin-Ashi, or unknown flag
+    /// bits; [`Error::CapacityExceeded`] beyond 1 000 000 flags.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ferrochart_core::chart::{BarFlags, SeriesOptions};
+    /// use ferrochart_core::frame::SeriesKind;
+    /// use ferrochart_core::{Chart, ChartOptions};
+    ///
+    /// let mut chart = Chart::new(ChartOptions::default());
+    /// let id = chart.add_series(chart.main_pane(), SeriesKind::Candlestick, SeriesOptions::default())?;
+    /// chart.set_bar_flags(id, vec![(60_000, BarFlags::FILLED), (0, BarFlags::CLIPPED)])?;
+    /// assert_eq!(chart.bar_flags(id).map(|f| f[0].0), Some(0));
+    /// # Ok::<(), ferrochart_core::Error>(())
+    /// ```
+    pub fn set_bar_flags(
+        &mut self,
+        series: SeriesId,
+        mut flags: Vec<(Timestamp, BarFlags)>,
+    ) -> Result<()> {
+        let k = self.entry_index(series)?;
+        if !is_ohlc_kind(self.series[k].kind) {
+            return Err(Error::InvalidArgument("bar flags need an OHLC series"));
+        }
+        if flags.len() > MAX_BAR_FLAGS {
+            return Err(Error::CapacityExceeded("at most 1 000 000 bar flags"));
+        }
+        if flags.iter().any(|f| !BarFlags::ALL.contains(f.1)) {
+            return Err(Error::InvalidArgument("unknown bar flag bits"));
+        }
+        // Reversed, then stably sorted: the first of equal times is the last given.
+        flags.reverse();
+        flags.sort_by_key(|f| f.0);
+        flags.dedup_by_key(|f| f.0);
+        flags.retain(|f| f.1 != BarFlags::NONE);
+        self.series[k].bar_flags = flags;
+        self.invalidation = self.invalidation.max(Invalidation::Data);
+        Ok(())
+    }
+
+    /// Bar quality flags of a series, sorted by time; `None` if it does not
+    /// exist (r22).
+    pub fn bar_flags(&self, series: SeriesId) -> Option<&[(Timestamp, BarFlags)]> {
+        self.entry(series).ok().map(|e| e.bar_flags.as_slice())
+    }
+
     /// The (global) time scale.
     pub fn time_scale(&mut self) -> &mut TimeScale {
         &mut self.time_scale
@@ -3429,19 +3726,23 @@ impl Chart {
                     .copied()
             });
         let hit = spot.and_then(|m| {
-            let (series, index, overflow) = match m.target {
-                ClickTarget::Marker { series, index } => (series, index, 0),
+            let (series, index, id, overflow) = match m.target {
+                ClickTarget::Marker { series, index, id } => (series, index, id, 0),
                 ClickTarget::MarkerOverflow {
                     series,
                     first,
                     count,
-                } => (series, first, count),
+                    id,
+                    ..
+                } => (series, first, id, count),
                 _ => return None,
             };
             Some(MarkerHit {
                 series,
                 index,
+                id,
                 overflow,
+                bars: m.bars,
                 center: PointCss {
                     x: m.pos.x / self.dpr,
                     y: m.pos.y / self.dpr,
@@ -4254,13 +4555,14 @@ impl Chart {
         };
         let generation = log.generation();
         let (kind, style) = (e.kind, self.style_of(e));
-        let style = self.frame.push_style(style);
+        let flagged = is_ohlc_kind(kind) && !e.bar_flags.is_empty();
+        let style_ref = self.frame.push_style(style);
         self.frame.push_cmd(
             LayerId::Main,
             DrawCmd::Series(SeriesDraw {
                 series: data_id,
                 generation,
-                style,
+                style: style_ref,
                 kind,
                 lod_level: level,
                 index_range: span,
@@ -4270,6 +4572,200 @@ impl Chart {
                 pair: None,
             }),
         );
+        if flagged {
+            self.emit_bar_flags(k, level, span, &xt, &yt, &style);
+        }
+    }
+
+    /// The bar quality flags of OHLC series `k` over its `SeriesDraw` (r22): a `FILLED`
+    /// bar's pixels are cleared to the background and it is
+    /// drawn again hollow in `filled_bar_color`; a `CLIPPED` bar gets a
+    /// 3 CSS px tick at each end of its wick. Geometry from the same
+    /// `transform_helpers` (and chunk references) as the backends, so the
+    /// new pixels cover exactly the old ones. Flags and visible bars are
+    /// walked in time order; nothing is allocated.
+    fn emit_bar_flags(
+        &mut self,
+        k: usize,
+        level: u8,
+        span: IdxSpan,
+        xt: &XTransform,
+        yt: &YTransform,
+        style: &SeriesStyle,
+    ) {
+        use crate::frame::RectInst;
+        use crate::transform_helpers::{
+            bar_metrics, candle, chunk_of, initial_chunk_ref, is_gap, is_up_rel, ohlc_bar,
+            ohlc_rel, x_center, y, y_bias,
+        };
+        let Some(e) = self.series.get(k) else {
+            return;
+        };
+        let Some(view) = e.store.level_view(level) else {
+            return;
+        };
+        let lvl = u32::from(level);
+        let (first, end) = (self.time_index.first_index(), self.time_index.end_index());
+        // Logical indices of the bars in `span` (buckets above level 0).
+        let (ia, ib) = if lvl == 0 {
+            (span.start, span.end)
+        } else {
+            (bucket_start(span.start, lvl), bucket_start(span.end, lvl))
+        };
+        let (ia, ib) = (ia.max(first), ib.min(end));
+        let (Some(t_a), Some(t_b)) = (self.time_index.time_at(ia), self.time_index.time_at(ib - 1))
+        else {
+            return;
+        };
+        let m = bar_metrics(xt.step);
+        let bg = self.theme.background;
+        let filled_color = e
+            .opts
+            .filled_bar_color
+            .unwrap_or_else(|| style.up.with_alpha(0x66));
+        let tick = {
+            let w = (3.0 * self.dpr).round().max(1.0);
+            if w % 2.0 == 0.0 { w + 1.0 } else { w }
+        };
+        let candles = e.kind != SeriesKind::OhlcBar;
+        let frame = &mut self.frame;
+        let index = &self.time_index;
+        let mut chunk = (i64::MIN, None::<f64>);
+        // Draws element `el` with `filled` of its bars filled, and whether
+        // any is clipped.
+        let mut draw = |el: i64, filled: i64, clipped: bool| {
+            let bars = if lvl == 0 {
+                1
+            } else {
+                bucket_start(el + 1, lvl).min(end) - bucket_start(el, lvl).max(first)
+            };
+            let filled = filled > 0 && filled >= bars;
+            if !(filled || clipped) {
+                return;
+            }
+            let bar = (|| {
+                Some([
+                    view.open.at(view.first, el)?,
+                    view.high.at(view.first, el)?,
+                    view.low.at(view.first, el)?,
+                    view.close.at(view.first, el)?,
+                ])
+            })();
+            let c = chunk_of(level, el);
+            if chunk.0 != c {
+                chunk = (c, initial_chunk_ref(&view, c));
+            }
+            let (Some(ohlc), Some(r)) = (bar, chunk.1) else {
+                return;
+            };
+            let rel = ohlc_rel(yt, ohlc, r);
+            if rel.iter().any(|&v| is_gap(v)) {
+                return;
+            }
+            let bias = y_bias(yt, r);
+            let xc = x_center(xt, el);
+            let ys = rel.map(|v| y(yt, v, bias));
+            let up = is_up_rel(rel[0], rel[3]);
+            let mut put = |rect: RectPx, color: Rgba| {
+                frame.push_rect(LayerId::Main, RectInst { rect, color });
+            };
+            let (wick, wick_color) = if candles {
+                let g = candle(xc, m, ys);
+                if filled {
+                    put(g.wick, bg);
+                    if let Some(b) = g.body {
+                        put(b, bg);
+                    }
+                    put(g.wick, filled_color);
+                    if let Some(b) = g.body {
+                        if b.w >= 3.0 && b.h >= 3.0 {
+                            // Hollow: the four edges.
+                            let inner = b.h - 2.0;
+                            put(RectPx { h: 1.0, ..b }, filled_color);
+                            put(
+                                RectPx {
+                                    y: b.y + b.h - 1.0,
+                                    h: 1.0,
+                                    ..b
+                                },
+                                filled_color,
+                            );
+                            put(
+                                RectPx {
+                                    y: b.y + 1.0,
+                                    w: 1.0,
+                                    h: inner,
+                                    ..b
+                                },
+                                filled_color,
+                            );
+                            let right = RectPx {
+                                x: b.x + b.w - 1.0,
+                                y: b.y + 1.0,
+                                w: 1.0,
+                                h: inner,
+                            };
+                            put(right, filled_color);
+                        } else {
+                            put(b, filled_color);
+                        }
+                    }
+                }
+                (g.wick, if up { style.up_wick } else { style.down_wick })
+            } else {
+                let parts = ohlc_bar(xc, m, ys);
+                if filled {
+                    for r in parts.into_iter().flatten() {
+                        put(r, bg);
+                    }
+                    for r in parts.into_iter().flatten() {
+                        put(r, filled_color);
+                    }
+                }
+                let Some(w) = parts[0] else { return };
+                (w, if up { style.up } else { style.down })
+            };
+            if clipped {
+                let color = if filled { filled_color } else { wick_color };
+                let x = wick.x - (tick - 1.0) * 0.5;
+                for ty in [wick.y, wick.y + wick.h - 1.0] {
+                    put(
+                        RectPx {
+                            x,
+                            y: ty,
+                            w: tick,
+                            h: 1.0,
+                        },
+                        color,
+                    );
+                }
+            }
+        };
+        let flags = &e.bar_flags;
+        let start = flags.partition_point(|f| f.0 < t_a);
+        // The element being collected: its filled bars, any clipped.
+        let (mut cur, mut filled, mut clipped) = (i64::MIN, 0_i64, false);
+        for &(t, f) in &flags[start..] {
+            if t > t_b {
+                break;
+            }
+            let j = index.lower_bound(t);
+            if index.time_at(j) != Some(t) {
+                continue; // not a bar
+            }
+            let el = if lvl == 0 { j } else { bucket_of(j, lvl) };
+            if el != cur {
+                if cur != i64::MIN {
+                    draw(cur, filled, clipped);
+                }
+                (cur, filled, clipped) = (el, 0, false);
+            }
+            filled += i64::from(f.contains(BarFlags::FILLED));
+            clipped |= f.contains(BarFlags::CLIPPED);
+        }
+        if cur != i64::MIN {
+            draw(cur, filled, clipped);
+        }
     }
 
     /// The `SeriesDraw` of band `b` if it is in pane `i`. Not drawn when the
@@ -4744,7 +5240,9 @@ impl Chart {
 
     /// Markers of the series in pane `i` (main layer, clipped to the plot). Markers on
     /// the same bar and side stack away from the bar; with
-    /// `marker_stack_limit`, a side with more markers ends in a "+k" badge.
+    /// `marker_stack_limit`, a side with more markers ends in a "+k" badge;
+    /// with `marker_cluster`, a side of a bucket of bars with markers on two
+    /// or more of them shows its first marker and "+k" (r22).
     fn emit_markers(&mut self, i: usize, line_h: f32, font: FontStyleRef, text: &dyn TextMeasurer) {
         let Some(pane) = self.panes.get(i) else {
             return;
@@ -4763,13 +5261,8 @@ impl Chart {
         let (a, b) = self.time_scale.visible_range();
         let ja = (a.floor() as i64).clamp(first, end - 1);
         let jb = (b.ceil() as i64).clamp(first, end - 1);
-        let Some(t_hi) = self.time_index.time_at(jb) else {
-            return;
-        };
-        // Markers snap to the next bar: those before `t_skip` land left of
-        // the first visible bar.
-        let t_skip = self.time_index.time_at(ja - 1).unwrap_or(i64::MIN);
         let dpr = self.dpr;
+        let spacing = self.time_scale.bar_spacing();
         let gap = (MARKER_GAP * dpr).round();
         let clip = self.data_clip(plot);
         self.frame.push_cmd(LayerId::Main, DrawCmd::PushClip(clip));
@@ -4784,12 +5277,27 @@ impl Chart {
                 e.opts.marker_stack_limit,
                 e.opts.shift,
             );
+            // Bars per cluster bucket; 1 groups by bar (no clustering).
+            let kb = e.opts.marker_cluster.map_or(1, |d| {
+                let bars = (f64::from(d.0 * dpr) / spacing.max(f64::MIN_POSITIVE)).ceil();
+                bars.clamp(1.0, 1e12) as i64
+            });
+            // The visible bars widened to whole buckets, so a bucket at an
+            // edge counts all of its markers while panning.
+            let ja = (ja.div_euclid(kb) * kb).max(first);
+            let jb = ((jb.div_euclid(kb) + 1) * kb - 1).min(end - 1);
+            let Some(t_hi) = self.time_index.time_at(jb) else {
+                continue;
+            };
+            // Markers snap to the next bar: those before `t_skip` land left
+            // of the first visible bar.
+            let t_skip = self.time_index.time_at(ja - 1).unwrap_or(i64::MIN);
             let start = e.markers.partition_point(|m| m.time <= t_skip);
             let bar_of = |t: Timestamp| self.time_index.lower_bound(t).min(end - 1);
-            // The bar of the stack being built, the offsets taken above and
-            // below it, the markers drawn on each side and their totals.
-            let mut bar = i64::MIN;
-            let (mut off, mut drawn, mut total) = ([0.0_f32; 2], [0_u32; 2], [0_u32; 2]);
+            // Groups need counting to cluster or fold.
+            let count = kb > 1 || limit.is_some();
+            // The group (bucket of bars) being drawn on each side.
+            let mut group = [MarkerGroup::EMPTY; 2];
             for n in start..self.series[k].markers.len() {
                 let e = &self.series[k];
                 let m = &e.markers[n];
@@ -4797,64 +5305,108 @@ impl Chart {
                     break;
                 }
                 let j = bar_of(m.time);
-                let Some([_, high, low, _]) = e.store.bar_at(j) else {
-                    continue;
+                let Some(bar_j) = e.store.bar_at(j) else {
+                    continue; // on a gap
                 };
-                if j != bar {
-                    bar = j;
-                    (off, drawn, total) = ([0.0; 2], [0; 2], [0; 2]);
-                    if limit.is_some() {
-                        for o in &e.markers[n..] {
-                            if bar_of(o.time) != j {
-                                break;
-                            }
-                            total[usize::from(o.position == MarkerPosition::BelowBar)] += 1;
-                        }
-                    }
-                }
-                let above = m.position == MarkerPosition::AboveBar;
-                let side = usize::from(!above);
-                // Folding: the place of marker `lim` shows "+k" for the rest.
-                let mut overflow = 0;
-                if let Some(lim) = limit.map(u32::from)
-                    && total[side] > lim
+                let side = stack_side(m.position);
+                // The bucket (a bar without clustering: no division).
+                let key = if kb == 1 { j } else { j.div_euclid(kb) };
+                if let Some(s) = side
+                    && group[s].key != key
                 {
-                    if drawn[side] >= lim {
-                        continue;
-                    }
-                    if drawn[side] == lim - 1 {
-                        overflow = total[side] - drawn[side];
-                    }
+                    group[s] = if count {
+                        let ix = MarkerBars {
+                            index: &self.time_index,
+                            store: &e.store,
+                            end,
+                        };
+                        MarkerGroup::scan(&e.markers[n..], s, kb, j, &ix)
+                    } else {
+                        MarkerGroup::single(j)
+                    };
                 }
-                drawn[side] += 1;
                 let size_css = m.size.map_or(MARKER_SIZE, |s| s.0);
                 let size = (size_css * dpr).round().max(4.0);
-                let price = if above { high } else { low };
-                let y_bar = self.panes[i]
-                    .price_scale
-                    .price_to_y(norm.apply(price), top, height) as f32;
-                let text_h = if m.text.is_empty() || overflow > 0 {
-                    0.0
-                } else {
-                    line_h
-                };
-                let (cy, ty) = if above {
-                    let cy = y_bar - gap - off[0] - size * 0.5;
-                    off[0] += gap + size + text_h;
-                    (cy, cy - size * 0.5 - text_h * 0.5)
-                } else {
-                    let cy = y_bar + gap + off[1] + size * 0.5;
-                    off[1] += gap + size + text_h;
-                    (cy, cy + size * 0.5 + text_h * 0.5)
-                };
-                let shown = j + i64::from(shift);
+                // A cluster is drawn on its bar with the most markers.
+                let at = side.map_or(j, |s| group[s].at);
+                let shown = at + i64::from(shift);
                 let x = (plot.x + self.time_scale.index_to_x(shown as f64).0).round();
+                let has_text = !m.text.is_empty();
+                let mut bars = IdxSpan {
+                    start: j,
+                    end: j + 1,
+                };
+                // Center y, and where the text goes (y, x, alignment).
+                let mut overflow = 0;
+                let (cy, ty, tx, align) = if let Some(side) = side {
+                    let g = &mut group[side];
+                    if g.clustered {
+                        // The first marker, then "+k" for the rest.
+                        match g.drawn {
+                            0 => {}
+                            1 => (overflow, bars) = (g.total - 1, g.bars),
+                            _ => continue,
+                        }
+                    } else if let Some(lim) = limit.map(u32::from)
+                        && g.total > lim
+                    {
+                        // Folding: the place of marker `lim` shows "+k" for the rest.
+                        if g.drawn >= lim {
+                            continue;
+                        }
+                        if g.drawn == lim - 1 {
+                            overflow = g.total - g.drawn;
+                        }
+                    }
+                    g.drawn += 1;
+                    let bar = if at == j {
+                        Some(bar_j)
+                    } else {
+                        e.store.bar_at(at)
+                    };
+                    let Some([_, high, low, _]) = bar else {
+                        continue;
+                    };
+                    let price = if side == 0 { high } else { low };
+                    let y_bar = self.panes[i]
+                        .price_scale
+                        .price_to_y(norm.apply(price), top, height)
+                        as f32;
+                    let text_h = if has_text && overflow == 0 {
+                        line_h
+                    } else {
+                        0.0
+                    };
+                    let off = &mut group[side].off;
+                    let (cy, ty) = if side == 0 {
+                        let cy = y_bar - gap - *off - size * 0.5;
+                        *off += gap + size + text_h;
+                        (cy, cy - size * 0.5 - text_h * 0.5)
+                    } else {
+                        let cy = y_bar + gap + *off + size * 0.5;
+                        *off += gap + size + text_h;
+                        (cy, cy + size * 0.5 + text_h * 0.5)
+                    };
+                    (cy, ty, x, TextAlign::Center)
+                } else {
+                    // `AtPrice` (r22): on its price, text on the right.
+                    let p = m.price.unwrap_or(f64::NAN);
+                    let cy = self.panes[i]
+                        .price_scale
+                        .price_to_y(norm.apply(p), top, height) as f32;
+                    if !cy.is_finite() {
+                        continue; // e.g. a price <= 0 on a log scale
+                    }
+                    (cy, cy, x + (size * 0.5 + gap).round(), TextAlign::Left)
+                };
                 let pos = PointPx { x, y: cy.round() };
                 let (target, inst, color) = if overflow > 0 {
                     let target = ClickTarget::MarkerOverflow {
                         series,
                         first: n,
                         count: overflow,
+                        id: m.id,
+                        bars,
                     };
                     let inst = crate::frame::IconInst {
                         pos,
@@ -4876,10 +5428,16 @@ impl Chart {
                         border,
                         border_width: Px((m.border_width.0 * dpr).min(size * 0.5)),
                     };
-                    (ClickTarget::Marker { series, index: n }, inst, color)
+                    let target = ClickTarget::Marker {
+                        series,
+                        index: n,
+                        id: m.id,
+                    };
+                    (target, inst, color)
                 };
                 self.marker_hits.push(MarkerSpot {
                     target,
+                    bars,
                     pane: id,
                     pos,
                     radius: size * 0.5,
@@ -4928,16 +5486,19 @@ impl Chart {
                         },
                     );
                 }
-                if text_h > 0.0 {
+                if has_text && overflow == 0 {
                     let span = self.frame.push_str(&self.series[k].markers[n].text);
                     self.frame.push_text(
                         LayerId::Main,
                         TextRun {
-                            pos: PointPx { x, y: ty.round() },
+                            pos: PointPx {
+                                x: tx,
+                                y: ty.round(),
+                            },
                             text: span,
                             style: font,
                             color,
-                            align: TextAlign::Center,
+                            align,
                             bg: None,
                         },
                     );
@@ -6097,9 +6658,468 @@ mod tests {
             Some(ClickTarget::MarkerOverflow {
                 series: candles,
                 first: 4,
-                count: 3
+                count: 3,
+                id: 0,
+                bars: IdxSpan { start: 2, end: 3 },
             })
         );
+    }
+
+    #[test]
+    fn at_price_markers() {
+        use crate::testing::MonoMeasurer;
+
+        let (mut chart, candles, _) = two_series(SeriesKind::Candlestick, SeriesKind::Line);
+        chart.resize(SizeCss { w: 400.0, h: 300.0 }, 1.0);
+        chart
+            .set_data(candles, ohlc(&[10, 20, 30, 40], 5.0))
+            .unwrap();
+        // A price only with `AtPrice`, and `AtPrice` needs a finite one.
+        for (position, price) in [
+            (MarkerPosition::AtPrice, None),
+            (MarkerPosition::AtPrice, Some(f64::NAN)),
+            (MarkerPosition::AboveBar, Some(5.0)),
+        ] {
+            let m = Marker {
+                time: 20,
+                position,
+                price,
+                ..Marker::default()
+            };
+            assert!(chart.set_markers(candles, vec![m]).is_err());
+        }
+        let at = |price: f64, id: u64| Marker {
+            time: 20,
+            position: MarkerPosition::AtPrice,
+            price: Some(price),
+            id,
+            text: "fill".into(),
+            ..Marker::default()
+        };
+        // Two on their prices and one above the bar: the above one is
+        // placed as if it were alone (AtPrice markers do not stack).
+        let above = Marker {
+            time: 20,
+            ..Marker::default()
+        };
+        chart
+            .set_markers(candles, vec![at(4.5, 11), above.clone(), at(5.5, 12)])
+            .unwrap();
+        chart.fit_content();
+        chart.build_frame(0.0, &MonoMeasurer);
+        let icons = chart.frame().pools.icons.clone();
+        assert_eq!(icons.len(), 3);
+        let plot = chart.panes[0].plot;
+        let y_of = |p: f64| {
+            chart.panes[0]
+                .price_scale
+                .price_to_y(p, f64::from(plot.y), f64::from(plot.h)) as f32
+        };
+        for (icon, p) in [(icons[0], 4.5), (icons[2], 5.5)] {
+            assert!((icon.pos.y - y_of(p).round()).abs() < 1e-3);
+        }
+        assert!((icons[0].pos.x - icons[1].pos.x).abs() < 1e-3);
+        let y_high = y_of(6.0);
+        assert!((icons[1].pos.y - (y_high - MARKER_GAP - MARKER_SIZE * 0.5).round()).abs() < 1e-3);
+        // Text on the right, left aligned, at the marker's y.
+        let f = chart.frame();
+        let texts: Vec<TextRun> = f.layers[LayerId::Main as usize]
+            .cmds
+            .iter()
+            .filter_map(|c| match c {
+                DrawCmd::Text(s) => Some(*s),
+                _ => None,
+            })
+            .flat_map(|s| f.pools.text_runs[s.start as usize..(s.start + s.len) as usize].to_vec())
+            .filter(|t| f.pools.text_of(t.text) == "fill")
+            .collect();
+        assert_eq!(texts.len(), 2);
+        assert_eq!(texts[0].align, TextAlign::Left);
+        assert!((texts[0].pos.x - (icons[0].pos.x + 9.0)).abs() < 1e-3);
+        assert!((texts[0].pos.y - icons[0].pos.y).abs() < 1e-3);
+        // Clicking one reports its id.
+        assert_eq!(
+            chart.hit_marker(chart.main_pane(), icons[2].pos),
+            Some(ClickTarget::Marker {
+                series: candles,
+                index: 2,
+                id: 12
+            })
+        );
+        // On a log scale, a price <= 0 is not drawn.
+        chart
+            .set_markers(candles, vec![at(-1.0, 1), at(5.0, 2)])
+            .unwrap();
+        chart
+            .price_scale(chart.main_pane(), ScaleSide::Right)
+            .unwrap()
+            .set_mode(crate::price_scale::PriceScaleMode::Logarithmic)
+            .unwrap();
+        chart.build_frame(16.0, &MonoMeasurer);
+        assert_eq!(chart.frame().pools.icons.len(), 1);
+    }
+
+    /// The "+k" badges and plain markers of the last frame: (target, x).
+    fn marker_targets(chart: &Chart) -> Vec<(ClickTarget, f32)> {
+        chart
+            .marker_hits
+            .iter()
+            .map(|m| (m.target, m.pos.x))
+            .collect()
+    }
+
+    #[test]
+    fn markers_cluster_across_bars() {
+        use crate::testing::MonoMeasurer;
+        use MarkerPosition::{AboveBar, AtPrice, BelowBar};
+
+        let (mut chart, candles, _) = two_series(SeriesKind::Candlestick, SeriesKind::Line);
+        chart.resize(SizeCss { w: 400.0, h: 300.0 }, 1.0);
+        let times: Vec<i64> = (1..=20).map(|i| i * 10).collect();
+        chart.set_data(candles, ohlc(&times, 5.0)).unwrap();
+        for bad in [0.0, -1.0, f32::NAN] {
+            let o = SeriesOptions {
+                marker_cluster: Some(Css(bad)),
+                ..SeriesOptions::default()
+            };
+            assert!(chart.set_series_options(candles, o).is_err());
+        }
+        let m = |bar: usize, id: u64, position: MarkerPosition| Marker {
+            time: times[bar],
+            position,
+            id,
+            ..Marker::default()
+        };
+        let at = Marker {
+            price: Some(5.0),
+            ..m(3, 8, AtPrice)
+        };
+        chart
+            .set_markers(
+                candles,
+                vec![
+                    // Bucket 0 (bars 0..4): above on bars 1, 2, 2.
+                    m(1, 1, AboveBar),
+                    m(2, 2, AboveBar),
+                    m(2, 3, AboveBar),
+                    at,
+                    // Bucket 1: two on bar 5 only, not clustered.
+                    m(5, 4, AboveBar),
+                    m(5, 5, AboveBar),
+                    // Bucket 2: below on bars 9 and 10.
+                    m(9, 6, BelowBar),
+                    m(10, 7, BelowBar),
+                ],
+            )
+            .unwrap();
+        chart.time_scale().set_bar_spacing(10.0);
+        chart.scroll_to_realtime();
+        // Without clustering: every marker is drawn.
+        chart.build_frame(0.0, &MonoMeasurer);
+        assert_eq!(chart.frame().pools.icons.len(), 8);
+        // 35 CSS px over 10 px bars: buckets of 4.
+        let o = SeriesOptions {
+            marker_cluster: Some(Css(35.0)),
+            ..SeriesOptions::default()
+        };
+        chart.set_series_options(candles, o).unwrap();
+        chart.build_frame(16.0, &MonoMeasurer);
+        let index_of = |id: u64| {
+            chart
+                .markers(candles)
+                .unwrap()
+                .iter()
+                .position(|m| m.id == id)
+                .unwrap()
+        };
+        let x_of = |bar: usize| {
+            (chart.panes[0].plot.x + chart.time_scale.index_to_x(bar as f64).0).round()
+        };
+        let mut got = marker_targets(&chart);
+        got.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let want = vec![
+            // Bucket 0 on bar 2 (most markers): the first marker and "+2".
+            (
+                ClickTarget::Marker {
+                    series: candles,
+                    index: index_of(1),
+                    id: 1,
+                },
+                x_of(2),
+            ),
+            (
+                ClickTarget::MarkerOverflow {
+                    series: candles,
+                    first: index_of(2),
+                    count: 2,
+                    id: 2,
+                    bars: IdxSpan { start: 1, end: 3 },
+                },
+                x_of(2),
+            ),
+            // AtPrice markers are not clustered.
+            (
+                ClickTarget::Marker {
+                    series: candles,
+                    index: index_of(8),
+                    id: 8,
+                },
+                x_of(3),
+            ),
+            (
+                ClickTarget::Marker {
+                    series: candles,
+                    index: index_of(4),
+                    id: 4,
+                },
+                x_of(5),
+            ),
+            (
+                ClickTarget::Marker {
+                    series: candles,
+                    index: index_of(5),
+                    id: 5,
+                },
+                x_of(5),
+            ),
+            // Bucket 2, a tie: on the earlier bar, "+1".
+            (
+                ClickTarget::Marker {
+                    series: candles,
+                    index: index_of(6),
+                    id: 6,
+                },
+                x_of(9),
+            ),
+            (
+                ClickTarget::MarkerOverflow {
+                    series: candles,
+                    first: index_of(7),
+                    count: 1,
+                    id: 7,
+                    bars: IdxSpan { start: 9, end: 11 },
+                },
+                x_of(9),
+            ),
+        ];
+        // Same x: order by the target's index.
+        let key = |t: &ClickTarget| match t {
+            ClickTarget::Marker { index, .. } => *index,
+            ClickTarget::MarkerOverflow { first, .. } => *first,
+            _ => usize::MAX,
+        };
+        let norm = |mut v: Vec<(ClickTarget, f32)>| {
+            v.sort_by(|a, b| a.1.total_cmp(&b.1).then(key(&a.0).cmp(&key(&b.0))));
+            v.into_iter().map(|(t, _)| t).collect::<Vec<_>>()
+        };
+        assert_eq!(norm(got.clone()), norm(want.clone()));
+        let sorted = |mut v: Vec<(ClickTarget, f32)>| {
+            v.sort_by(|a, b| a.1.total_cmp(&b.1).then(key(&a.0).cmp(&key(&b.0))));
+            v
+        };
+        for ((_, gx), (_, wx)) in sorted(got).into_iter().zip(sorted(want.clone())) {
+            assert!((gx - wx).abs() < 1e-3);
+        }
+        // Panning keeps the groups (buckets are aligned to the index).
+        chart.time_scale().scroll_by(Px(7.0));
+        chart.build_frame(32.0, &MonoMeasurer);
+        assert_eq!(norm(marker_targets(&chart)), norm(want), "after a pan");
+        // Zoomed in, buckets of one bar: nothing is clustered.
+        chart.time_scale().set_bar_spacing(40.0);
+        chart.scroll_to_realtime();
+        chart.build_frame(48.0, &MonoMeasurer);
+        assert!(
+            marker_targets(&chart)
+                .iter()
+                .all(|(t, _)| matches!(t, ClickTarget::Marker { .. }))
+        );
+    }
+
+    mod cluster_props {
+        use super::*;
+        use crate::testing::MonoMeasurer;
+        use proptest::prelude::*;
+
+        /// A chart of 60 bars with `markers` (bar, below, id) and clustering
+        /// over `d` CSS px, spacing 12 px.
+        fn setup(markers: &[(usize, bool)], d: f32) -> (Chart, SeriesId, Vec<i64>) {
+            let (mut chart, candles, _) = two_series(SeriesKind::Candlestick, SeriesKind::Line);
+            chart.resize(SizeCss { w: 900.0, h: 300.0 }, 1.0);
+            let times: Vec<i64> = (1..=60).map(|i| i * 10).collect();
+            chart.set_data(candles, ohlc(&times, 5.0)).unwrap();
+            let list = markers
+                .iter()
+                .enumerate()
+                .map(|(n, &(bar, below))| Marker {
+                    time: times[bar],
+                    position: if below {
+                        MarkerPosition::BelowBar
+                    } else {
+                        MarkerPosition::AboveBar
+                    },
+                    id: n as u64 + 1,
+                    ..Marker::default()
+                })
+                .collect();
+            chart.set_markers(candles, list).unwrap();
+            let o = SeriesOptions {
+                marker_cluster: Some(Css(d)),
+                ..SeriesOptions::default()
+            };
+            chart.set_series_options(candles, o).unwrap();
+            chart.time_scale().set_bar_spacing(12.0);
+            chart.scroll_to_realtime();
+            (chart, candles, times)
+        }
+
+        /// Per side: markers drawn plus the "+k" counts.
+        fn shown(chart: &Chart, candles: SeriesId) -> [u32; 2] {
+            let markers = chart.markers(candles).unwrap();
+            let side = |i: usize| usize::from(markers[i].position == MarkerPosition::BelowBar);
+            let mut out = [0; 2];
+            for m in &chart.marker_hits {
+                match m.target {
+                    ClickTarget::Marker { index, .. } => out[side(index)] += 1,
+                    ClickTarget::MarkerOverflow { first, count, .. } => out[side(first)] += count,
+                    _ => {}
+                }
+            }
+            out
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig::with_cases(64))]
+
+            /// With every bar in view, each marker is drawn or counted in
+            /// exactly one "+k".
+            #[test]
+            fn every_marker_is_drawn_or_counted(
+                markers in prop::collection::vec((0..60_usize, any::<bool>()), 0..80),
+                d in 1.0_f32..80.0,
+            ) {
+                let (mut chart, candles, _) = setup(&markers, d);
+                chart.build_frame(0.0, &MonoMeasurer);
+                let below = markers.iter().filter(|m| m.1).count() as u32;
+                prop_assert_eq!(shown(&chart, candles), [markers.len() as u32 - below, below]);
+            }
+
+            /// Panning does not regroup: the groups of buckets in view before
+            /// and after a pan are the same.
+            #[test]
+            fn panning_keeps_groups(
+                markers in prop::collection::vec((0..60_usize, any::<bool>()), 1..80),
+                d in 1.0_f32..80.0,
+                dx in -300.0_f32..300.0,
+            ) {
+                let (mut chart, _, _) = setup(&markers, d);
+                let kb = (f64::from(d) / 12.0).ceil().max(1.0) as i64;
+                let groups = |chart: &mut Chart, t: f64| {
+                    chart.build_frame(t, &MonoMeasurer);
+                    let (a, b) = chart.time_scale.visible_range();
+                    // Buckets wholly in view.
+                    let lo = (a.ceil() as i64).div_euclid(kb) + 1;
+                    let hi = (b.floor() as i64).div_euclid(kb) - 1;
+                    let mut v: Vec<(ClickTarget, i64)> = chart
+                        .marker_hits
+                        .iter()
+                        .filter_map(|m| {
+                            let bucket = m.bars.start.div_euclid(kb);
+                            (lo..=hi).contains(&bucket).then_some((m.target, bucket))
+                        })
+                        .collect();
+                    v.sort_by_key(|(t, b)| (*b, format!("{t:?}")));
+                    (v, lo, hi)
+                };
+                let (before, lo0, hi0) = groups(&mut chart, 0.0);
+                chart.time_scale().scroll_by(Px(dx));
+                let (after, lo1, hi1) = groups(&mut chart, 16.0);
+                let both = lo0.max(lo1)..=hi0.min(hi1);
+                let keep = |v: Vec<(ClickTarget, i64)>| -> Vec<ClickTarget> {
+                    v.into_iter().filter(|(_, b)| both.contains(b)).map(|(t, _)| t).collect()
+                };
+                prop_assert_eq!(keep(before), keep(after));
+            }
+        }
+    }
+
+    #[test]
+    fn bar_flags_are_checked_sorted_and_drawn() {
+        use crate::testing::MonoMeasurer;
+
+        let (mut chart, candles, line) = two_series(SeriesKind::Candlestick, SeriesKind::Line);
+        chart.resize(SizeCss { w: 400.0, h: 300.0 }, 1.0);
+        let times: Vec<i64> = (1..=20).map(|i| i * 10).collect();
+        chart.set_data(candles, ohlc(&times, 5.0)).unwrap();
+        assert!(
+            chart
+                .set_bar_flags(line, vec![(10, BarFlags::FILLED)])
+                .is_err()
+        );
+        assert!(
+            chart
+                .set_bar_flags(candles, vec![(10, BarFlags(4))])
+                .is_err()
+        );
+        // Sorted; the last of equal times wins; NONE dropped.
+        chart
+            .set_bar_flags(
+                candles,
+                vec![
+                    (50, BarFlags::CLIPPED),
+                    (30, BarFlags::FILLED),
+                    (50, BarFlags::FILLED),
+                    (70, BarFlags::NONE),
+                    (35, BarFlags::FILLED), // not a bar
+                ],
+            )
+            .unwrap();
+        assert_eq!(
+            chart.bar_flags(candles).unwrap(),
+            &[
+                (30, BarFlags::FILLED),
+                (35, BarFlags::FILLED),
+                (50, BarFlags::FILLED)
+            ]
+        );
+        chart.time_scale().set_bar_spacing(16.0);
+        chart.scroll_to_realtime();
+        chart.build_frame(0.0, &MonoMeasurer);
+        let rects = |chart: &Chart| -> Vec<crate::frame::RectInst> {
+            let f = chart.frame();
+            f.layers[LayerId::Main as usize]
+                .cmds
+                .iter()
+                .filter_map(|c| match c {
+                    DrawCmd::Rects(s) => Some(f.pools.rects[s.range()].to_vec()),
+                    _ => None,
+                })
+                .flatten()
+                .collect()
+        };
+        let bg = chart.theme.background;
+        let filled = chart.style_of(&chart.series[0]).up.with_alpha(0x66);
+        let r = rects(&chart);
+        // Two filled bars (bars 2 and 4): each cleared (wick, body) and
+        // drawn again; their bodies are 1 px tall (open = close), too thin
+        // to be hollow.
+        assert_eq!(r.iter().filter(|r| r.color == bg).count(), 4);
+        assert_eq!(r.iter().filter(|r| r.color == filled).count(), 4);
+        // Clipped: two ticks of 3 px in the wick color.
+        chart
+            .set_bar_flags(candles, vec![(30, BarFlags::CLIPPED)])
+            .unwrap();
+        chart.build_frame(16.0, &MonoMeasurer);
+        let wick = chart.style_of(&chart.series[0]).up_wick;
+        let ticks: Vec<_> = rects(&chart)
+            .into_iter()
+            .filter(|r| {
+                r.color == wick
+                    && r.rect.w.to_bits() == 3.0_f32.to_bits()
+                    && r.rect.h.to_bits() == 1.0_f32.to_bits()
+            })
+            .collect();
+        assert_eq!(ticks.len(), 2);
+        assert!(ticks[1].rect.y > ticks[0].rect.y);
     }
 
     #[test]
@@ -6118,6 +7138,7 @@ mod tests {
                 vec![Marker {
                     time: 20,
                     size: Some(Css(16.0)),
+                    id: 7,
                     ..Marker::default()
                 }],
             )
@@ -6149,9 +7170,10 @@ mod tests {
         assert_eq!(h.len(), 1);
         let hit = h[0].unwrap();
         assert_eq!(
-            (hit.series, hit.index, hit.overflow, hit.size),
-            (candles, 0, 0, Css(16.0))
+            (hit.series, hit.index, hit.id, hit.overflow, hit.size),
+            (candles, 0, 7, 0, Css(16.0))
         );
+        assert_eq!(hit.bars, IdxSpan { start: 1, end: 2 });
         // Moving within the marker sends nothing; leaving sends `None`.
         mv(&mut chart, icon.pos.x + 2.0, icon.pos.y, 32.0);
         assert!(hovers(&mut chart).is_empty());

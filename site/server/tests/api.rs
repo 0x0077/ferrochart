@@ -23,6 +23,7 @@ fn test_app(site: Option<PathBuf>) -> Router {
         cors: false,
         max_streams: 4,
         clock: Arc::new(|| NOW),
+        star_fetch: Arc::new(|| Box::pin(async { Some(42) })),
     })
 }
 
@@ -94,7 +95,9 @@ async fn history_is_cacheable_and_stable() {
     let (_, _, b) = get(&app, &uri).await;
     assert_eq!(a, b);
     let (_, h, _) = get(&app, "/api/bars?symbol=ETHUSD&interval=1h&count=10").await;
-    assert_eq!(h["cache-control"], "no-store");
+    // Ends at now: browsers revalidate, a CDN may keep it as long as the
+    // server's own cache (30 s; the live stream's `since` catches up).
+    assert_eq!(h["cache-control"], "public, max-age=0, s-maxage=30");
 }
 
 #[tokio::test]
@@ -282,4 +285,152 @@ async fn series_events_forecast_and_alt_bars() {
     }
     let (s, _) = json(&app, "/api/altbars?type=renko").await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn github_stars_are_cached_and_kept_on_failure() {
+    use ferrochart_site_server::github::{RETRY_MS, TTL_MS};
+    use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering::SeqCst};
+
+    let now = Arc::new(AtomicI64::new(NOW));
+    let calls = Arc::new(AtomicU64::new(0));
+    let up = Arc::new(AtomicBool::new(false));
+    let app = {
+        let (now, calls, up) = (now.clone(), calls.clone(), up.clone());
+        app(Config {
+            clock: Arc::new(move || now.load(SeqCst)),
+            star_fetch: Arc::new(move || {
+                let n = calls.fetch_add(1, SeqCst) + 1;
+                let ok = up.load(SeqCst);
+                Box::pin(async move { ok.then_some(100 + n) })
+            }),
+            ..Config::default()
+        })
+    };
+    // GitHub down and nothing cached: 503, and no retry within RETRY_MS.
+    assert_eq!(
+        json(&app, "/api/github/stars").await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    up.store(true, SeqCst);
+    assert_eq!(
+        json(&app, "/api/github/stars").await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(calls.load(SeqCst), 1);
+    // After the retry delay: fetched, then served from the cache.
+    now.fetch_add(RETRY_MS, SeqCst);
+    let (s, headers, body) = get(&app, "/api/github/stars").await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(
+        headers["cache-control"]
+            .to_str()
+            .unwrap()
+            .contains("max-age")
+    );
+    let v: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v["stars"], 102);
+    assert_eq!(v["repo"], "0x0077/ferrochart");
+    now.fetch_add(TTL_MS - 1, SeqCst);
+    assert_eq!(json(&app, "/api/github/stars").await.1["stars"], 102);
+    assert_eq!(calls.load(SeqCst), 2);
+    // Expired and GitHub down: the last count is kept.
+    up.store(false, SeqCst);
+    now.fetch_add(1, SeqCst);
+    assert_eq!(json(&app, "/api/github/stars").await.1["stars"], 102);
+    assert_eq!(calls.load(SeqCst), 3);
+}
+
+#[tokio::test]
+async fn responses_are_reused_until_they_expire() {
+    use ferrochart_site_server::cache::{LIVE_TTL_MS, SETTLED_TTL_MS};
+    use std::sync::atomic::{AtomicI64, Ordering::SeqCst};
+
+    let now = Arc::new(AtomicI64::new(NOW));
+    let app = {
+        let now = now.clone();
+        app(Config {
+            clock: Arc::new(move || now.load(SeqCst)),
+            star_fetch: Arc::new(|| Box::pin(async { Some(1) })),
+            ..Config::default()
+        })
+    };
+    let live = "/api/bars?symbol=BTCUSD&interval=1m&count=50";
+    let (s, h, first) = get(&app, live).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(h["x-cache"], "miss");
+    assert_eq!(h["cache-control"], "public, max-age=0, s-maxage=30");
+    let (_, h, again) = get(&app, live).await;
+    assert_eq!(h["x-cache"], "hit");
+    assert_eq!(h["content-type"], "application/json");
+    assert_eq!(again, first);
+    // Expired: generated again, now with a later last bar.
+    now.fetch_add(LIVE_TTL_MS + 60_000, SeqCst);
+    let (_, h, later) = get(&app, live).await;
+    assert_eq!(h["x-cache"], "miss");
+    assert_ne!(later, first);
+    // Settled history is kept longer, with its own header.
+    let old = format!(
+        "/api/bars?symbol=BTCUSD&interval=1m&from={}&to={}",
+        NOW - 3_600_000,
+        NOW - 1_800_000
+    );
+    let (_, h, _) = get(&app, &old).await;
+    assert_eq!(h["cache-control"], "public, max-age=86400");
+    now.fetch_add(SETTLED_TTL_MS - 1, SeqCst);
+    assert_eq!(get(&app, &old).await.1["x-cache"], "hit");
+    // Errors and the star count are not cached.
+    assert_eq!(
+        get(&app, "/api/bars?symbol=NOPE").await.0,
+        StatusCode::BAD_REQUEST
+    );
+    assert!(
+        get(&app, "/api/bars?symbol=NOPE")
+            .await
+            .1
+            .get("x-cache")
+            .is_none()
+    );
+    assert!(
+        get(&app, "/api/github/stars")
+            .await
+            .1
+            .get("x-cache")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn live_stream_catches_up_from_since() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = app(Config {
+        max_streams: 1,
+        ..Config::default()
+    });
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let current = now - now % 60_000;
+    let since = current - 3 * 60_000;
+    let url =
+        format!("ws://{addr}/api/stream?symbol=BTCUSD&interval=1m&trades=false&since={since}");
+    let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    let mut times = Vec::new();
+    while times.len() < 4 {
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(2), ws.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let v: Value = serde_json::from_str(msg.to_text().unwrap()).unwrap();
+        assert_eq!(v["type"], "bar");
+        times.push(v["time"].as_i64().unwrap());
+    }
+    // since, the two after it, then the forming bar (the minute may have
+    // turned meanwhile: then one more).
+    assert_eq!(&times[..3], &[since, since + 60_000, since + 120_000]);
+    assert!(times[3] >= current);
 }

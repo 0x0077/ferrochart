@@ -457,6 +457,17 @@ mod chart_hot_paths {
             }
             i += 1;
         }
+        // r22: price-anchored fills with text and ids on every third bar.
+        for (n, &t) in times[times.len() - 200..].iter().step_by(3).enumerate() {
+            markers.push(Marker {
+                time: t,
+                position: MarkerPosition::AtPrice,
+                price: Some(98.0 + (n % 7) as f64),
+                text: "B".into(),
+                id: n as u64 + 1,
+                ..Marker::default()
+            });
+        }
         chart.set_markers(id, markers).unwrap();
         let last_time = *times.last().unwrap();
         let step = |chart: &mut Chart, k: usize| {
@@ -506,6 +517,110 @@ mod chart_hot_paths {
         assert!(frame.pools.text.contains('+'), "no folded stack in view");
         let ((), n) = count_allocations(|| {
             for k in 0..200 {
+                step(&mut chart, k);
+            }
+        });
+        assert_eq!(n, 0);
+    }
+
+    /// r22: 100 000 markers clustered across bars, with
+    /// price-anchored ones, while panning, zooming (bucket sizes change),
+    /// moving the crosshair and updating the last bar.
+    #[test]
+    fn clustered_markers_do_not_allocate() {
+        use ferrochart_core::chart::{BarFlags, Marker, MarkerPosition};
+        use ferrochart_core::geom::{Css, PointCss};
+        use ferrochart_core::interaction::{InputEvent, Modifiers};
+
+        let (mut chart, id) = chart(200_000);
+        chart
+            .set_series_options(
+                id,
+                SeriesOptions {
+                    marker_cluster: Some(Css(24.0)),
+                    marker_stack_limit: Some(3),
+                    ..SeriesOptions::default()
+                },
+            )
+            .unwrap();
+        let times = chart.data_view().time_index().times().to_vec();
+        let first = times.len() - 60_000;
+        let markers: Vec<Marker> = (0..100_000_usize)
+            .map(|n| {
+                // Clumps of 0..=4 markers on most bars, every 7th at a price.
+                let bar = first + (n * 3) / 5;
+                let position = match n % 7 {
+                    0 => MarkerPosition::AtPrice,
+                    k if k % 2 == 0 => MarkerPosition::BelowBar,
+                    _ => MarkerPosition::AboveBar,
+                };
+                Marker {
+                    time: times[bar],
+                    position,
+                    price: (position == MarkerPosition::AtPrice).then_some(100.0),
+                    id: n as u64 + 1,
+                    ..Marker::default()
+                }
+            })
+            .collect();
+        chart.set_markers(id, markers).unwrap();
+        // 10 000 bar quality flags among the markers (r22).
+        let flags = (0..10_000_usize)
+            .map(|n| {
+                let f = if n % 3 == 0 {
+                    BarFlags::CLIPPED
+                } else {
+                    BarFlags::FILLED
+                };
+                (times[first + n * 5], f)
+            })
+            .collect();
+        chart.set_bar_flags(id, flags).unwrap();
+        let last_time = *times.last().unwrap();
+        let step = |chart: &mut Chart, k: usize| {
+            let dx = if k % 20 < 10 { 31.0 } else { -31.0 };
+            chart.time_scale().scroll_by(Px(dx));
+            if k.is_multiple_of(5) {
+                // In and out over 4x: bucket sizes change.
+                let f = if k % 40 < 20 { 0.7 } else { 1.0 / 0.7 };
+                chart.time_scale().zoom(Px(900.0), f);
+            }
+            chart.handle_input(InputEvent::PointerMove {
+                id: 0,
+                pos: PointCss {
+                    x: 600.0 + (k % 50) as f32 * 9.0,
+                    y: 40.0 + (k % 26) as f32 * 20.0,
+                },
+                mods: Modifiers::default(),
+                time_ms: k as f64,
+            });
+            let k = k as u32;
+            chart
+                .update_last(
+                    id,
+                    BarUpdate {
+                        time: last_time,
+                        open: 100.0,
+                        high: 103.0 + f64::from(k % 7),
+                        low: 97.0 - f64::from(k % 5),
+                        close: 100.0 + f64::from(k % 3),
+                        volume: Some(1000.0),
+                    },
+                )
+                .unwrap();
+            chart.build_frame(f64::from(k), &MonoMeasurer);
+            chart.drain_events().for_each(drop);
+        };
+        for k in 0..400 {
+            step(&mut chart, k);
+        }
+        assert!(chart.frame().pools.text.contains('+'), "no cluster in view");
+        assert!(
+            !chart.frame().pools.rects.is_empty(),
+            "no flagged bar in view"
+        );
+        let ((), n) = count_allocations(|| {
+            for k in 0..400 {
                 step(&mut chart, k);
             }
         });

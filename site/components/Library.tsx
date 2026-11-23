@@ -75,7 +75,7 @@ function Stack({ cat, onOpen }: { cat: Category; onOpen: (card: HTMLElement | nu
  * page.
  */
 export function Library({ initial }: { initial?: { cat: string; demo: string } }) {
-  const { t } = useI18n();
+  const { t, path } = useI18n();
   const { categories } = useCatalog();
   const [request, setRequest] = useState<OpenRequest | null>(null);
   const featured = FEATURED.map((id) => categories.find((c) => c.id === id)).filter((c): c is Category => !!c);
@@ -145,7 +145,28 @@ export function Library({ initial }: { initial?: { cat: string; demo: string } }
           <span className="transition duration-300 ease-spring group-hover:translate-x-1">→</span>
         </button>
       </div>
-      <Viewer request={request} onClosed={() => setRequest(null)} />
+      <details className="mt-8 rounded-2xl border border-line bg-white/70 p-6">
+        <summary className="cursor-pointer font-medium">{fmt(t.library.browseAll, { n: categories.length })}</summary>
+        <div className="mt-6 grid gap-8 md:grid-cols-2 desk:grid-cols-3">
+          {categories.map((cat) => (
+            <section key={cat.id}>
+              <h3 className="mb-3 text-lg font-medium">{cat.title}</h3>
+              <ul className="grid gap-2 text-sm text-muted">
+                {cat.demos.map((demo) => (
+                  <li key={demo.id}>
+                    <a className="underline decoration-line underline-offset-4 hover:text-ink" href={path(`/charts/${cat.id}/${demo.id}`)}>{demo.title}</a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </details>
+      <Viewer request={request} onClosed={() => {
+        // Deep links have their own static content; closing returns to the homepage.
+        if (initial) window.location.reload();
+        else setRequest(null);
+      }} />
     </>
   );
 }

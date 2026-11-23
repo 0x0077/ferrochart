@@ -39,8 +39,9 @@ export const price: Category = {
       group: 'Candles & bars',
       code: `${candles({ symbol: 'BTCUSD', interval: '1m', count: 2000, spacing: 10, extra: "chart.addIndicator(candles, 'ema', { n: 21 });" })}
 
-// The forming bar, four times a second.
-const ws = new WebSocket('/api/stream?symbol=BTCUSD&interval=1m&trades=false');
+// The forming bar, four times a second; \`since\` completes bars that closed
+// after the history was loaded.
+const ws = new WebSocket(\`/api/stream?symbol=BTCUSD&interval=1m&trades=false&since=\${bars.time.at(-1)}\`);
 ws.onmessage = (e) => {
   const msg = JSON.parse(e.data);
   if (msg.type === 'bar') candles.update(msg); // zero allocations per update

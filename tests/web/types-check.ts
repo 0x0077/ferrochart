@@ -103,6 +103,20 @@ export async function m4(canvas: HTMLCanvasElement, other: HTMLCanvasElement): P
   candles.applyOptions({ markerStackLimit: 5 });
   chart.on('markerHover', (e) => { if (e) console.log(e.series.id, e.index, e.overflow, e.x, e.y, e.size); });
   chart.on('click', (e) => { if (e.target?.type === 'markerOverflow') console.log(e.target.first, e.target.count); });
+  // r22: ids, the page's own fields, atPrice, events hand back the object.
+  candles.setMarkers([{ time: 0, id: 7, position: 'atPrice', price: 101.5, text: 'fill' }]);
+  candles.applyOptions({ markerCluster: 24 });
+  candles.applyOptions({ markerCluster: null });
+  candles.setBarFlags([{ time: 0, filled: true }, { time: new Date(), clipped: true }]);
+  candles.applyOptions({ filledBarColor: '#888' });
+  chart.on('markerHover', (e) => { if (e) console.log(e.id, e.marker.time, e.bars.from, e.bars.to); });
+  chart.on('click', (e) => {
+    const t = e.target;
+    if (t?.type === 'marker') console.log(t.id, t.marker.price);
+    if (t?.type === 'markerOverflow') console.log(t.id, t.bars.to, t.marker.id);
+  });
+  const back: number | undefined = candles.markers()[0].price;
+  console.log(back);
   // @ts-expect-error: not an event name
   chart.on('nope', () => {});
   const at: number | null = chart.indexOfTime(new Date(0));

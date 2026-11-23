@@ -164,7 +164,7 @@ def test_price_lines_markers_and_scales():
     s.set_markers([{"time": when, "position": "below_bar", "shape": "arrow_up", "text": "buy"}])
     assert s.markers == [
         {"time": int(d["time"][10]), "position": "below_bar", "shape": "arrow_up", "color": None, "text": "buy",
-         "size": None, "icon": None, "label": "", "border": None, "border_width": 2.0}
+         "size": None, "icon": None, "label": "", "border": None, "border_width": 2.0, "id": 0, "price": None}
     ]
     with pytest.raises(ValueError, match="'shape'"):
         s.set_markers([{"time": 0, "shape": "star"}])
@@ -335,3 +335,48 @@ def test_fallback_fonts_draw_cjk():
     assert pngs[0] != pngs[1] and pngs[1] == pngs[2]
     with pytest.raises(ValueError, match="font 0"):
         fc.Chart(fonts=[b"not a font"])
+
+
+def test_marker_ids_and_at_price():
+    c, s = chart_with(bars(60))
+    t = int(bars(60)["time"][20])
+    s.set_markers([
+        {"time": t, "id": 7},
+        {"time": t, "position": "at_price", "price": 101.5, "id": 2**63, "text": "fill"},
+    ])
+    m = s.markers
+    assert (m[0]["id"], m[0]["price"]) == (7, None)
+    assert (m[1]["position"], m[1]["price"], m[1]["id"]) == ("at_price", 101.5, 2**63)
+    with pytest.raises(ValueError, match="finite price"):
+        s.set_markers([{"time": t, "position": "at_price"}])
+    with pytest.raises(ValueError, match="only atPrice"):
+        s.set_markers([{"time": t, "price": 1.0}])
+    with pytest.raises(ValueError, match="'id'"):
+        s.set_markers([{"time": t, "id": -1}])
+
+
+def test_marker_cluster_option():
+    c, s = chart_with(bars(60))
+    assert s.options["marker_cluster"] is None
+    s.apply_options(marker_cluster=24)
+    assert s.options["marker_cluster"] == 24
+    s.apply_options(marker_cluster=None)
+    assert s.options["marker_cluster"] is None
+    with pytest.raises(ValueError, match="marker_cluster"):
+        s.apply_options(marker_cluster=0)
+
+
+def test_bar_flags():
+    d = bars(60)
+    c, s = chart_with(d)
+    before = c.to_png(backend="cpu")
+    t = d["time"][[10, 20, 30]]
+    s.set_bar_flags(t, filled=[True, False, True], clipped=[False, True, True])
+    assert c.to_png(backend="cpu") != before
+    s.apply_options(filled_bar_color="#888888")
+    assert s.options["filled_bar_color"] is not None
+    with pytest.raises(ValueError, match="one value per time"):
+        s.set_bar_flags(t, filled=[True])
+    _, line = chart_with({"time": d["time"], "value": d["close"]}, "line")
+    with pytest.raises(ValueError, match="OHLC"):
+        line.set_bar_flags(t, filled=[True, True, True])

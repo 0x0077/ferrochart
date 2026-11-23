@@ -11,7 +11,9 @@
 // element (the details layer) without restarting the chart.
 // Browser only.
 
-import { run, dispose, snapshot } from './engine.js';
+import { run, dispose, snapshot, warm } from './engine.js';
+
+export { warm };
 import { dissolve } from './dissolve.js';
 import { reducedMotion } from './reveal.js';
 
@@ -39,7 +41,7 @@ export function createStage(host, hooks = {}) {
   const surface = document.createElement('div');
   surface.className = 'stage-surface';
   host.append(surface);
-  const state = { demo: null, handle: null, slot: null, busy: false, pending: null, alive: true, want: null };
+  const state = { demo: null, handle: null, slot: null, loading: null, busy: false, pending: null, alive: true, want: null };
   const accent = () => hooks.accent?.() ?? '#4cc9f0';
 
   function newSlot() {
@@ -110,6 +112,16 @@ export function createStage(host, hooks = {}) {
     surface.querySelectorAll('.error').forEach((n) => n.remove());
     const { slot, canvas } = newSlot();
     state.slot = slot;
+    // Shown while the engine, the GPU and the data load (after a short
+    // delay, so a fast start does not flash it).
+    const loading = document.createElement('div');
+    loading.className = 'stage-loading';
+    loading.setAttribute('aria-hidden', 'true');
+    loading.style.setProperty('--pen', accent());
+    // On the surface, not the slot: a 'plain' slot is transparent until ready.
+    state.loading?.remove();
+    state.loading = loading;
+    surface.append(loading);
     const hold = mode !== 'plain' && !reducedMotion();
     if (!hold) slot.classList.add('entering');
     let ok = false;
@@ -136,6 +148,8 @@ export function createStage(host, hooks = {}) {
       slot.dataset.shown = '1';
     }
     if (ok) await frames(2); // the first frame lands
+    loading.remove();
+    if (state.loading === loading) state.loading = null;
     if (!hold) {
       requestAnimationFrame(() => slot.classList.remove('entering'));
       slot.dataset.shown = '1';
@@ -197,6 +211,8 @@ export function createStage(host, hooks = {}) {
   /** Destroys the chart; resolves once its GPU device is gone. */
   function clear() {
     skip();
+    state.loading?.remove();
+    state.loading = null;
     const gone = state.handle || state.slot ? drop(state.handle, state.slot) : Promise.resolve();
     Object.assign(state, { demo: null, handle: null, slot: null, pending: null, want: null });
     surface.querySelectorAll('.error, .dust, .intact').forEach((n) => n.remove());

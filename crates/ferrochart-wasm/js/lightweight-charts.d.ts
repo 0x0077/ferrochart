@@ -80,12 +80,17 @@ export interface IPriceLine {
 
 export interface SeriesMarker {
   time: Time;
-  position: 'aboveBar' | 'belowBar' | 'inBar';
+  /** `'inBar'` is drawn above the bar; the v5 `atPrice*` positions are all centered on `price`. */
+  position: 'aboveBar' | 'belowBar' | 'inBar' | 'atPriceTop' | 'atPriceBottom' | 'atPriceMiddle';
+  /** For the `atPrice*` positions. */
+  price?: number;
   shape: 'circle' | 'square' | 'arrowUp' | 'arrowDown';
   color?: string;
   text?: string;
   /** Multiple of the default size (1 ≈ 10 CSS px). */
   size?: number;
+  /** Passed to FerroChart when a non-negative integer; strings are kept only in `markers()`. */
+  id?: string | number;
 }
 
 export interface PriceScaleOptions {

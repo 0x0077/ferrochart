@@ -790,7 +790,8 @@ fn clicks_report_position_and_target() {
         click_target(&mut chart, p),
         Some(ClickTarget::Marker {
             series: candles,
-            index: 0
+            index: 0,
+            id: 0,
         })
     );
 }

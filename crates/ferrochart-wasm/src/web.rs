@@ -6,7 +6,7 @@
 //! errors as rejected promises / thrown exceptions, hence the allowed lints.
 #![allow(clippy::doc_markdown, clippy::missing_errors_doc)]
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::{Rc, Weak};
 
 use ferrochart_core::chart::{
@@ -52,6 +52,9 @@ pub(crate) struct ChartScene {
     /// Series whose markers were set with icons: their markers follow an
     /// icon re-registered under the same name.
     pub(crate) icon_series: HashSet<SeriesId>,
+    /// The marker objects the page passed to `setMarkers`, in the chart's
+    /// (time) order: events hand them back as `marker` (r22).
+    pub(crate) marker_objects: HashMap<SeriesId, Array>,
 }
 
 impl Drop for ChartScene {
@@ -149,11 +152,10 @@ impl Scene for ChartScene {
             events.push(ChartEvent::DrawingSync);
         }
         let pointer = state.pointer;
-        out.extend(
-            events
-                .iter()
-                .map(|e| (event_name(e), event_js(host, e, pointer))),
-        );
+        out.extend(events.iter().map(|e| {
+            let js = event_js(host, &scene.marker_objects, e, pointer);
+            (event_name(e), js)
+        }));
         posted || events.iter().any(|e| matches!(e, ChartEvent::Sync(_)))
     }
 
@@ -265,12 +267,21 @@ export interface CrosshairPoint {
   y?: number;
 }
 
-/** What a click hit: a drawing, a marker (its index in `series.markers()`) or a series. */
+/**
+ * What a click hit: a drawing, a marker or a series. For markers, `index` is
+ * the position in `series.markers()` (sorted by time), `id` the marker's `id`
+ * (0 if none) and `marker` the very object passed to `setMarkers`, with any
+ * fields of the page's own.
+ */
 export type ClickTarget =
   | { type: 'drawing'; id: number }
-  | { type: 'marker'; series: Series; index: number }
-  /** A "+k" badge of a folded marker stack: `count` markers from index `first` are not drawn. */
-  | { type: 'markerOverflow'; series: Series; first: number; count: number }
+  | { type: 'marker'; series: Series; index: number; id: number; marker: Marker }
+  /**
+   * A "+k" badge (a folded stack or a cluster): `count` markers on its side of
+   * the bars `bars` (first and last logical index) are not drawn; `first` is
+   * the first of them, `id` and `marker` its id and object.
+   */
+  | { type: 'markerOverflow'; series: Series; first: number; count: number; id: number; bars: { from: number; to: number }; marker: Marker }
   | { type: 'series'; series: Series };
 
 /**
@@ -282,7 +293,13 @@ export type ClickTarget =
 export interface MarkerHoverEvent {
   series: Series;
   index: number;
+  /** The marker's `id` (0 if none). */
+  id: number;
+  /** The object passed to `setMarkers` (for a badge, the first one not drawn). */
+  marker: Marker;
   overflow: number;
+  /** First and last logical index of the bars it stands for. */
+  bars: { from: number; to: number };
   x: number;
   y: number;
   size: number;
@@ -404,7 +421,11 @@ fn point_js(p: &CrosshairPoint, pointer: Option<(f64, f64)>) -> JsValue {
     o.into()
 }
 
-fn click_target_js(shared: &Rc<Shared>, t: ClickTarget) -> JsValue {
+fn click_target_js(
+    shared: &Rc<Shared>,
+    markers: &HashMap<SeriesId, Array>,
+    t: ClickTarget,
+) -> JsValue {
     let o = Object::new();
     let series = |s| JsValue::from(crate::api::series(shared, s));
     match t {
@@ -412,10 +433,16 @@ fn click_target_js(shared: &Rc<Shared>, t: ClickTarget) -> JsValue {
             set(&o, "type", &"drawing".into());
             set(&o, "id", &JsValue::from_f64(d.0 as f64));
         }
-        ClickTarget::Marker { series: s, index } => {
+        ClickTarget::Marker {
+            series: s,
+            index,
+            id,
+        } => {
             set(&o, "type", &"marker".into());
             set(&o, "series", &series(s));
             set(&o, "index", &JsValue::from_f64(index as f64));
+            set(&o, "id", &JsValue::from_f64(id as f64));
+            set(&o, "marker", &marker_object(markers, s, index));
         }
         ClickTarget::Series(s) => {
             set(&o, "type", &"series".into());
@@ -425,18 +452,43 @@ fn click_target_js(shared: &Rc<Shared>, t: ClickTarget) -> JsValue {
             series: s,
             first,
             count,
+            id,
+            bars,
         } => {
             set(&o, "type", &"markerOverflow".into());
+            set(&o, "id", &JsValue::from_f64(id as f64));
             set(&o, "series", &series(s));
             set(&o, "first", &JsValue::from_f64(first as f64));
             set(&o, "count", &JsValue::from_f64(f64::from(count)));
+            set(&o, "bars", &bars_js(bars));
+            set(&o, "marker", &marker_object(markers, s, first));
         }
         _ => return JsValue::NULL,
     }
     o.into()
 }
 
-fn event_js(shared: &Rc<Shared>, e: &ChartEvent, pointer: Option<(f64, f64)>) -> JsValue {
+/// The page's object of marker `index` of `series` (`undefined` if none).
+fn marker_object(objects: &HashMap<SeriesId, Array>, series: SeriesId, index: usize) -> JsValue {
+    objects
+        .get(&series)
+        .map_or(JsValue::UNDEFINED, |a| a.get(index as u32))
+}
+
+/// `{ from, to }`: the first and last logical index of `bars`.
+fn bars_js(bars: ferrochart_core::data::IdxSpan) -> JsValue {
+    let o = Object::new();
+    set(&o, "from", &JsValue::from_f64(bars.start as f64));
+    set(&o, "to", &JsValue::from_f64((bars.end - 1) as f64));
+    o.into()
+}
+
+fn event_js(
+    shared: &Rc<Shared>,
+    markers: &HashMap<SeriesId, Array>,
+    e: &ChartEvent,
+    pointer: Option<(f64, f64)>,
+) -> JsValue {
     let o = Object::new();
     let id = |d: ferrochart_core::data::DrawingId| JsValue::from_f64(d.0 as f64);
     match e {
@@ -458,7 +510,7 @@ fn event_js(shared: &Rc<Shared>, e: &ChartEvent, pointer: Option<(f64, f64)>) ->
                 &time.map_or(JsValue::NULL, |t| JsValue::from_f64(t as f64)),
             );
             set(&o, "price", &JsValue::from_f64(*price));
-            let t = target.map_or(JsValue::NULL, |t| click_target_js(shared, t));
+            let t = target.map_or(JsValue::NULL, |t| click_target_js(shared, markers, t));
             set(&o, "target", &t);
         }
         ChartEvent::CrosshairMove { point } => {
@@ -481,7 +533,10 @@ fn event_js(shared: &Rc<Shared>, e: &ChartEvent, pointer: Option<(f64, f64)>) ->
                 &JsValue::from(crate::api::series(shared, hit.series)),
             );
             set(&o, "index", &JsValue::from_f64(hit.index as f64));
+            set(&o, "id", &JsValue::from_f64(hit.id as f64));
+            set(&o, "marker", &marker_object(markers, hit.series, hit.index));
             set(&o, "overflow", &JsValue::from_f64(f64::from(hit.overflow)));
+            set(&o, "bars", &bars_js(hit.bars));
             set(&o, "x", &JsValue::from_f64(f64::from(hit.center.x)));
             set(&o, "y", &JsValue::from_f64(f64::from(hit.center.y)));
             set(&o, "size", &JsValue::from_f64(f64::from(hit.size.0)));
@@ -566,6 +621,7 @@ impl FerroChart {
             side_plots: Vec::new(),
             icon_key: crate::icons::new_key(),
             icon_series: HashSet::new(),
+            marker_objects: HashMap::new(),
         };
         let shared = Host::start(surface, &canvas, scene)?;
         Ok(FerroChart { shared })

@@ -125,6 +125,8 @@ export function Viewer({ request, onClosed }: { request: OpenRequest | null; onC
       });
       if (dead) s.destroy();
       made = s;
+      // The engine downloads in the background before a chart is opened.
+      m.warm();
       return s;
     });
     site.ready = true;

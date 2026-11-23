@@ -49,7 +49,7 @@ English | [简体中文](README.zh-CN.md)
 | **Order flow** | Footprint, order-book heatmap (a GPU compute shader), TPO / market profile |
 | **Indicators** | 30 built in, from SMA to Ichimoku, updated incrementally on every tick and tested against reference data |
 | **Drawing tools** | 29 tools: trend lines, channels, Fibonacci, pitchforks, Gann fans, patterns, Elliott waves, ranges, positions, text; undo/redo |
-| **Layout** | Multiple panes, linear / log / percentage / indexed scales, markers with images and badges, price lines, light and dark themes |
+| **Layout** | Multiple panes, linear / log / percentage / indexed scales, markers with images, badges and clustering, price lines, light and dark themes |
 | **Sync** | Linked crosshair, visible range and drawings across charts |
 | **State** | View, panes and drawings save to and load from JSON |
 | **Plots** | `FerroPlot` for non-time charts: scatter, bars, heatmaps, payoff diagrams, volatility smiles |

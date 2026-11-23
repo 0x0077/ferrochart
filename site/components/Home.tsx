@@ -5,7 +5,7 @@ import { PerfStats, type Stat } from '@/components/PerfStats';
 import { SiteFooter } from '@/components/SiteFooter';
 import { SiteHeader } from '@/components/SiteHeader';
 import { Thumb } from '@/components/Thumb';
-import { allDemos, categories, type Category, type Demo } from '@/catalog';
+import { allDemos, categories, preludeOf, type Category, type Demo } from '@/catalog';
 import { CatalogProvider } from '@/components/I18n';
 import { catalogText } from '@/lib/catalog-text';
 import { fmt, localePath, type Locale } from '@/lib/i18n';
@@ -47,26 +47,25 @@ export function Home({ locale = 'en', open }: { locale?: Locale; open?: { cat: C
       <SiteHeader locale={locale} floating />
 
       <main id="top">
-        {open && (
-          // What the page is about, for screen readers and search engines (the viewer shows it on screen).
-          <section className="sr-only" aria-label={open.demo.title}>
-            <h2>{fmt(t.exampleOf, { title: open.demo.title, cat: open.cat.title })}</h2>
-            <p>{open.demo.about.replace(/`/g, '')}</p>
-          </section>
-        )}
-        <section className="relative flex h-screen min-h-[640px] items-center overflow-hidden">
-          <HeroArt />
+        <section className={`relative flex min-h-[640px] items-center overflow-hidden ${open ? 'min-h-screen py-28' : 'h-screen'}`}>
+          {open ? (
+            <img
+              src={`/thumbs/${open.demo.id}.jpg`}
+              alt={open.demo.title}
+              width={1280}
+              height={800}
+              className="absolute right-0 h-full w-full object-cover opacity-20 md:w-3/5 md:opacity-40"
+            />
+          ) : <HeroArt />}
           {/* A soft white light behind the headline, kept off the chart on the right (below the buttons on phones). */}
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_90%_45%_at_30%_38%,rgb(255_255_255/0.9),rgb(255_255_255/0.5)_50%,transparent_100%)] md:bg-[radial-gradient(ellipse_42%_60%_at_20%_45%,rgb(255_255_255/0.9),rgb(255_255_255/0.5)_50%,transparent_100%)]" />
           <div className="pointer-events-none relative ml-[clamp(20px,6vw,96px)] max-w-[640px]">
             <p className={eyebrow}>{t.eyebrow}</p>
             <h1 className="hero-title text-[clamp(46px,7vw,104px)] leading-[0.95] tracking-[-0.05em]">
-              {t.headline1}
-              <br />
-              <span className="glow">{t.headline2}</span>
+              {open ? open.demo.title : <>{t.headline1}<br /><span className="glow">{t.headline2}</span></>}
             </h1>
             <p className="mt-7 mb-9 max-w-[520px] text-[clamp(16px,1.4vw,19px)] text-pretty text-muted">
-              {t.lede}
+              {open ? open.demo.about.replace(/`/g, '') : t.lede}
             </p>
             <div className="pointer-events-auto flex flex-wrap items-center gap-3">
               <a
@@ -100,6 +99,17 @@ export function Home({ locale = 'en', open }: { locale?: Locale; open?: { cat: C
             <span className="scroll-wheel absolute top-[7px] left-1/2 -ml-[1.5px] h-[7px] w-[3px] rounded-sm bg-muted" />
           </a>
         </section>
+
+        {open && (
+          <section className={`${pad} py-12`} aria-label={messages(locale).viewer.code}>
+            <h2 className="mb-5 text-2xl">{fmt(t.exampleOf, { title: open.demo.title, cat: open.cat.title })}</h2>
+            <p className="mb-5 text-muted">{open.demo.api.join(' · ')}</p>
+            <details className="rounded-2xl border border-line bg-white p-6">
+              <summary className="cursor-pointer font-medium">{messages(locale).viewer.code}</summary>
+              <pre className="mt-5 overflow-x-auto text-sm"><code>{`${preludeOf(open.demo)}\n${open.demo.code}`}</code></pre>
+            </details>
+          </section>
+        )}
 
         <section id="performance" aria-label={t.perfAria} className="mx-auto max-w-[1200px] scroll-mt-24 px-[clamp(20px,6vw,40px)]">
           <div className="mb-7 flex flex-wrap items-baseline justify-between gap-x-5 gap-y-2">

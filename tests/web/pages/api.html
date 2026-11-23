@@ -256,6 +256,9 @@ async function compat() {
   check('lwc ready', chart.ferrochart !== null);
   createSeriesMarkers(s, [{ time: t0 + 600, position: 'aboveBar', shape: 'circle', size: 2 }]);
   check('lwc marker size × 10', s._s?.markers()[0]?.size === 20, JSON.stringify(s._s?.markers()[0]));
+  createSeriesMarkers(s, [{ time: t0 + 600, position: 'atPriceMiddle', price: 101, shape: 'circle', id: 5 }, { time: t0 + 600, position: 'aboveBar', shape: 'circle', id: 'a' }]);
+  const lm = s._s?.markers() ?? [];
+  check('lwc atPrice and numeric id', lm[0]?.position === 'atPrice' && lm[0]?.price === 101 && lm[0]?.id === 5 && lm[1]?.id === 0, JSON.stringify(lm));
   const r = chart.timeScale().getVisibleLogicalRange();
   check('lwc logical range from 0', r && r.from <= 0.5 && r.to >= 98.5, JSON.stringify(r));
   const d = s.dataByIndex(5);
@@ -844,16 +847,45 @@ async function imageMarkers() {
   try { c.setMarkers([{ time: data.time[5], icon: 'red', label: 'DB' }]); } catch (e) { msg = String(e.message ?? e); }
   check('icon and label together throw', msg.includes('not both'), msg);
   const t = (i) => Number(data.time[i]);
-  c.setMarkers([
-    { time: t(20), icon: 'red', size: 40, border: '#00ff00', borderWidth: 3 },
-    { time: t(30), label: 'DB', size: 20, color: '#2fbf71' },
-    ...Array.from({ length: 5 }, (_, k) => ({ time: t(45), icon: k % 2 ? 'green' : 'url', size: 16, position: 'belowBar' })),
-  ]);
+  // Given out of time order, with ids and the page's own `data` (r22):
+  // events hand back these very objects.
+  const m20 = { time: t(20), icon: 'red', size: 40, border: '#00ff00', borderWidth: 3, id: 1, data: { wallet: 'w20' } };
+  const below = Array.from({ length: 5 }, (_, k) => ({ time: t(45), icon: k % 2 ? 'green' : 'url', size: 16, position: 'belowBar', id: 100 + k, data: { k } }));
+  c.setMarkers([...below, m20, { time: t(30), label: 'DB', size: 20, color: '#2fbf71' }]);
+  check('markers sorted by time, ids kept', c.markers().map((m) => m.id).join() === '1,0,100,101,102,103,104', c.markers().map((m) => m.id).join());
+  for (const [bad, want] of [
+    [{ time: t(5), position: 'atPrice' }, 'finite price'],
+    [{ time: t(5), price: 1 }, 'only atPrice'],
+    [{ time: t(5), id: -1 }, "'id'"],
+    [{ time: t(5), id: 1.5 }, "'id'"],
+  ]) {
+    msg = '';
+    try { c.setMarkers([bad]); } catch (e) { msg = String(e.message ?? e); }
+    check(`bad marker throws (${want})`, msg.includes(want), msg);
+  }
+  c.setMarkers([...below, m20, { time: t(30), label: 'DB', size: 20, color: '#2fbf71' }]);
   c.applyOptions({ markerStackLimit: 2 });
   const back = c.markers();
   check('marker fields round trip', back[0].icon === 'red' && back[0].size === 40 && back[0].borderWidth === 3
     && back[1].label === 'DB' && back[1].icon === null, JSON.stringify(back.slice(0, 2)));
   check('markerStackLimit round trip', c.options().markerStackLimit === 2, JSON.stringify(c.options().markerStackLimit));
+  c.applyOptions({ markerCluster: 30 });
+  check('markerCluster round trip', c.options().markerCluster === 30, JSON.stringify(c.options().markerCluster));
+  msg = '';
+  try { c.applyOptions({ markerCluster: -1 }); } catch (e) { msg = String(e.message ?? e); }
+  check('markerCluster < 0 throws', msg.includes('marker_cluster'), msg);
+  c.applyOptions({ markerCluster: null });
+  // r22 bar quality flags.
+  c.setBarFlags([{ time: t(10), filled: true }, { time: new Date(t(11)), clipped: true, filled: true }, { time: t(12) }]);
+  c.applyOptions({ filledBarColor: '#888888' });
+  check('filledBarColor round trip', typeof c.options().filledBarColor === 'string', JSON.stringify(c.options().filledBarColor));
+  msg = '';
+  const ln = chart.addSeries('line');
+  try { ln.setBarFlags([{ time: t(10), filled: true }]); } catch (e) { msg = String(e.message ?? e); }
+  ln.remove();
+  check('setBarFlags on a line throws', msg.includes('OHLC'), msg);
+  c.setBarFlags([]);
+  check('markerCluster null clears it', c.options().markerCluster === null, JSON.stringify(c.options().markerCluster));
   msg = '';
   try { c.applyOptions({ markerStackLimit: 0 }); } catch (e) { msg = String(e.message ?? e); }
   check('markerStackLimit 0 throws', msg.includes('markerStackLimit'), msg);
@@ -903,6 +935,9 @@ async function imageMarkers() {
   check('markerHover reports the marker', hit && hit.series.kind === 'candlestick' && hit.series.markers()[hit.index]?.icon === 'red' && hit.index === 0 && near(hit.size, 40, 1e-3),
     JSON.stringify(hit ? { index: hit.index, size: hit.size, overflow: hit.overflow } : { crosses, pos, box: [box.x, box.y], scroll: [scrollX, scrollY] }));
   check('markerHover null when leaving', hovers.includes(null), hovers.length);
+  check('markerHover hands back the object, id and bar', hit && hit.marker === m20 && hit.marker.data.wallet === 'w20' && hit.id === 1
+    && hit.bars.from === chart.indexOfTime(t(20)) && hit.bars.to === hit.bars.from,
+    JSON.stringify(hit && { id: hit.id, data: hit.marker?.data, bars: hit.bars }));
   // The image is drawn: red in the middle of the marker, the green ring at its edge.
   let px = null;
   try { px = hit && await read([[hit.x, hit.y], [pos.rect.x + 30, pos.rect.y + 30]]); } catch (e) { px = String(e); }
@@ -914,6 +949,8 @@ async function imageMarkers() {
   const badge = hovers.find((e) => e && e.overflow > 0);
   // The badge takes a place of the limit: 1 marker and "+4".
   check('markerHover reports the +k badge', badge && badge.overflow === 4 && badge.index === 3, JSON.stringify(badge && { index: badge.index, overflow: badge.overflow }));
+  check('badge hover: first hidden object and bars', badge && badge.marker === below[1] && badge.id === 101 && badge.bars.from === chart.indexOfTime(t(45)) && badge.bars.to === badge.bars.from,
+    JSON.stringify(badge && { id: badge.id, bars: badge.bars }));
   let clicked = null;
   chart.on('click', (e) => { clicked = e.target; });
   if (badge) {
@@ -922,6 +959,8 @@ async function imageMarkers() {
   }
   check('click on the badge: markerOverflow', clicked?.type === 'markerOverflow' && clicked.first === 3 && clicked.count === 4 && clicked.series.markers().length === 7,
     JSON.stringify(clicked && { type: clicked.type, first: clicked.first, count: clicked.count }));
+  check('badge click: object, id and bars', clicked?.marker === below[1] && clicked.id === 101 && clicked.bars?.from === badge?.bars.from,
+    JSON.stringify(clicked && { id: clicked.id, bars: clicked.bars }));
   // Re-registering a name replaces the image in the markers using it.
   await chart.registerIcon('red', solid(20, 20, 230));
   px = null;

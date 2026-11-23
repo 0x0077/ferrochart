@@ -138,6 +138,17 @@
   .stage-slot canvas.chart[data-side="main"] { width: var(--main-share); }
   .stage-slot canvas.chart[data-side="plot"] { left: var(--main-share); width: calc(100% - var(--main-share)); }
   .stage-surface .dust, .stage-surface .intact { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+  .stage-loading {
+    position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px;
+    border-radius: 50%; border: 2.5px solid color-mix(in srgb, var(--pen) 22%, transparent);
+    border-top-color: var(--pen); pointer-events: none; z-index: 3; opacity: 0;
+    animation: stage-spin 0.8s linear infinite, stage-loading-in 0.3s ease-out 0.25s forwards;
+  }
+  @keyframes stage-spin { to { transform: rotate(360deg); } }
+  @keyframes stage-loading-in { to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .stage-loading { animation: stage-loading-in 0.3s ease-out 0.25s forwards; }
+  }
   .stage-slot .error { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; padding: 24px; color: var(--color-on-chart-muted); text-align: center; }
 
   /* Code highlighting (lib/highlight.js), on dark code blocks. */

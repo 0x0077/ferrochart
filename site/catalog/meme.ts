@@ -162,6 +162,99 @@ ${view(24)}`,
       api: ['registerIcon', 'markerStackLimit', 'markerHover', 'addLayer'],
     },
     {
+      id: 'meme-reality',
+      title: 'Meme reality layer',
+      group: 'Price',
+      code: `${create()}
+const to = Math.floor(Date.now() / 60_000) * 60_000; // the last whole minute
+const from = to - 120 * 60_000;
+const range = 'symbol=MEME&from=' + from + '&to=' + to;
+const bars = await fetch('/api/bars?interval=1m&' + range).then((r) => r.json());
+const trades = await fetch('/api/trades?' + range).then((r) => r.json());
+const n = bars.time.length;
+// A feed is not the market (synthetic here): the indexer fills quiet minutes
+// with flat bars, and a few bad prints leave absurd wicks.
+const quiet = [...bars.volume].sort((a, b) => a - b)[Math.floor(n * 0.06)];
+const filled = bars.time.map((_, i) => i > 0 && bars.volume[i] <= quiet);
+filled.forEach((f, i) => { if (f) bars.open[i] = bars.high[i] = bars.low[i] = bars.close[i] = bars.close[i - 1]; });
+[n - 96, n - 58, n - 21].forEach((i, k) => { filled[i] = false; if (k === 1) bars.low[i] *= 0.45; else bars.high[i] *= 1.8; });
+// Clip wicks longer than 3 median ranges past the body; keep the raw prints.
+const cap = 3 * bars.high.map((h, i) => h - bars.low[i]).sort((a, b) => a - b)[n >> 1];
+const raw = new Map(); // bar index -> [high, low] as printed
+for (let i = 0; i < n; i++) {
+  const top = Math.max(bars.open[i], bars.close[i]) + cap, bottom = Math.min(bars.open[i], bars.close[i]) - cap;
+  if (bars.high[i] <= top && bars.low[i] >= bottom) continue;
+  raw.set(i, [bars.high[i], bars.low[i]]);
+  bars.high[i] = Math.min(bars.high[i], top);
+  bars.low[i] = Math.max(bars.low[i], bottom);
+}
+const candles = chart.addCandlestickSeries({ markerCluster: 36 }); // one avatar and "+k" per 36 px
+candles.setData(bars);
+candles.setBarFlags(bars.time.flatMap((time, i) => (filled[i] || raw.has(i) ? [{ time, filled: filled[i], clipped: raw.has(i) }] : [])));
+// 16 tracked wallets (synthetic) and the 300 largest trades, attributed to them.
+const wallets = ['moonboy', 'gm_capital', 'ape_lord', 'sigma.sol', 'wenlambo', 'quiet_whale', 'degen_daily', 'early_bird',
+  'chart_wizard', 'delta_fund', 'pump_watch', 'cold_wallet', 'meme_queen', 'alpha_desk', 'ngmi_labs', 'flow_reader']
+  .map((name, i) => ({ name, kind: i % 2 ? 'Smart' : 'KOL', icon: 'w' + (i + 1), buys: 0, sells: 0, n: 0 }));
+await Promise.all(wallets.map((w, i) => chart.registerIcon(w.icon, '/avatars/w' + String(i + 1).padStart(2, '0') + '.png')));
+const fills = trades.time
+  .map((time, i) => ({ time, price: trades.price[i], usd: trades.price[i] * trades.size[i], buy: trades.side[i] > 0, wallet: wallets[(i * 7 + 3) % 16] }))
+  .sort((a, b) => b.usd - a.usd)
+  .slice(0, 300);
+fills.forEach((f) => { f.wallet.n++; f.wallet[f.buy ? 'buys' : 'sells'] += f.usd; });
+// Each marker carries its fill: events hand back the very object.
+const markers = fills.map((fill, i) => ({
+  id: i + 1, fill, time: fill.time, position: fill.buy ? 'belowBar' : 'aboveBar', icon: fill.wallet.icon, size: 18,
+  color: '#1b1f2a', border: fill.buy ? '#2ee6b6' : '#ff5d73', borderWidth: fill.wallet.kind === 'Smart' ? 3 : 1.5,
+}));
+// Your own fills, at the price they executed (never clustered).
+[0.2, 0.45, 0.7, 0.9].forEach((q, k) => {
+  const i = Math.floor(q * trades.time.length), buy = k % 2 === 0;
+  markers.push({ id: 1000 + k, mine: true, time: trades.time[i], position: 'atPrice', price: trades.price[i], shape: 'square',
+    label: 'ME', size: 16, color: buy ? '#2ee6b6' : '#ff5d73', text: (buy ? 'buy ' : 'sell ') + trades.price[i].toPrecision(4) });
+});
+candles.setMarkers(markers.sort((a, b) => a.time - b.time));
+// Tooltips (hovered marker or flagged bar) and a wallet card (clicked avatar).
+const usd = (v) => (v >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : '$' + (v / 1e3).toFixed(0) + 'k');
+let mark = null, bar = null, card = null; // tooltips of a marker and a flagged bar, a wallet card
+const box = (ctx, x, y, rows) => {
+  const width = 16 + Math.max(...rows.map((r) => ctx.textWidth(r, 11)));
+  const height = 10 + rows.length * 16; // kept inside the plot
+  x = Math.max(ctx.rect.x, Math.min(x, ctx.rect.x + ctx.rect.width - width));
+  y = Math.max(ctx.rect.y, Math.min(y, ctx.rect.y + ctx.rect.height - height));
+  return [{ type: 'rect', x, y, width, height, color: 'rgba(17, 20, 28, 0.92)' },
+    ...rows.map((text, i) => ({ type: 'text', x: x + 8, y: y + 5 + i * 16, text, size: 11, color: i ? '#e6ebf5' : '#8a93a6' }))];
+};
+const layer = chart.addLayer({ pane: 0, position: 'overlay', build: (ctx) => {
+  const tip = mark ?? bar;
+  return [...(card ? box(ctx, ctx.rect.x + 10, ctx.rect.y + 10, card) : []),
+    ...(tip ? box(ctx, tip.x + 14, tip.y - 20, tip.rows) : [])];
+} });
+chart.on('markerHover', (e) => {
+  const f = e?.marker.fill;
+  mark = !e ? null : { x: e.x, y: e.y, rows:
+    e.overflow ? [e.overflow + ' more trades', 'over ' + (e.bars.to - e.bars.from + 1) + ' min, click to zoom']
+    : e.marker.mine ? ['your fill', e.marker.text]
+    : [f.wallet.name + ' (' + f.wallet.kind + ')', (f.buy ? 'buy ' : 'sell ') + usd(f.usd) + ' at ' + f.price.toPrecision(4)] };
+  chart.invalidateLayer(layer);
+});
+chart.on('crosshairMove', ({ point }) => {
+  const i = point ? Math.round(point.logicalIndex) : -1, w = raw.get(i);
+  const next = w ? ['wick clipped', 'printed high ' + w[0].toPrecision(4) + ', low ' + w[1].toPrecision(4)]
+    : filled[i] ? ['filled bar', 'no swaps this minute'] : null;
+  if (next || bar) { bar = next && { x: point.x, y: point.y, rows: next }; chart.invalidateLayer(layer); }
+});
+chart.on('click', (e) => {
+  const t = e.target;
+  if (t?.type === 'markerOverflow') return chart.setVisibleLogicalRange(t.bars.from - 10, t.bars.to + 10);
+  const w = t?.type === 'marker' && t.marker.fill?.wallet;
+  card = w ? [w.name + ' (' + w.kind + ')', w.n + ' trades in 2h', 'bought ' + usd(w.buys) + ', sold ' + usd(w.sells), 'net ' + (w.buys >= w.sells ? '+' : '-') + usd(Math.abs(w.buys - w.sells))] : null;
+  chart.invalidateLayer(layer);
+});
+${view(8)}`,
+      about: 'What the feed shows against what traded. Minutes the indexer filled without swaps are hollow bars, and wicks the page clipped as bad prints get a tick at each end, with the printed values in a tooltip (`setBarFlags`). The 300 largest trades of 16 tracked wallets are avatars clustered across bars (`markerCluster`). Clicking a "+k" badge zooms into its bars; clicking an avatar opens that wallet\'s card from the marker object the event hands back. Your own fills sit at their exact price (`atPrice`). All data is synthetic.',
+      api: ['setBarFlags', 'markerCluster', "position: 'atPrice'", "chart.on('click')", 'markerHover'],
+    },
+    {
       id: 'meme-line',
       title: 'Market cap step line',
       group: 'Price',

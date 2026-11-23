@@ -8,11 +8,13 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use ferrochart_core::chart::{Marker, MarkerPosition, MarkerShape, SeriesData, SeriesOptions};
+use ferrochart_core::chart::{
+    BarFlags, Marker, MarkerPosition, MarkerShape, SeriesData, SeriesOptions,
+};
 use ferrochart_core::data::{BarUpdate, OhlcColumns, SeriesId};
 use ferrochart_core::drawing::{Anchor, BUILTIN_KINDS, DrawingData};
 use ferrochart_core::frame::SeriesKind;
-use ferrochart_core::geom::{Px, SizeCss};
+use ferrochart_core::geom::{Css, Px, SizeCss};
 use ferrochart_core::testing::{MonoMeasurer, random_walk};
 use ferrochart_core::{Chart, ChartOptions};
 
@@ -187,6 +189,62 @@ fn build_frame(c: &mut Criterion) {
             black_box(chart.frame().layers[1].cmds.len())
         });
     });
+    // r22: the same markers clustered across bars (buckets of 4 bars at
+    // the default spacing), over a view 4x wider.
+    let mut o = *chart.series_options(id).unwrap();
+    o.marker_cluster = Some(Css(24.0));
+    chart.set_series_options(id, o).unwrap();
+    let spacing = chart.time_scale().bar_spacing();
+    chart.time_scale().set_bar_spacing(spacing / 4.0);
+    chart.scroll_to_realtime();
+    chart.build_frame(0.0, &MonoMeasurer);
+    let (mut dir, mut moved) = (1.0_f32, 0);
+    g.bench_function("pan_1M_markers_clustered", |b| {
+        b.iter(|| {
+            moved += 1;
+            if moved % 400 == 0 {
+                dir = -dir;
+            }
+            chart.time_scale().scroll_by(Px(dir * 61.0));
+            chart.build_frame(0.0, &MonoMeasurer);
+            black_box(chart.frame().layers[1].cmds.len())
+        });
+    });
+    g.finish();
+}
+
+/// r22: the 1M-bar pan with a bar quality flag on every third of
+/// the last 12 000 bars (filled and clipped).
+fn bar_flags(c: &mut Criterion) {
+    let mut g = c.benchmark_group("build_frame");
+    let data = random_walk(1, 1_000_000, START, INTERVAL).unwrap();
+    let (mut chart, id) = loaded_chart(&data);
+    let n = data.time.len();
+    let flags = (n - 12_000..n)
+        .step_by(3)
+        .map(|i| {
+            let f = if i % 2 == 0 {
+                BarFlags::FILLED
+            } else {
+                BarFlags::CLIPPED
+            };
+            (data.time[i], f)
+        })
+        .collect();
+    chart.set_bar_flags(id, flags).unwrap();
+    chart.build_frame(0.0, &MonoMeasurer);
+    let (mut dir, mut moved) = (1.0_f32, 0);
+    g.bench_function("pan_1M_bar_flags", |b| {
+        b.iter(|| {
+            moved += 1;
+            if moved % 400 == 0 {
+                dir = -dir;
+            }
+            chart.time_scale().scroll_by(Px(dir * 61.0));
+            chart.build_frame(0.0, &MonoMeasurer);
+            black_box(chart.frame().layers[1].cmds.len())
+        });
+    });
     g.finish();
 }
 
@@ -220,5 +278,5 @@ fn update_last(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, set_data, build_frame, update_last);
+criterion_group!(benches, set_data, build_frame, bar_flags, update_last);
 criterion_main!(benches);

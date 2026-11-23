@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-23
+
+Markers that carry your data, clustering across bars and bar quality flags.
+
+### Added
+
+- **Marker ids.** Markers take an `id` (`u64`; in JavaScript an integer up
+  to 2^53−1) that click and hover events report. In JavaScript the events
+  also hand back the very object passed to `setMarkers` as `marker`, with
+  any fields of your own.
+- **Markers at a price.** A third position, `atPrice` (Rust
+  `MarkerPosition::AtPrice`, Python `"at_price"`, C
+  `FERROCHART_MARKER_AT_PRICE`), centers a marker on its `price`, for fills
+  and other events at an exact price. These markers are not stacked or
+  clustered.
+- **Clustering across bars.** A per-series `markerCluster` (CSS px; Python
+  `marker_cluster`): when bars get closer than that, each side of a bucket
+  of bars shows its first marker and a "+k" badge. Buckets are aligned to
+  the logical index, so panning does not regroup. Click and hover events
+  for a badge report the bars it stands for (`bars: { from, to }`).
+- **Bar quality flags.** `setBarFlags([{ time, filled?, clipped? }])` (Rust
+  `Chart::set_bar_flags`, Python `set_bar_flags`, C
+  `ferrochart_set_bar_flags`). `filled`: a bar the data source filled in
+  without trades, drawn hollow in `filledBarColor`. `clipped`: a bar whose
+  outlier wick you clipped (keep the raw values for your tooltip); a tick
+  marks each end of the wick. The flags survive level-of-detail merging.
+- The lightweight-charts compatibility layer maps v5 `atPriceTop`,
+  `atPriceMiddle` and `atPriceBottom` to `atPrice` and passes numeric ids.
+- Examples: a meme token's reality layer (filled and clipped bars,
+  clustered wallet avatars, wallet cards from the clicked marker) and an LP
+  risk canvas (range, hedge liquidation, events at their price).
+
+### Changed
+
+- Breaking for Rust struct literals and matches (hence 0.5.0): new fields
+  in `Marker` (`id`, `price`), `SeriesOptions` (`marker_cluster`,
+  `filled_bar_color`), `MarkerHit` (`id`, `bars`), `ClickTarget::Marker`
+  (`id`) and `ClickTarget::MarkerOverflow` (`id`, `bars`); a new
+  `MarkerPosition::AtPrice`.
+- C: `FerroChartMarker`, `FerroChartSeriesOptions` and `FerroChartEvent`
+  have new fields, so programs built against 0.4 must be recompiled with
+  the new header. The JavaScript and Python APIs only add.
+
 ## [0.4.0] - 2026-11-23
 
 Image markers, badges and text in any script.

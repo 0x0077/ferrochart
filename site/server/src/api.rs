@@ -46,6 +46,7 @@ pub fn router() -> Router<AppState> {
         .route("/forecast", get(get_forecast))
         .route("/altbars", get(get_altbars))
         .route("/stream", get(crate::stream::handler))
+        .route("/github/stars", get(crate::github::handler))
 }
 
 /// A request error: 400 with `{ "error": message }`.

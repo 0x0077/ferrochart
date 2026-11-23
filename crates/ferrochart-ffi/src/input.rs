@@ -445,6 +445,15 @@ pub struct FerroChartEvent {
     pub has_drawing: u8,
     /// Reserved.
     pub reserved: [u8; 4],
+    /// `id` of the marker of a marker click or hover target (for a "+k"
+    /// badge, of the first marker not drawn); 0: none (r22).
+    pub marker_id: u64,
+    /// First and last logical index of the bars of a marker hover, or of
+    /// the bars whose markers a `FERROCHART_TARGET_MARKER_OVERFLOW` badge
+    /// hides on its side (r22); 0 otherwise.
+    pub bars_from: i64,
+    /// See `bars_from`.
+    pub bars_to: i64,
 }
 
 fn event(e: &ChartEvent) -> FerroChartEvent {
@@ -493,10 +502,11 @@ fn event(e: &ChartEvent) -> FerroChartEvent {
                     out.target_type = FERROCHART_TARGET_SERIES;
                     out.target_id = u64::from(s.0);
                 }
-                Some(ClickTarget::Marker { series, index }) => {
+                Some(ClickTarget::Marker { series, index, id }) => {
                     out.target_type = FERROCHART_TARGET_MARKER;
                     out.target_id = u64::from(series.0);
                     out.target_index = *index as u64;
+                    out.marker_id = *id;
                 }
                 Some(ClickTarget::Drawing(d)) => {
                     out.target_type = FERROCHART_TARGET_DRAWING;
@@ -506,11 +516,15 @@ fn event(e: &ChartEvent) -> FerroChartEvent {
                     series,
                     first,
                     count,
+                    id,
+                    bars,
                 }) => {
                     out.target_type = FERROCHART_TARGET_MARKER_OVERFLOW;
                     out.target_id = u64::from(series.0);
                     out.target_index = *first as u64;
                     out.count = u64::from(*count);
+                    out.marker_id = *id;
+                    (out.bars_from, out.bars_to) = (bars.start, bars.end - 1);
                 }
                 None | Some(_) => {}
             }
@@ -566,6 +580,8 @@ fn event(e: &ChartEvent) -> FerroChartEvent {
                 out.target_id = u64::from(h.series.0);
                 out.target_index = h.index as u64;
                 out.count = u64::from(h.overflow);
+                out.marker_id = h.id;
+                (out.bars_from, out.bars_to) = (h.bars.start, h.bars.end - 1);
                 out.x = h.center.x;
                 out.y = h.center.y;
             }

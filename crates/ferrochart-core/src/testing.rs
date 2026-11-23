@@ -1210,3 +1210,256 @@ pub fn cjk_text_scene(chart: &mut Chart, start_time: Timestamp) -> Result<()> {
     chart.scroll_to_realtime();
     Ok(())
 }
+
+/// Fills an empty, sized chart with price-anchored markers (r22):
+/// buy and sell fills on their prices with text on the right, a liquidation
+/// price drawn as a bordered square, and an above-bar stack on a bar that
+/// also has fills (fills do not stack with it).
+///
+/// # Errors
+///
+/// The chart's errors.
+///
+/// # Examples
+///
+/// ```
+/// use ferrochart_core::geom::SizeCss;
+/// use ferrochart_core::testing::at_price_markers_scene;
+/// use ferrochart_core::{Chart, ChartOptions};
+///
+/// let mut chart = Chart::new(ChartOptions::default());
+/// chart.resize(SizeCss { w: 800.0, h: 450.0 }, 1.0);
+/// at_price_markers_scene(&mut chart, 0)?;
+/// # Ok::<(), ferrochart_core::Error>(())
+/// ```
+pub fn at_price_markers_scene(chart: &mut Chart, start_time: Timestamp) -> Result<()> {
+    use crate::chart::{
+        Marker,
+        MarkerPosition::{AboveBar, AtPrice},
+        MarkerShape::{Circle, Square},
+    };
+    let bars = random_walk(41, 60, start_time, 60_000)?;
+    let candles = chart.add_series(
+        chart.main_pane(),
+        SeriesKind::Candlestick,
+        SeriesOptions::default(),
+    )?;
+    chart.set_data(candles, SeriesData::Ohlc(bars.clone()))?;
+    let (buy, sell) = (Rgba::hex(0x0026_A69A), Rgba::hex(0x00EF_5350));
+    let fill = |i: usize, f: f64, sold: bool, id: u64| {
+        // A price inside the bar: `f` of the way from low to high.
+        let price = bars.low[i] + (bars.high[i] - bars.low[i]) * f;
+        Marker {
+            time: bars.time[i],
+            position: AtPrice,
+            price: Some(price),
+            shape: Circle,
+            size: Some(Css(8.0)),
+            color: Some(if sold { sell } else { buy }),
+            text: if sold { "S".into() } else { "B".into() },
+            id,
+            ..Marker::default()
+        }
+    };
+    let above = |i: usize, label: &str| Marker {
+        time: bars.time[i],
+        position: AboveBar,
+        label: label.into(),
+        size: Some(Css(16.0)),
+        color: Some(Rgba::hex(0x003B_82F6)),
+        ..Marker::default()
+    };
+    let lowest = bars.low.iter().copied().fold(f64::INFINITY, f64::min);
+    let markers = vec![
+        fill(8, 0.2, false, 1),
+        fill(8, 0.9, false, 2),
+        fill(20, 0.5, true, 3),
+        above(20, "KOL"),
+        above(20, "DB"),
+        fill(20, 0.1, false, 4),
+        fill(33, 0.7, true, 5),
+        fill(47, 0.3, false, 6),
+        Marker {
+            time: bars.time[40],
+            position: AtPrice,
+            price: Some(lowest - 0.5),
+            shape: Square,
+            size: Some(Css(12.0)),
+            color: Some(Rgba::hex(0x00FF_9800)),
+            border: Some(Rgba::hex(0x0000_0000)),
+            text: "liq".into(),
+            ..Marker::default()
+        },
+    ];
+    chart.set_markers(candles, markers)?;
+    chart.time_scale().set_bar_spacing(12.0);
+    chart.scroll_to_realtime();
+    Ok(())
+}
+
+/// Fills an empty, sized chart with markers clustered across bars (r22) at bar spacing
+/// `spacing` (physical px): wallet badges above and
+/// below on most bars, `marker_cluster` 28 CSS px, and price-anchored fills
+/// that are not clustered.
+///
+/// # Errors
+///
+/// The chart's errors.
+///
+/// # Examples
+///
+/// ```
+/// use ferrochart_core::geom::SizeCss;
+/// use ferrochart_core::testing::clustered_markers_scene;
+/// use ferrochart_core::{Chart, ChartOptions};
+///
+/// let mut chart = Chart::new(ChartOptions::default());
+/// chart.resize(SizeCss { w: 800.0, h: 450.0 }, 1.0);
+/// clustered_markers_scene(&mut chart, 0, 6.0)?;
+/// # Ok::<(), ferrochart_core::Error>(())
+/// ```
+pub fn clustered_markers_scene(
+    chart: &mut Chart,
+    start_time: Timestamp,
+    spacing: f64,
+) -> Result<()> {
+    use crate::chart::{
+        Marker,
+        MarkerPosition::{AboveBar, AtPrice, BelowBar},
+    };
+    let bars = random_walk(43, 160, start_time, 60_000)?;
+    let candles = chart.add_series(
+        chart.main_pane(),
+        SeriesKind::Candlestick,
+        SeriesOptions {
+            marker_cluster: Some(Css(28.0)),
+            ..SeriesOptions::default()
+        },
+    )?;
+    chart.set_data(candles, SeriesData::Ohlc(bars.clone()))?;
+    let labels: [(&str, u32); 4] = [
+        ("DB", 0x003B_82F6),
+        ("KO", 0x00A8_55F7),
+        ("SM", 0x002F_BF71),
+        ("DS", 0x00D9_3B3B),
+    ];
+    let mut markers = Vec::new();
+    for i in 0..bars.time.len() {
+        // A deterministic mix: 0..=2 markers above and below.
+        let (above, below) = ((i * 7) % 3, (i * 5 + 1) % 4 / 2);
+        for (n, position) in (0..above)
+            .map(|_| AboveBar)
+            .chain((0..below).map(|_| BelowBar))
+            .enumerate()
+        {
+            let (label, color) = labels[(i + n) % labels.len()];
+            markers.push(Marker {
+                time: bars.time[i],
+                position,
+                label: label.into(),
+                size: Some(Css(16.0)),
+                color: Some(Rgba::hex(color)),
+                ..Marker::default()
+            });
+        }
+        if i % 11 == 0 {
+            markers.push(Marker {
+                time: bars.time[i],
+                position: AtPrice,
+                price: Some(bars.close[i]),
+                size: Some(Css(7.0)),
+                color: Some(Rgba::hex(0x00FF_9800)),
+                ..Marker::default()
+            });
+        }
+    }
+    chart.set_markers(candles, markers)?;
+    chart.time_scale().set_bar_spacing(spacing);
+    chart.scroll_to_realtime();
+    Ok(())
+}
+
+/// Fills an empty, sized chart with bar quality flags (r22): runs of
+/// flat bars filled in by the data source (`FILLED`), one filled bar with a
+/// range (drawn hollow), and bars whose outlier wicks the host clipped
+/// (`CLIPPED`). With `dense`, 3000 bars fit to the view, so bars merge at
+/// an LOD level (a merged bar is filled only when all its bars are).
+///
+/// # Errors
+///
+/// The chart's errors.
+///
+/// # Examples
+///
+/// ```
+/// use ferrochart_core::geom::SizeCss;
+/// use ferrochart_core::testing::bar_flags_scene;
+/// use ferrochart_core::{Chart, ChartOptions};
+///
+/// let mut chart = Chart::new(ChartOptions::default());
+/// chart.resize(SizeCss { w: 800.0, h: 450.0 }, 1.0);
+/// bar_flags_scene(&mut chart, 0, false)?;
+/// # Ok::<(), ferrochart_core::Error>(())
+/// ```
+pub fn bar_flags_scene(chart: &mut Chart, start_time: Timestamp, dense: bool) -> Result<()> {
+    use crate::chart::BarFlags;
+    let n = if dense { 3000 } else { 60 };
+    let mut bars = random_walk(47, n, start_time, 60_000)?;
+    let mut flags = Vec::new();
+    // Flat bars at the previous close.
+    let mut fill = |bars: &mut crate::data::OhlcColumns, i: usize| {
+        let c = bars.close[i - 1];
+        (bars.open[i], bars.high[i], bars.low[i], bars.close[i]) = (c, c, c, c);
+        if let Some(v) = bars.volume.as_mut() {
+            v[i] = 0.0;
+        }
+        flags.push((bars.time[i], BarFlags::FILLED));
+    };
+    let runs: &[(usize, usize)] = if dense {
+        &[(400, 700), (1500, 1530), (2200, 2600)]
+    } else {
+        &[(12, 16), (38, 40)]
+    };
+    for &(a, b) in runs {
+        for i in a..b {
+            fill(&mut bars, i);
+        }
+    }
+    let clip = |bars: &mut crate::data::OhlcColumns, i: usize| {
+        // The host clipped both wicks to 0.3 above and below the body.
+        let (o, c) = (bars.open[i], bars.close[i]);
+        bars.high[i] = o.max(c) + 0.3;
+        bars.low[i] = o.min(c) - 0.3;
+    };
+    // Clipped bars outside the filled runs (one flag per time).
+    let clipped: Vec<usize> = if dense {
+        (50..n)
+            .step_by(97)
+            .filter(|i| !runs.iter().any(|&(a, b)| (a..b).contains(i)))
+            .collect()
+    } else {
+        vec![8, 25, 47]
+    };
+    for &i in &clipped {
+        clip(&mut bars, i);
+    }
+    flags.extend(clipped.iter().map(|&i| (bars.time[i], BarFlags::CLIPPED)));
+    if !dense {
+        // A filled bar that has a range (a source's synthetic bar): hollow.
+        flags.push((bars.time[30], BarFlags::FILLED | BarFlags::CLIPPED));
+    }
+    let candles = chart.add_series(
+        chart.main_pane(),
+        SeriesKind::Candlestick,
+        SeriesOptions::default(),
+    )?;
+    chart.set_data(candles, SeriesData::Ohlc(bars))?;
+    chart.set_bar_flags(candles, flags)?;
+    if dense {
+        chart.fit_content();
+    } else {
+        chart.time_scale().set_bar_spacing(12.0);
+        chart.scroll_to_realtime();
+    }
+    Ok(())
+}

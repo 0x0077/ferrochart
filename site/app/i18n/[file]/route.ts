@@ -1,6 +1,6 @@
 // The example descriptions of each language (/i18n/zh.json): pages carry
 // only the titles and fetch the descriptions when they need them, so 1,200
-// translated pages do not each repeat all 308 descriptions.
+// translated pages do not each repeat all the descriptions.
 import { catalogAbouts } from '@/lib/catalog-text';
 import { PREFIXED, type Locale } from '@/lib/i18n';
 

@@ -88,6 +88,29 @@ export interface SeriesOptions {
    * (`ClickTarget` `'markerOverflow'`). `null` (default): no limit.
    */
   markerStackLimit?: number | null;
+  /**
+   * Cluster markers across bars closer than this many CSS px: a side of a
+   * bucket of bars shows its first marker and a "+k" badge
+   * (`'markerOverflow'` with the bars in `bars`). Buckets are aligned to the
+   * logical index, so panning does not regroup. `'atPrice'` markers are not
+   * clustered. `null` (default): no clustering.
+   */
+  markerCluster?: number | null;
+  /** Color of bars flagged `filled` (`Series.setBarFlags`), drawn hollow. `null` (default): the main color at 40% opacity. */
+  filledBarColor?: Color | null;
+}
+
+/**
+ * Quality of one bar, for `Series.setBarFlags`. `filled`: filled in by the
+ * data source (no real trades), drawn hollow. `clipped`: you clipped an
+ * outlier wick (the bar holds the clipped values; keep the raw ones and
+ * show them in your tooltip); a tick marks each end of the wick. A bar
+ * without trades is a gap bar (all prices `NaN`), not a flag.
+ */
+export interface BarFlag {
+  time: number | bigint | Date;
+  filled?: boolean;
+  clipped?: boolean;
 }
 
 export interface PriceLineOptions {
@@ -111,8 +134,19 @@ export interface Marker {
    * for later times); a marker on a gap is not drawn.
    */
   time: number | bigint | Date;
-  /** Default `'aboveBar'`. */
-  position?: 'aboveBar' | 'belowBar';
+  /**
+   * Default `'aboveBar'`. `'atPrice'`: centered on `price` (not stacked or
+   * clustered), text on the right.
+   */
+  position?: 'aboveBar' | 'belowBar' | 'atPrice';
+  /** Price of an `'atPrice'` marker (required there, not allowed otherwise). */
+  price?: number;
+  /**
+   * The page's own identifier (an integer 0–2^53−1; 0 for none), reported in
+   * `click` and `markerHover`. Other fields of the object (e.g. `data`) are
+   * kept too: events hand back the object itself as `marker`.
+   */
+  id?: number;
   /** Default `'circle'`. */
   shape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown';
   /** `null` (default): the series' main color. */
@@ -1185,7 +1219,13 @@ impl Series {
         crate::host::with_weak(&self.shared, |s| -> Result<(), JsError> {
             let m = js::markers(markers, s.icon_key)?;
             let icons = m.iter().any(|m| m.icon.is_some());
+            // The chart sorts stably by time: keep the objects in that order.
+            let mut order: Vec<usize> = (0..m.len()).collect();
+            order.sort_by_key(|&i| m[i].time);
             s.chart.set_markers(self.id, m).map_err(js_err)?;
+            let given: &js_sys::Array = markers.unchecked_ref();
+            let objects: js_sys::Array = order.iter().map(|&i| given.get(i as u32)).collect();
+            s.marker_objects.insert(self.id, objects);
             if icons {
                 s.icon_series.insert(self.id);
             }
@@ -1193,10 +1233,27 @@ impl Series {
         })?
     }
 
+    /// Replaces the bar quality flags of this candlestick, OHLC bar or
+    /// Heikin-Ashi series (of equal times the last wins). Zoomed out, a
+    /// merged bar is filled when all its bars are, clipped when any is.
+    ///
+    /// @param {BarFlag[]} flags
+    #[wasm_bindgen(js_name = setBarFlags)]
+    pub fn set_bar_flags(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "BarFlag[]")] flags: &JsValue,
+    ) -> Result<(), JsError> {
+        let f = js::bar_flags(flags)?;
+        self.with_chart(|c| c.set_bar_flags(self.id, f))?
+            .map_err(js_err)
+    }
+
     /// The markers, sorted by time.
     ///
-    /// @returns {Required<Marker>[]}
-    #[wasm_bindgen(unchecked_return_type = "Required<Marker>[]")]
+    /// @returns {(Required<Omit<Marker, 'price'>> & { price?: number })[]}
+    #[wasm_bindgen(
+        unchecked_return_type = "(Required<Omit<Marker, 'price'>> & { price?: number })[]"
+    )]
     pub fn markers(&self) -> Result<JsValue, JsError> {
         crate::host::with_weak(&self.shared, |s| {
             js::markers_js(s.chart.markers(self.id).unwrap_or(&[]), s.icon_key)

@@ -220,7 +220,7 @@ pub extern "C" fn ferrochart_last_error() -> *const c_char {
     LAST_ERROR.with(|e| e.borrow().as_ptr())
 }
 
-/// The library version, e.g. `"0.4.0"` (static string).
+/// The library version, e.g. `"0.5.0"` (static string).
 #[unsafe(no_mangle)]
 pub extern "C" fn ferrochart_version() -> *const c_char {
     concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr().cast()
@@ -683,6 +683,13 @@ pub struct FerroChartSeriesOptions {
     /// Most markers drawn per bar and side (1–65535); beyond it a "+k"
     /// badge stands for the rest. 0: no limit (the default; r21).
     pub marker_stack_limit: u32,
+    /// Cluster markers across bars closer than this many CSS px (r22): a
+    /// side of a bucket of bars shows its first marker and a "+k" badge.
+    /// 0: no clustering (the default).
+    pub marker_cluster: f32,
+    /// Color of bars flagged `FERROCHART_BAR_FILLED`, drawn hollow,
+    /// `0xRRGGBBAA`; 0: the main color at 40% opacity (r22).
+    pub filled_bar_color: u32,
 }
 
 // SAFETY: repr(C), u32 size first, plain numbers.
@@ -724,6 +731,8 @@ impl FerroChartSeriesOptions {
                 .price_precision
                 .map_or(FERROCHART_PRECISION_AUTO, u32::from),
             marker_stack_limit: o.marker_stack_limit.map_or(0, u32::from),
+            marker_cluster: o.marker_cluster.map_or(0.0, |d| d.0),
+            filled_bar_color: color_u32(o.filled_bar_color),
         }
     }
 
@@ -746,6 +755,11 @@ impl FerroChartSeriesOptions {
                 Error::invalid("'marker_stack_limit' must be 0 (no limit) to 65535")
             })?),
         };
+        if !(self.marker_cluster.is_finite() && self.marker_cluster >= 0.0) {
+            return Err(Error::invalid(
+                "'marker_cluster' must be 0 (no clustering) or a positive width",
+            ));
+        }
         if self.shift.unsigned_abs() > 1_000_000 {
             return Err(Error::invalid("'shift' is out of range"));
         }
@@ -773,6 +787,8 @@ impl FerroChartSeriesOptions {
             shift: self.shift,
             price_precision: u8::try_from(self.price_precision).ok(),
             marker_stack_limit,
+            marker_cluster: (self.marker_cluster > 0.0).then_some(Css(self.marker_cluster)),
+            filled_bar_color: color_opt(self.filled_bar_color),
             ..base
         })
     }
@@ -998,6 +1014,9 @@ pub unsafe extern "C" fn ferrochart_apply_series_options(
 pub const FERROCHART_MARKER_ABOVE_BAR: u32 = 0;
 /// Marker position: below the bar.
 pub const FERROCHART_MARKER_BELOW_BAR: u32 = 1;
+/// Marker position: centered on `FerroChartMarker::price` (r22); not
+/// stacked or clustered, text on the right.
+pub const FERROCHART_MARKER_AT_PRICE: u32 = 2;
 
 /// Marker shape: filled circle (the default).
 pub const FERROCHART_SHAPE_CIRCLE: u32 = 0;
@@ -1019,7 +1038,8 @@ pub struct FerroChartMarker {
     pub reserved: u32,
     /// Time of the bar, UTC ms; a time between bars snaps to the next bar.
     pub time: i64,
-    /// `FERROCHART_MARKER_ABOVE_BAR` or `FERROCHART_MARKER_BELOW_BAR`.
+    /// `FERROCHART_MARKER_ABOVE_BAR`, `FERROCHART_MARKER_BELOW_BAR` or
+    /// `FERROCHART_MARKER_AT_PRICE`.
     pub position: u32,
     /// `FERROCHART_SHAPE_*`.
     pub shape: u32,
@@ -1039,6 +1059,12 @@ pub struct FerroChartMarker {
     /// Text centered in the shape (circles and squares, at most 8
     /// characters, not with `icon`), e.g. `"DB"` (UTF-8); null: none.
     pub label: *const c_char,
+    /// The caller's own identifier, reported in marker events and click
+    /// targets as `marker_id`; 0: none (r22).
+    pub id: u64,
+    /// Price of a `FERROCHART_MARKER_AT_PRICE` marker, in series units
+    /// (must be finite); ignored for the other positions (r22).
+    pub price: f64,
 }
 
 impl Default for FerroChartMarker {
@@ -1056,6 +1082,8 @@ impl Default for FerroChartMarker {
             border_width: 0.0,
             text: ptr::null(),
             label: ptr::null(),
+            id: 0,
+            price: f64::NAN,
         }
     }
 }
@@ -1080,6 +1108,45 @@ fn icon_id(id: u64) -> Result<IconId> {
         .ok_or_else(|| Error::new(FERROCHART_ERR_UNKNOWN_ID, format!("unknown icon {id}")))
 }
 
+/// Bar flag: filled in by the data source without trades, drawn hollow (r22).
+pub const FERROCHART_BAR_FILLED: u8 = 1;
+/// Bar flag: the caller clipped an outlier wick; a tick marks each end (r22).
+pub const FERROCHART_BAR_CLIPPED: u8 = 2;
+
+/// Replaces the bar quality flags of a candlestick, OHLC bar or
+/// Heikin-Ashi series (r22): `len` times (UTC ms) and flags
+/// (`FERROCHART_BAR_*`, or-ed together). Of equal times the last wins; 0 flags are
+/// dropped. At most 1 000 000.
+///
+/// # Safety
+///
+/// `chart` is a valid chart; `time` and `flags` are null with `len` 0, or
+/// arrays of `len` elements.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ferrochart_set_bar_flags(
+    chart: *mut FerroChart,
+    series: u64,
+    time: *const i64,
+    flags: *const u8,
+    len: usize,
+) -> i32 {
+    with_chart(chart, |c| {
+        let id = series_id(series)?;
+        // SAFETY: per the contract.
+        let (time, flags) = unsafe { (slice(time, len, "time")?, slice(flags, len, "flags")?) };
+        let mut out = Vec::new();
+        out.try_reserve(len)
+            .map_err(|_| Error::invalid("'len' is too large"))?;
+        out.extend(
+            time.iter()
+                .zip(flags)
+                .map(|(&t, &f)| (t, ferrochart_core::chart::BarFlags(f))),
+        );
+        c.chart.set_bar_flags(id, out)?;
+        Ok(0)
+    })
+}
+
 /// A core marker from a C one.
 ///
 /// # Safety
@@ -1094,8 +1161,12 @@ unsafe fn marker(
         position: match m.position {
             FERROCHART_MARKER_ABOVE_BAR => MarkerPosition::AboveBar,
             FERROCHART_MARKER_BELOW_BAR => MarkerPosition::BelowBar,
+            FERROCHART_MARKER_AT_PRICE => MarkerPosition::AtPrice,
             p => return Err(Error::invalid(format!("unknown marker position {p}"))),
         },
+        // Zeroed structs leave `price` 0: only `AtPrice` reads it.
+        price: (m.position == FERROCHART_MARKER_AT_PRICE).then_some(m.price),
+        id: m.id,
         shape: match m.shape {
             FERROCHART_SHAPE_CIRCLE => MarkerShape::Circle,
             FERROCHART_SHAPE_SQUARE => MarkerShape::Square,
