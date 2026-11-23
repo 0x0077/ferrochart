@@ -224,6 +224,75 @@ def _target(op: Mapping[str, Any]) -> tuple[str, Any]:
     return ("series", op["series"]) if "series" in op else ("mark", op.get("mark"))
 
 
+#: Data operations of one series or plot mark kept before they are folded
+#: into one `setData` (live updates would otherwise grow the log without
+#: bound).
+FOLD_AFTER = 64
+
+_DATA_OPS = ("setData", "append", "update")
+
+
+def _apply_update(cols: dict[str, np.ndarray], op: Mapping[str, Any]) -> dict[str, np.ndarray]:
+    """`cols` after the update `op`, as the engine applies it: a chart bar at
+    the last time replaces it and a later one is appended (a new point takes
+    the series color); a plot point replaces the last point. Fields the
+    columns lack are ignored, as the engine ignores them."""
+    if "point" in op:
+        p = op["point"]
+        if not len(cols.get("x", ())):
+            return cols
+        out = {k: v.copy() for k, v in cols.items()}
+        for k, v in p.items():
+            if k in out:
+                out[k][-1] = _css_rgba(v) if k == "color" else v
+        return out
+    bar = op["bar"]
+    t = cols["time"]
+    fields = {k: v for k, v in bar.items() if k != "time"}
+    if "value" in fields:
+        fields = {"value": fields["value"]}
+    if len(t) and t[-1] == bar["time"]:
+        out = {k: v.copy() for k, v in cols.items()}
+        for k, v in fields.items():
+            if k in out:
+                out[k][-1] = v
+        return out
+    row = {k: (bar["time"] if k == "time" else fields.get(k, 0 if k == "color" else np.nan)) for k in cols}
+    return {k: np.append(v, np.asarray([row[k]], dtype=v.dtype)) for k, v in cols.items()}
+
+
+def _fold(run: list[tuple[int, dict[str, Any], bytes | None]]) -> tuple[dict[str, Any], bytes] | None:
+    """One `setData` equal to `run` (a target's `setData` or `append`
+    followed by appends and updates), or None if `run` cannot be folded."""
+    first = run[0][1]
+    if first["op"] not in ("setData", "append") or run[0][2] is None:
+        return None
+    cols = {k: v.copy() for k, v in decode_columns(run[0][2]).items()}
+    lists = {k: list(first[k]) for k in ("step", "label") if k in first}
+    for _, op, buf in run[1:]:
+        if op["op"] == "append":
+            if buf is None:
+                return None
+            more = dict(decode_columns(buf))
+            # As the engine appends: points without a color take the series
+            # color (0); colors are dropped if the data had none.
+            if "color" in cols and "color" not in more:
+                more["color"] = np.zeros(len(next(iter(more.values()))), dtype="<u4")
+            elif "color" in more and "color" not in cols:
+                del more["color"]
+            if set(more) != set(cols) or set(lists) != {k for k in ("step", "label") if k in op}:
+                return None
+            cols = {k: np.concatenate([v, more[k]]) for k, v in cols.items()}
+            for k in lists:
+                lists[k] += list(op[k])
+        elif op["op"] == "update":
+            cols = _apply_update(cols, op)
+        else:
+            return None
+    out = {k: v for k, v in first.items() if k not in ("op", "step", "label")}
+    return {"op": "setData", **out, **lists}, encode_columns(cols)
+
+
 class Recorder:
     """Operations that rebuild a chart in the front end, in order."""
 
@@ -237,8 +306,29 @@ class Recorder:
         self.seq += 1
         self._compact(op)
         self.ops.append((self.seq, op, buffer))
+        if op["op"] in _DATA_OPS:
+            self._fold(_target(op))
         if self.widget is not None:
             self.widget._broadcast(self.seq, op, buffer)
+
+    def _fold(self, target: tuple[str, Any]) -> None:
+        """Folds the data operations of `target` into one `setData` at the
+        place of the first once there are more than `FOLD_AFTER`. Views
+        already shown have applied them one by one; a view rendered later
+        gets the same data in one operation."""
+        at = [i for i, o in enumerate(self.ops) if o[1]["op"] in _DATA_OPS and _target(o[1]) == target]
+        if len(at) <= FOLD_AFTER:
+            return
+        folded = _fold([self.ops[i] for i in at])
+        if folded is None:
+            return
+        op, buf = folded
+        keep = set(at[1:])
+        first = at[0]
+        self.ops = [
+            (self.ops[i][0], op, buf) if i == first else o
+            for i, o in enumerate(self.ops) if i not in keep
+        ]
 
     def _compact(self, op: dict[str, Any]) -> None:
         """Drops operations `op` makes useless: older data of a series or

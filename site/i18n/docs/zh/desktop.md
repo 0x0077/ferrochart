@@ -1,12 +1,12 @@
-<!-- source: 084e0fa734 -->
+<!-- source: c8a2437334 -->
 # 桌面应用（Rust + winit）
 
 `ferrochart-winit` 负责打开窗口、用 wgpu 渲染，并处理鼠标、触控板和键盘输入。你只需提供一个 `Chart`，以及可选的回调。
 
 ```toml
 [dependencies]
-ferrochart-core = "0.1"
-ferrochart-winit = "0.1"
+ferrochart-core = "0.5"
+ferrochart-winit = "0.5"
 ```
 
 ## 显示数据的窗口

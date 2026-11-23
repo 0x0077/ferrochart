@@ -716,6 +716,11 @@ impl Op<'_> {
                         let (v, c) =
                             densify(&o, &cols.value, cols.color.as_deref(), self.interpolate())?;
                         s.replace(first, v, c)?;
+                        if self.interpolate()
+                            && let [.., prev, _] = o.as_slice()
+                        {
+                            s.set_fill_from(Some(first + i64::from(*prev)));
+                        }
                     }
                 }
                 Ok(0)
@@ -787,10 +792,21 @@ impl Op<'_> {
                     return Ok(0);
                 }
                 // Anchor on the last stored point so the gap is filled.
-                let anchor = s.value_at(s.end() - 1).map(|v| (s.end() - 1 - first, v));
+                let old_last = s.end() - 1;
+                let anchor = s.value_at(old_last).map(|v| (old_last - first, v));
                 let (v, c) =
                     dense_with_anchor(offsets.as_deref(), &cols, anchor, self.interpolate())?;
                 s.append(&v, c.as_deref())?;
+                if self.interpolate() {
+                    // The given point before the new last one.
+                    let n = cols.value.len();
+                    let prev = match (n, offsets.as_deref()) {
+                        (0 | 1, _) => old_last,
+                        (_, Some(o)) => first + i64::from(o[n - 2]),
+                        (_, None) => first + i64::try_from(n).unwrap_or(i64::MAX) - 2,
+                    };
+                    s.set_fill_from(Some(prev));
+                }
                 Ok(0)
             }
         }
@@ -932,8 +948,20 @@ impl Op<'_> {
                 if s.len() > 0 {
                     let last = s.end() - 1;
                     if j == last {
-                        s.set_last(v, None)?;
-                        return Ok((DataChange::UpdateLast, 0));
+                        // Interpolated slots before the last point move with
+                        // it; more than the last value changed then.
+                        let filled = if self.interpolate() {
+                            s.set_last_interpolated(v)?
+                        } else {
+                            s.set_last(v, None)?;
+                            false
+                        };
+                        let change = if filled {
+                            DataChange::Replace
+                        } else {
+                            DataChange::UpdateLast
+                        };
+                        return Ok((change, 0));
                     }
                     if j < last {
                         return Err(Error::TimeNotIncreasing { index: 0 });
@@ -1034,6 +1062,113 @@ mod tests {
             .unwrap();
         assert_eq!(hist.bar_at(1), None);
         assert_eq!(hist.span(), Some((0, 3)));
+    }
+
+    /// Level-0 values of a value store, gaps as NaN.
+    fn values(store: &Store) -> Vec<f64> {
+        let Some((first, end)) = store.span() else {
+            return Vec::new();
+        };
+        (first..end)
+            .map(|j| store.bar_at(j).map_or(f64::NAN, |b| b[3]))
+            .collect()
+    }
+
+    fn same(a: &[f64], b: &[f64]) -> bool {
+        a.len() == b.len()
+            && a.iter()
+                .zip(b)
+                .all(|(x, y)| x.to_bits() == y.to_bits() || (x.is_nan() && y.is_nan()))
+    }
+
+    fn tick(time: i64, close: f64) -> BarUpdate {
+        BarUpdate {
+            time,
+            open: 0.0,
+            high: 0.0,
+            low: 0.0,
+            close,
+            volume: None,
+        }
+    }
+
+    #[test]
+    fn update_last_moves_the_interpolated_slots() {
+        // Issue #1: the skipped slot stayed at the old midpoint.
+        let index = axis(&[0, 1, 2, 3, 4, 5, 6]);
+        for kind in [SeriesKind::Line, SeriesKind::Area, SeriesKind::Baseline] {
+            let o = op(kind, &index);
+            let mut s = Store::for_kind(kind);
+            o.set(&mut s, v(&[0, 2], &[10.0, 30.0])).unwrap();
+            assert_eq!(
+                o.update_last(&mut s, tick(2, 50.0)).unwrap().0,
+                DataChange::Replace
+            );
+            let mut fresh = Store::for_kind(kind);
+            o.set(&mut fresh, v(&[0, 2], &[10.0, 50.0])).unwrap();
+            assert!(same(&values(&s), &values(&fresh)), "{kind:?}");
+            assert_eq!(values(&s), [10.0, 30.0, 50.0]);
+
+            // After a sparse append of one point, and of several.
+            o.append(&mut s, v(&[5], &[20.0])).unwrap();
+            o.update_last(&mut s, tick(5, 80.0)).unwrap();
+            o.set(&mut fresh, v(&[0, 2, 5], &[10.0, 50.0, 80.0]))
+                .unwrap();
+            assert!(same(&values(&s), &values(&fresh)), "{kind:?}");
+            o.append(&mut s, v(&[6], &[1.0])).unwrap(); // adjacent: nothing filled
+            assert_eq!(
+                o.update_last(&mut s, tick(6, 2.0)).unwrap().0,
+                DataChange::UpdateLast
+            );
+            assert_eq!(values(&s)[4], fresh.bar_at(4).unwrap()[3]);
+        }
+        // A new point through update_last fills the gap; replacing it again
+        // moves the fill.
+        let o = op(SeriesKind::Line, &index);
+        let mut s = Store::for_kind(SeriesKind::Line);
+        o.set(&mut s, v(&[0], &[0.0])).unwrap();
+        o.update_last(&mut s, tick(4, 4.0)).unwrap();
+        o.update_last(&mut s, tick(4, 8.0)).unwrap();
+        assert_eq!(values(&s), [0.0, 2.0, 4.0, 6.0, 8.0]);
+        // Histograms keep their gaps.
+        let o = op(SeriesKind::Histogram, &index);
+        let mut h = Store::for_kind(SeriesKind::Histogram);
+        o.set(&mut h, v(&[0, 2], &[1.0, 3.0])).unwrap();
+        assert_eq!(
+            o.update_last(&mut h, tick(2, 5.0)).unwrap().0,
+            DataChange::UpdateLast
+        );
+        assert_eq!(h.bar_at(1), None);
+    }
+
+    proptest! {
+        /// Any sequence of sparse appends and last-point updates gives the
+        /// store a fresh `set_data` of the resulting points would give.
+        #[test]
+        fn sparse_updates_equal_a_fresh_set(
+            steps in proptest::collection::vec((1i64..4, -100.0f64..100.0, any::<bool>()), 1..30),
+        ) {
+            let times: Vec<i64> = (0..200).collect();
+            let index = axis(&times);
+            let o = op(SeriesKind::Line, &index);
+            let mut s = Store::for_kind(SeriesKind::Line);
+            let mut points: Vec<(i64, f64)> = vec![(0, 0.0)];
+            o.set(&mut s, v(&[0], &[0.0])).unwrap();
+            for (dt, value, replace) in steps {
+                let last = points.last().copied().unwrap();
+                if replace {
+                    o.update_last(&mut s, tick(last.0, value)).unwrap();
+                    points.last_mut().unwrap().1 = value;
+                } else {
+                    o.update_last(&mut s, tick(last.0 + dt, value)).unwrap();
+                    points.push((last.0 + dt, value));
+                }
+            }
+            let mut fresh = Store::for_kind(SeriesKind::Line);
+            let (t, vals): (Vec<i64>, Vec<f64>) = points.into_iter().unzip();
+            o.set(&mut fresh, v(&t, &vals)).unwrap();
+            prop_assert!(same(&values(&s), &values(&fresh)));
+        }
     }
 
     #[test]

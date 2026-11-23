@@ -1,4 +1,4 @@
-<!-- source: 084e0fa734 -->
+<!-- source: c8a2437334 -->
 # 데스크톱 (Rust + winit)
 
 `ferrochart-winit`는 창을 열고, wgpu로 렌더링하며, 마우스·트랙패드·키보드 입력을
@@ -6,8 +6,8 @@
 
 ```toml
 [dependencies]
-ferrochart-core = "0.1"
-ferrochart-winit = "0.1"
+ferrochart-core = "0.5"
+ferrochart-winit = "0.5"
 ```
 
 ## 데이터가 있는 창

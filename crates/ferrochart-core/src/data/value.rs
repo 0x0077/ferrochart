@@ -36,6 +36,11 @@ pub(crate) struct ValueStore {
     lod: Lod,
     log: ChangeLog,
     extremes_cache: Option<ExtremesCache>,
+    /// Logical index of the given point before the last one when the slots
+    /// between them were filled by interpolation (`None` otherwise or when
+    /// unknown). [`set_last_interpolated`](Self::set_last_interpolated) uses
+    /// it to keep those slots on the segment to the new last value.
+    fill_from: Option<i64>,
 }
 
 macro_rules! raw {
@@ -190,6 +195,7 @@ impl ValueStore {
             lod: Lod::default(),
             log: core::mem::take(&mut self.log),
             extremes_cache: None,
+            fill_from: None,
         };
         next.lod = match Lod::build(&raw!(next)) {
             Ok(lod) => lod,
@@ -223,6 +229,9 @@ impl ValueStore {
         check_values(values)?;
         self.check_colors(colors, values.len())?;
         let m = values.len();
+        if m > 0 {
+            self.fill_from = None;
+        }
         let new_end = self.end().saturating_add(to_i64(m));
         self.values.reserve_back(m)?;
         if let Some(c) = self.colors.as_mut() {
@@ -275,6 +284,46 @@ impl ValueStore {
         self.lod.update(&raw!(self), span);
         self.log.record(span);
         Ok(())
+    }
+
+    /// Records that the slots between logical index `from` (a given point)
+    /// and the last point were filled by interpolation; `None` when they
+    /// were not (or are adjacent).
+    pub fn set_fill_from(&mut self, from: Option<i64>) {
+        self.fill_from = from.filter(|&f| f >= self.first && f < self.end() - 2);
+    }
+
+    /// Overwrites the last value and, when the slots before it were filled by
+    /// interpolation ([`set_fill_from`](Self::set_fill_from)), recomputes them
+    /// on the segment to the new value with the arithmetic of [`densify`], so
+    /// the store equals a fresh `set_data` of the same points. No allocation.
+    /// Returns whether slots other than the last one changed.
+    pub fn set_last_interpolated(&mut self, value: f64) -> Result<bool> {
+        let Some(a) = self.fill_from else {
+            self.set_last(value, None)?;
+            return Ok(false);
+        };
+        check_values(&[value])?;
+        let (Some(pa), Some(last)) = (
+            usize::try_from(a - self.first).ok(),
+            self.len().checked_sub(1),
+        ) else {
+            self.set_last(value, None)?;
+            return Ok(false);
+        };
+        let prev = self.values[pa];
+        let gap = last - pa;
+        for s in 1..gap {
+            self.values[pa + s] = prev + (value - prev) * (s as f64 / gap as f64);
+        }
+        self.values[last] = value;
+        let span = IdxSpan {
+            start: a + 1,
+            end: self.end(),
+        };
+        self.lod.update(&raw!(self), span);
+        self.log.record(span);
+        Ok(true)
     }
 
     /// Overwrites the last value in place (no allocation).

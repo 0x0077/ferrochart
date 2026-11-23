@@ -111,6 +111,63 @@ def test_recorded_data_is_compacted(recording):
     assert colors[0] == 0xFF0000FF and colors[1] == 0
 
 
+def test_live_updates_fold_into_one_set_data(recording):
+    c = fc.Chart()
+    s = c.add_series("candlestick")
+    line = c.add_series("line")
+    d = fc.random_walk(2, 300, 0, HOUR)
+    s.set_data({k: x[:10] for k, x in d.items()})
+    colors = ["#ff0000"] + [None] * 9
+    line.set_data({"time": d["time"][:10], "value": d["close"][:10], "color": colors})
+    for i in range(10, 300):
+        t = int(d["time"][i])
+        for close in (d["open"][i], d["close"][i]):
+            s.update_last(t, open=d["open"][i], high=d["high"][i], low=d["low"][i],
+                          close=close, volume=d["volume"][i])
+        line.update_last(t, d["open"][i])
+        line.update_last(t, d["close"][i])
+        if i % 50 == 0:
+            s.append({k: x[i + 1 : i + 2] for k, x in d.items()})
+            line.append({"time": d["time"][i + 1 : i + 2], "value": d["close"][i + 1 : i + 2]})
+            s.update_last(int(d["time"][i + 1]), open=d["open"][i + 1], high=d["high"][i + 1],
+                          low=d["low"][i + 1], close=d["close"][i + 1], volume=d["volume"][i + 1])
+            line.update_last(int(d["time"][i + 1]), d["close"][i + 1])
+    # Index 51, 101, … came twice (append, then the loop): the same bar.
+    ops = c._rec.ops
+    assert len(ops) < 2 + 2 * (_jupyter.FOLD_AFTER + 2)
+    names = [op["op"] for _, op, _ in ops]
+    assert names[:4] == ["addSeries", "addSeries", "setData", "setData"]
+    replay: dict[int, dict[str, np.ndarray]] = {}
+    for _, op, buf in ops:
+        if op["op"] == "setData":
+            replay[op["series"]] = {k: v.copy() for k, v in _jupyter.decode_columns(buf).items()}
+        elif op["op"] == "append":
+            more = _jupyter.decode_columns(buf)
+            cur = replay[op["series"]]
+            replay[op["series"]] = {k: np.concatenate([v, more[k]]) for k, v in cur.items()}
+        elif op["op"] == "update":
+            replay[op["series"]] = _jupyter._apply_update(replay[op["series"]], op)
+    candles = replay[s.id]
+    for k in ("time", "open", "high", "low", "close", "volume"):
+        np.testing.assert_array_equal(candles[k], d[k], err_msg=k)
+    values = replay[line.id]
+    np.testing.assert_array_equal(values["time"], d["time"])
+    np.testing.assert_array_equal(values["value"], d["close"])
+    assert values["color"][0] == 0xFF0000FF and not values["color"][1:].any()
+
+
+def test_live_plot_updates_fold(recording):
+    p = fc.Plot()
+    m = p.add_mark("line", [0.0])
+    for i in range(1, 200):
+        m.append(x=[i], y=[0.0])
+        m.update_last(i, i * 2.0)
+    ops = p._rec.ops
+    assert len(ops) <= _jupyter.FOLD_AFTER + 2
+    first = next(op for _, op, _ in ops if op["op"] == "setData")
+    assert first["mark"] == m.id
+
+
 @pytest.fixture
 def widget(recording):
     pytest.importorskip("anywidget")

@@ -8,6 +8,7 @@ import { Home } from '@/components/Home';
 import { localCategories } from '@/lib/catalog-text';
 import { fmt, type Locale } from '@/lib/i18n';
 import { messages } from '@/lib/messages';
+import { JsonLd, pageJsonLd } from '@/lib/jsonld';
 import { describe, pageMeta } from '@/lib/seo';
 
 export type ChartParams = { cat: string; demo: string };
@@ -41,5 +42,22 @@ export function chartMeta(locale: Locale, params: ChartParams): Metadata {
 export function ChartPage({ locale, params }: { locale: Locale; params: ChartParams }) {
   const found = find(locale, params);
   if (!found) notFound();
-  return <Home locale={locale} open={found} />;
+  const { cat, demo } = found;
+  return (
+    <>
+      <JsonLd data={pageJsonLd({
+        type: 'WebPage',
+        metadata: chartMeta(locale, params),
+        locale,
+        path: `/charts/${cat.id}/${demo.id}`,
+        breadcrumbs: [
+          { name: messages(locale).nav.home, path: '/' },
+          // The category navigation opens its first example; there is no separate category page.
+          { name: cat.title, path: `/charts/${cat.id}/${cat.demos[0].id}` },
+          { name: demo.title, path: `/charts/${cat.id}/${demo.id}` },
+        ],
+      })} />
+      <Home locale={locale} open={found} />
+    </>
+  );
 }

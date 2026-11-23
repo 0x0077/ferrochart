@@ -915,6 +915,22 @@ impl Plot {
             self.category_count(AxisId::Right),
         ];
         let dpr = self.dpr;
+        // Rule labels are written on the axis too: it is as wide as the
+        // widest of them, whether or not the rule is in view, so the axis
+        // does not jump while panning. A label background reaches half a pad
+        // past the text, inside the pad on each side of the axis.
+        let mut rule_w = [0.0f32; 2];
+        for (_, r) in &self.rules {
+            let Some(t) = r.label.as_deref().filter(|t| !t.is_empty()) else {
+                continue;
+            };
+            let k = match r.axis {
+                AxisId::Left => 0,
+                AxisId::Right => 1,
+                AxisId::X => continue,
+            };
+            rule_w[k] = rule_w[k].max(text_width(text, t, font));
+        }
         for (k, id) in [AxisId::Left, AxisId::Right].into_iter().enumerate() {
             let a = self.axis_mut(id);
             a.start = top;
@@ -927,6 +943,7 @@ impl Plot {
                 } else {
                     a.widest_tick(text, font)
                 };
+                let label_w = label_w.max(rule_w[k]);
                 widths[k] = (f64::from(label_w) + 2.0 * pad).ceil().min(w * 0.4);
             }
         }

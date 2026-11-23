@@ -2081,7 +2081,10 @@ impl Chart {
     /// Real-time update. Replaces the last point if `bar.time` equals its time
     /// (no allocation), appends one if it is later. Returns the applied change.
     /// Value series (line, area, baseline, histogram) take `bar.close` as the
-    /// value and ignore the other fields. For a transform series `bar` is an
+    /// value and ignore the other fields. When the last point of a sparse
+    /// line, area or baseline series follows slots filled by interpolation,
+    /// those slots move with it (as after a fresh `set_data` of the same
+    /// points) and the result is [`DataChange::Replace`]. For a transform series `bar` is an
     /// input and the result is the change of the output (`Append { count: 0
     /// }` if the output did not change); replacing the last input does not
     /// allocate while the number of forming elements stays the same.

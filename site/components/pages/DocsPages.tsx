@@ -10,6 +10,7 @@ import { SiteHeader } from '@/components/SiteHeader';
 import { docGroups, docPages, docSource, renderDoc } from '@/lib/docs';
 import { fmt, type Locale } from '@/lib/i18n';
 import { messages } from '@/lib/messages';
+import { JsonLd, docJsonLd } from '@/lib/jsonld';
 import { describe, pageMeta } from '@/lib/seo';
 
 export function DocsLayout({ locale, children }: { locale: Locale; children: ReactNode }) {
@@ -35,7 +36,12 @@ export function docsIndexMeta(locale: Locale): Metadata {
 
 export function DocsIndex({ locale }: { locale: Locale }) {
   const page = docPages(locale).find((p) => p.slug === '');
-  return page ? <DocArticle page={page} locale={locale} /> : null;
+  return page ? (
+    <>
+      <JsonLd data={docJsonLd(docsIndexMeta(locale), locale, '/docs', page.title)} />
+      <DocArticle page={page} locale={locale} />
+    </>
+  ) : null;
 }
 
 export function docParams(): { slug: string }[] {
@@ -59,5 +65,10 @@ export function docMeta(locale: Locale, slug: string): Metadata {
 export function DocChapter({ locale, slug }: { locale: Locale; slug: string }) {
   const page = docPages(locale).find((p) => p.slug === slug);
   if (!page || page.file.startsWith('api:')) notFound();
-  return <DocArticle page={page} locale={locale} />;
+  return (
+    <>
+      <JsonLd data={docJsonLd(docMeta(locale, slug), locale, `/docs/${slug}`, page.title)} />
+      <DocArticle page={page} locale={locale} />
+    </>
+  );
 }

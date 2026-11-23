@@ -258,6 +258,29 @@ impl Tool {
         }
     }
 
+    /// Which ray labels of a Gann fan are drawn: all, except those closer
+    /// than one line height (`h`) to a label nearer the 1x1 ray on the same
+    /// side. The flat rays end close together near the origin, and their
+    /// labels would overlap.
+    fn gann_labels(p0: PointPx, p1: PointPx, h: f32) -> [bool; 9] {
+        let mut show = [false; 9];
+        let main = GANN.iter().position(|&(_, n)| n == "1x1").unwrap_or(4);
+        show[main] = true;
+        let y = |i: usize| Self::gann_point(p0, p1, GANN[i].0).y;
+        let mut walk = |order: &mut dyn Iterator<Item = usize>| {
+            let mut last = y(main);
+            for i in order {
+                if (y(i) - last).abs() >= h {
+                    show[i] = true;
+                    last = y(i);
+                }
+            }
+        };
+        walk(&mut (0..main).rev());
+        walk(&mut (main + 1..GANN.len()));
+        show
+    }
+
     /// x of the Fibonacci time zones, in order.
     fn zones<'a>(&'a self, ctx: &'a DrawingCtx<'_>) -> impl Iterator<Item = (u32, f32)> + 'a {
         let ends = self
@@ -417,7 +440,8 @@ impl Tool {
         };
         let label = self.font_label(ctx, TextAlign::Left);
         let gap = ctx.px(Css(LABEL_GAP)).0;
-        for (k, name) in GANN {
+        let shown = Self::gann_labels(p0, p1, ctx.line_height(label.font));
+        for (i, (k, name)) in GANN.into_iter().enumerate() {
             let main = name == "1x1";
             let q = Self::gann_point(p0, p1, k);
             let Some((a, b)) = clip_line(p0, q, ctx.plot(), false, true) else {
@@ -434,7 +458,9 @@ impl Tool {
                 }
             };
             out.line(a, b, s);
-            out.text(add(q, gap, 0.0), name, label);
+            if shown[i] {
+                out.text(add(q, gap, 0.0), name, label);
+            }
         }
     }
 
@@ -738,5 +764,20 @@ mod tests {
         let (p0, p1) = (PointPx { x: 0.0, y: 100.0 }, PointPx { x: 10.0, y: 90.0 });
         assert_eq!(Tool::gann_point(p0, p1, 2.0), PointPx { x: 10.0, y: 80.0 });
         assert_eq!(Tool::gann_point(p0, p1, 0.5), PointPx { x: 10.0, y: 95.0 });
+    }
+
+    #[test]
+    fn gann_labels_do_not_overlap() {
+        let p0 = PointPx { x: 0.0, y: 100.0 };
+        // 1x1 rises 24 px: 1x2 ends 12 px below its label (shown); 1x3, 1x4
+        // and 1x8 end 4, 6 and 9 px below the 1x2 label (hidden).
+        let shown = Tool::gann_labels(p0, PointPx { x: 50.0, y: 76.0 }, 12.0);
+        assert_eq!(
+            shown,
+            [false, false, false, true, true, true, true, true, true]
+        );
+        // A steep fan has room for every label.
+        let shown = Tool::gann_labels(p0, PointPx { x: 50.0, y: -300.0 }, 12.0);
+        assert!(shown.iter().all(|&s| s));
     }
 }

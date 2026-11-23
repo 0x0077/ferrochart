@@ -1,12 +1,12 @@
-<!-- source: 084e0fa734 -->
+<!-- source: c8a2437334 -->
 # デスクトップ（Rust + winit）
 
 `ferrochart-winit`はウィンドウを開き、wgpuでレンダリングし、マウス、トラックパッド、キーボードの入力を処理します。渡すのは`Chart`と、必要に応じてコールバックです。
 
 ```toml
 [dependencies]
-ferrochart-core = "0.1"
-ferrochart-winit = "0.1"
+ferrochart-core = "0.5"
+ferrochart-winit = "0.5"
 ```
 
 ## データを表示するウィンドウ

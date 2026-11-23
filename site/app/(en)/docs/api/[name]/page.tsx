@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { DocArticle } from '@/components/DocArticle';
 import { apiItems } from '@/lib/apiref';
 import { pageMeta } from '@/lib/seo';
+import { JsonLd, docJsonLd } from '@/lib/jsonld';
 
 export const dynamicParams = false;
 
@@ -26,5 +27,11 @@ export default async function ApiItemPage({ params }: { params: Promise<{ name: 
   const { name } = await params;
   const item = apiItems().find((i) => i.name === name);
   if (!item) notFound();
-  return <DocArticle locale="en" page={{ slug: `api/${name}`, title: name, file: `api:${name}`, href: `/docs/api/${name}` }} />;
+  const page = { slug: `api/${name}`, title: name, file: `api:${name}`, href: `/docs/api/${name}` };
+  return (
+    <>
+      <JsonLd data={docJsonLd(await generateMetadata({ params }), 'en', page.href, page.title)} />
+      <DocArticle locale="en" page={page} />
+    </>
+  );
 }
