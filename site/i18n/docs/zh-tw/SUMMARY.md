@@ -1,4 +1,4 @@
-<!-- source: 8ffa98e352 -->
+<!-- source: 11150d48c5 -->
 # Summary
 
 [簡介](introduction.md)
@@ -35,6 +35,7 @@
 
 # 進階
 
+- [實用配方](cookbook.md)
 - [從 lightweight-charts 遷移](migrate.md)
 - [渲染原理](rendering.md)
 - [效能](performance.md)

@@ -1,4 +1,4 @@
-<!-- source: 8ffa98e352 -->
+<!-- source: 11150d48c5 -->
 # Summary
 
 [소개](introduction.md)
@@ -35,6 +35,7 @@
 
 # 더 알아보기
 
+- [쿡북](cookbook.md)
 - [lightweight-charts에서 마이그레이션](migrate.md)
 - [렌더링 동작 방식](rendering.md)
 - [성능](performance.md)

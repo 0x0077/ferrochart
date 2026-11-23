@@ -1,4 +1,4 @@
-<!-- source: 8ffa98e352 -->
+<!-- source: 11150d48c5 -->
 # Summary
 
 [はじめに](introduction.md)
@@ -35,6 +35,7 @@
 
 # さらに詳しく
 
+- [クックブック](cookbook.md)
 - [lightweight-charts からの移行](migrate.md)
 - [レンダリングの仕組み](rendering.md)
 - [パフォーマンス](performance.md)

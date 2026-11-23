@@ -34,6 +34,7 @@
 
 # Going further
 
+- [Cookbook](cookbook.md)
 - [Migrating from lightweight-charts](migrate.md)
 - [How rendering works](rendering.md)
 - [Performance](performance.md)

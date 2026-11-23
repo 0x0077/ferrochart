@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Real-time updates of sparse line series** ([#1](https://github.com/0x0077/ferrochart/issues/1)).
+  On a line, area or baseline series with points on only some bars,
+  `update_last` now moves the interpolated points before the last one
+  with it, as `set_data` of the same points would. It returns
+  `DataChange::Replace` in that case, since more than the last value
+  changed. Histograms keep their gaps.
+- **Gann fan labels** that would overlap near the origin are not drawn.
+- **Plot**: the left and right axes are wide enough for their rule labels.
+- **Jupyter**: the operations recorded for a live chart stay bounded, so
+  views opened later load quickly.
+
 ## [0.5.0] - 2026-11-23
 
 Markers that carry your data, clustering across bars and bar quality flags.
