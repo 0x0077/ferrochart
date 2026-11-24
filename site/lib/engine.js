@@ -4,8 +4,16 @@
 // made by tests/web/site-thumbs.mjs), so the page creates no GPU devices
 // beyond the chart being viewed. Browser only: import it from effects.
 
-/** Where scripts/copy-wasm.mjs puts the engine (public/wasm/). */
-const ENGINE_URL = '/wasm/ferrochart_wasm.js';
+/**
+ * Where scripts/copy-wasm.mjs puts the engine (public/wasm/), with the
+ * build's content hash (next.config.ts) so a new engine bypasses every
+ * cache. The .wasm address is passed explicitly: the glue script would
+ * resolve it against its own URL, which drops the query.
+ */
+const WASM_VERSION = process.env.NEXT_PUBLIC_WASM_VERSION ?? '';
+const versioned = (file) => `/wasm/${file}${WASM_VERSION ? `?v=${WASM_VERSION}` : ''}`;
+const ENGINE_URL = versioned('ferrochart_wasm.js');
+const WASM_URL = versioned('ferrochart_wasm_bg.wasm');
 
 let booted = null;
 
@@ -15,7 +23,7 @@ let booted = null;
  */
 export function boot() {
   booted ??= import(/* webpackIgnore: true */ /* turbopackIgnore: true */ ENGINE_URL).then(async (m) => {
-    await m.default();
+    await m.default({ module_or_path: WASM_URL });
     return m;
   });
   return booted;
