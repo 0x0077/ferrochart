@@ -1,4 +1,4 @@
-<!-- source: 5f948529f4 -->
+<!-- source: bc2d94fef4 -->
 # 十字光标与事件
 
 图表通过事件告诉你它上面发生了什么：十字光标移动、点击、可见范围变化、画线被创建或编辑，等等。本章列出所有事件、它们的载荷和触发时机，并演示两个常见用法：跟随十字光标的图例，以及响应对标记和系列的点击。
@@ -92,8 +92,8 @@ interface ClickEvent {
 
 type ClickTarget =
   | { type: 'drawing'; id: number }
-  | { type: 'marker'; series: Series; index: number }
-  | { type: 'markerOverflow'; series: Series; first: number; count: number }
+  | { type: 'marker'; series: Series; index: number; id: number; marker: Marker }
+  | { type: 'markerOverflow'; series: Series; first: number; count: number; id: number; bars: { from: number; to: number }; marker: Marker }
   | { type: 'series'; series: Series };
 ```
 
@@ -102,7 +102,7 @@ type ClickTarget =
 `target` 是指针下方的对象，按以下顺序检查：
 
 1. **画线**（其主体或某个控制点）：`{ type: 'drawing', id }`。按下画线也会选中它。
-2. **标记**：`{ type: 'marker', series, index }`，其中 `index` 是该标记在 `series.markers()`（按时间排序）中的位置。被折叠标记的“+k”徽标给出 `{ type: 'markerOverflow', series, first, count }`：未绘制的标记是 `series.markers().slice(first, first + count)`（见[标记与价格线](markers.md)）。
+2. **标记**：`{ type: 'marker', series, index, id, marker }`，其中 `index` 是在按时间排序的 `series.markers()` 中的位置，`id` 是自定义的标记 id（未设置时为 0），`marker` 是传入 `setMarkers` 的原始对象，包含自定义字段。折叠或聚合产生的“+k”徽标给出 `{ type: 'markerOverflow', series, first, count, id, bars, marker }`：`first` 是第一个隐藏标记在排序列表中的索引，`count` 是该侧隐藏标记的数量，`id`/`marker` 指向第一个隐藏标记，`bars: { from, to }` 是包含两端的逻辑 K 线范围。隐藏标记在排序列表中不一定连续。建议通过 `id`/`marker` 关联自有数据；参见[标记数据](markers.md#your-own-data-on-a-marker)和[聚合](markers.md#clustering-across-bars)。
 3. **系列**：当指针位于 K 线实体或影线上、距线条 4 CSS px 以内、在柱状图的柱内或在圆点上时，为 `{ type: 'series', series }`。系列重叠时，最后添加的那个胜出。
 4. 空白处为 `null`。
 
@@ -226,6 +226,9 @@ chart.on('warning', (w) => {
 interface MarkerHoverEvent {
   series: Series;
   index: number;          // position in series.markers(); for a badge, the first marker not drawn
+  id: number;             // your marker id, 0 if absent
+  marker: Marker;         // original object; for a badge, the first hidden marker
+  bars: { from: number; to: number }; // inclusive logical bar range
   overflow: number;       // k for a "+k" badge, 0 for a marker
   x: number;              // center, CSS px from the canvas' top-left corner
   y: number;
@@ -250,8 +253,12 @@ interface MarkerHoverEvent {
 ```ts
 import { FerroChart, type ChartEventMap } from '@ferrochart/core';
 
-const canvas = document.getElementById('chart') as HTMLCanvasElement;
-const legend = document.getElementById('legend') as HTMLDivElement;
+const canvas = document.getElementById('chart');
+const legend = document.getElementById('legend');
+
+if (!(canvas instanceof HTMLCanvasElement) || !(legend instanceof HTMLDivElement)) {
+  throw new Error('Expected #chart canvas and #legend div');
+}
 
 const chart = await FerroChart.create(canvas);
 const candles = chart.addCandlestickSeries();
@@ -260,10 +267,10 @@ const sma = chart.addIndicator(candles, 'sma', { n: 20 }).outputs()[0];
 
 const fmt = (v: number | undefined) => (v === undefined || Number.isNaN(v) ? '–' : v.toFixed(2));
 
-function show(index: number) {
+const show = (index: number) => {
   const bar = candles.dataAt(index);
   const avg = sma.dataAt(index);
-  if (!bar) {
+  if (!bar || !('open' in bar)) {
     legend.textContent = '';
     return;
   }
@@ -271,8 +278,8 @@ function show(index: number) {
   const date = time === null ? '' : new Date(time).toISOString().slice(0, 16).replace('T', ' ');
   legend.textContent =
     `${date}  O ${fmt(bar.open)}  H ${fmt(bar.high)}  L ${fmt(bar.low)}  C ${fmt(bar.close)}` +
-    `  SMA 20 ${fmt(avg?.value)}`;
-}
+    `  SMA 20 ${fmt(avg && 'value' in avg ? avg.value : undefined)}`;
+};
 
 function showLatest() {
   const range = chart.dataRange();
@@ -286,7 +293,7 @@ chart.on('crosshairMove', (e: ChartEventMap['crosshairMove']) => {
 showLatest();
 ```
 
-`dataAt` 对 OHLC 系列返回 `{ open, high, low, close, volume }`，对其他系列返回 `{ value }`，没有数据或处于缺口时返回 `null`。指标输出在预热期内的 K 线上为 `NaN`。如果实时更新改变了最新一根 K 线且指针不在图表上，请在 `update` 之后调用 `showLatest()`。
+`dataAt` 对 OHLC 系列返回 `{ open, high, low, close, volume }`，对其他系列返回 `{ value }`，没有数据或处于缺口时返回 `null`。排除 `null` 后，用 `'open' in bar` 或 `'value' in avg` 收窄返回值类型，再读取其字段。指标输出在预热期内的 K 线上为 `NaN`。如果实时更新改变了最新一根 K 线且指针不在图表上，请在 `update` 之后调用 `showLatest()`。
 
 ## 示例：点击标记和系列
 
@@ -310,7 +317,7 @@ chart.on('click', (e: ChartEventMap['click']) => {
   }
   switch (t.type) {
     case 'marker': {
-      const marker = t.series.markers()[t.index];
+      const marker = t.marker;
       console.log(`marker "${marker.text}" at`, new Date(Number(marker.time)));
       break;
     }

@@ -4,7 +4,7 @@
 use ferrochart_core::chart::{ChartEvent, ClickTarget, WarningKind};
 use ferrochart_core::geom::{Css, PointCss};
 use ferrochart_core::interaction::{
-    Button, CursorIcon, GesturePhase, InputEvent, Key, Modifiers, WheelDelta,
+    Button, CursorIcon, GesturePhase, InputEvent, Key, Modifiers, PointerKind, WheelDelta,
 };
 
 use crate::{
@@ -28,6 +28,17 @@ pub const FERROCHART_INPUT_PINCH: u32 = 6;
 pub const FERROCHART_INPUT_KEY: u32 = 7;
 /// Input: double click.
 pub const FERROCHART_INPUT_DOUBLE_CLICK: u32 = 8;
+/// Input: the system took the pointer over (`pointer_id`): its gesture ends
+/// without a click or kinetic scrolling.
+pub const FERROCHART_INPUT_POINTER_CANCEL: u32 = 9;
+
+/// Pointer kind: mouse (also the value when `pointer_kind` is left out).
+pub const FERROCHART_POINTER_MOUSE: u32 = 0;
+/// Pointer kind: a finger on a touch screen (touch rules: wider drag
+/// threshold and hit tolerances, two-finger pinch, long-press crosshair).
+pub const FERROCHART_POINTER_TOUCH: u32 = 1;
+/// Pointer kind: a pen (behaves like the mouse).
+pub const FERROCHART_POINTER_PEN: u32 = 2;
 
 /// Left mouse button (or touch, pen).
 pub const FERROCHART_BUTTON_LEFT: u32 = 0;
@@ -137,6 +148,9 @@ pub struct FerroChartInput {
     pub pressed: u8,
     /// Reserved, 0.
     pub reserved: [u8; 3],
+    /// `FERROCHART_POINTER_*` (pointer events). Programs built with an
+    /// older, shorter struct get `FERROCHART_POINTER_MOUSE`.
+    pub pointer_kind: u32,
 }
 
 // SAFETY: repr(C), u32 size first, plain numbers.
@@ -198,6 +212,12 @@ fn convert(e: &FerroChartInput) -> Result<InputEvent> {
             y: finite(e.y, "y")?,
         })
     };
+    let kind = match e.pointer_kind {
+        FERROCHART_POINTER_MOUSE => PointerKind::Mouse,
+        FERROCHART_POINTER_TOUCH => PointerKind::Touch,
+        FERROCHART_POINTER_PEN => PointerKind::Pen,
+        k => return Err(Error::invalid(format!("unknown pointer kind {k}"))),
+    };
     let time_ms = if e.time_ms.is_finite() {
         e.time_ms
     } else {
@@ -206,6 +226,7 @@ fn convert(e: &FerroChartInput) -> Result<InputEvent> {
     Ok(match e.r#type {
         FERROCHART_INPUT_POINTER_DOWN => InputEvent::PointerDown {
             id: e.pointer_id,
+            kind,
             pos: pos()?,
             button: button(e.button)?,
             mods: mods(e.mods),
@@ -213,18 +234,21 @@ fn convert(e: &FerroChartInput) -> Result<InputEvent> {
         },
         FERROCHART_INPUT_POINTER_MOVE => InputEvent::PointerMove {
             id: e.pointer_id,
+            kind,
             pos: pos()?,
             mods: mods(e.mods),
             time_ms,
         },
         FERROCHART_INPUT_POINTER_UP => InputEvent::PointerUp {
             id: e.pointer_id,
+            kind,
             pos: pos()?,
             button: button(e.button)?,
             mods: mods(e.mods),
             time_ms,
         },
         FERROCHART_INPUT_POINTER_LEAVE => InputEvent::PointerLeave,
+        FERROCHART_INPUT_POINTER_CANCEL => InputEvent::PointerCancel { id: e.pointer_id },
         FERROCHART_INPUT_WHEEL => {
             let (x, y) = (finite(e.delta_x, "delta_x")?, finite(e.delta_y, "delta_y")?);
             InputEvent::Wheel {

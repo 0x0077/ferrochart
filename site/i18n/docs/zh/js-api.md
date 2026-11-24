@@ -1,4 +1,4 @@
-<!-- source: 8cc76ebe6c -->
+<!-- source: 29952e0395 -->
 # JavaScript API 概览
 
 包名 `@ferrochart/core`。本页介绍如何加载模块，以及 API 各部分共同遵循的约定。完整的参考文档（每个类、方法和类型）由包的 TypeScript 声明生成：[JavaScript API 参考](https://ferrochart.com/docs/api)。
@@ -82,7 +82,7 @@ API 的每个对象都持有 WebAssembly 内存。图表返回的对象（`Serie
 
 ### canvas 上处理的输入
 
-指针（鼠标、触控笔、触摸）、滚轮、键盘（canvas 会获得 `tabindex="0"`）、双击以及触控板双指缩放（Chrome 和 Firefox 中为 Ctrl+滚轮，Safari 中为 gesture 事件）。canvas 的样式会被设置 `touch-action: none`。各手势的作用见[手势与键盘](interaction.md)。
+指针（鼠标、触控笔、触摸）、滚轮、键盘（canvas 会获得 `tabindex="0"`）、双击、触控板双指缩放（Chrome 和 Firefox 中为 Ctrl+滚轮，Safari 中为 gesture 事件），以及由图表自行识别的双指触摸。canvas 的样式会被设置为 `touch-action: none`；使用 `touchScroll: 'page'` 时则为 `pan-y`（见[触屏](web.md#touch-screens)）。各手势的作用见[手势与键盘](interaction.md)。
 
 ## 测试数据
 

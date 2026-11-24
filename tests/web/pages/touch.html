@@ -1,0 +1,31 @@
+<!doctype html>
+<!-- Browser test page for touch input and touchScroll; driven by tests/web/touch.mjs. A chart at the
+     top of a page taller than the viewport, so vertical swipes can scroll. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<style>body { margin: 0; } canvas { width: 360px; height: 300px; display: block; } #pad { height: 2000px; }</style>
+<canvas id="c"></canvas><div id="pad"></div>
+<script type="module">
+import { FerroChart, randomWalk } from '/crates/ferrochart-wasm/pkg/index.js';
+
+const q = new URLSearchParams(location.search);
+const chart = await FerroChart.create(document.getElementById('c'), {
+  renderer: q.get('renderer') ?? 'auto',
+  touchScroll: q.get('touchScroll') ?? 'chart',
+});
+chart.addCandlestickSeries().setData(randomWalk(7, 500, 0, 60_000));
+const log = { click: [], crosshairMove: [] };
+for (const k of Object.keys(log)) chart.on(k, (e) => log[k].push(e));
+window.__chart = chart;
+window.__log = log;
+window.__state = () => {
+  const r = chart.visibleLogicalRange();
+  const last = log.crosshairMove[log.crosshairMove.length - 1];
+  return {
+    from: r.from, to: r.to, spacing: chart.barSpacing, scrollY: window.scrollY,
+    clicks: log.click.length, crosshair: last ? last.point !== null : null, crosshairs: log.crosshairMove.length,
+  };
+};
+window.__ready = true;
+</script>

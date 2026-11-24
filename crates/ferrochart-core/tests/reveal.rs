@@ -46,6 +46,7 @@ fn chart() -> Chart {
     chart.build_frame(0.0, &MonoMeasurer);
     chart.handle_input(InputEvent::PointerMove {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos: PointCss { x: 300.0, y: 120.0 },
         mods: Modifiers::default(),
         time_ms: 0.0,

@@ -1,4 +1,4 @@
-<!-- source: d69da2a7ed -->
+<!-- source: 8ace0a0ae7 -->
 # 데이터
 
 이 장에서는 시리즈에 봉과 값을 넣는 방법을 다룹니다. 데이터 형식, 검증 규칙,
@@ -123,6 +123,47 @@ line.setData([
 포인트는 그 위치에 아무것도 표시하지 않고, 라인, 영역, 베이스라인은 이웃한 점을
 잇습니다. 새 시간이 축의 기존 봉 사이에 들어가면 축이 다시 만들어지고 차트가
 `warning` 이벤트를 보냅니다.
+
+## 봉 품질 플래그
+
+캔들스틱, OHLC 바 또는 하이킨아시 시리즈에 `setBarFlags`를 사용해
+애플리케이션이 채우거나 잘라낸 데이터를 나타낼 수 있습니다. 플래그는 가격을
+바꾸지 않으므로, 먼저 준비한 OHLC 데이터를 전달하세요.
+
+```ts
+const start = Date.UTC(2024, 0, 1);
+candles.setData([
+  { time: start, open: 100, high: 102, low: 99, close: 101 },
+  { time: start + 60_000, open: 101, high: 101, low: 101, close: 101 },
+  { time: start + 120_000, open: 101, high: 104, low: 100, close: 103 },
+]);
+candles.applyOptions({ filledBarColor: '#78909c' });
+candles.setBarFlags([
+  { time: start + 60_000, filled: true },
+  { time: start + 120_000, clipped: true },
+]);
+// Clear all quality flags when they are no longer needed:
+// candles.setBarFlags([]);
+```
+
+- `filled`는 실제 거래 없이 데이터 소스가 만들어 넣은 봉을 표시합니다.
+  `filledBarColor`(기본값은 시리즈 주 색상의 40% 불투명도)로 속이 비게 그립니다.
+  실제로 없는 봉은 대신 [공백](#gaps)으로 나타낼 수 있으며, 이 플래그가 누락된
+  데이터를 대신 채워 주지는 않습니다.
+- `clipped`는 이상치 꼬리를 잘라낸 봉을 표시하며, 꼬리 양 끝에 짧은 눈금이
+  나타납니다. 원래 고가/저가는 애플리케이션에서 시간을 키로 보관하고 툴팁에
+  표시하세요. 차트에는 전달한 잘린 값만 있습니다. 한 봉에 두 플래그를 모두
+  설정할 수 있습니다.
+- 호출할 때마다 모든 플래그를 교체하며, `[]`로 지웁니다. 시간은 UTC 밀리초
+  (데이터와 마찬가지로 `Date`/`bigint`도 가능)이며, 시간이 중복되면 마지막 항목이
+  우선합니다. 축소할 때 봉이 합쳐지면 모든 봉이 filled일 때만 합쳐진 봉도 filled가
+  되고, 하나라도 clipped이면 clipped가 됩니다.
+
+Python에서는 `candles.set_bar_flags(times, filled=..., clipped=...)`에
+`times`와 길이가 같은 불리언 배열을 전달하고,
+`candles.apply_options(filled_bar_color="#78909c")`를 사용합니다.
+[Python](python.md#options-indicators-and-drawings)과
+[시리즈 옵션](series.md#series-options)을 참고하세요.
 
 ## 실시간 업데이트
 

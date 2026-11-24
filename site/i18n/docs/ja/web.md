@@ -1,4 +1,4 @@
-<!-- source: c694d739d5 -->
+<!-- source: fbce18a0e1 -->
 # Web（JavaScript / TypeScript）
 
 npmパッケージ`@ferrochart/core`には、WebAssemblyビルドとTypeScriptの型定義が含まれています。利用可能な場合はWebGPUで描画し、そうでなければWebGL2にフォールバックします。
@@ -58,6 +58,22 @@ chart.on('needMoreHistory', ({ barsBeforeStart }) => { /* load older bars */ });
 ```
 
 イベントは、それを発生させたフレームの後に配信されます。
+
+## タッチスクリーン
+
+スマートフォンやタブレットでは、1本指でパン、2本指でズームし、500 msの長押しでクロスヘアを表示します（一覧は[ジェスチャーとキーボード](interaction.md#touch)を参照）。`touchScroll`オプションは、縦スワイプをどちらで処理するかを指定します。
+
+```js
+const chart = await FerroChart.create(canvas, { touchScroll: 'page' });
+chart.setTouchScroll('chart'); // change it later
+```
+
+| `touchScroll` | canvasの`touch-action` | 縦スワイプ | 用途 |
+|---|---|---|---|
+| `'chart'`（デフォルト） | `none` | チャートをパン | 全画面チャート、アプリのようなページ |
+| `'page'` | `pan-y` | ページをスクロール | 記事、ドキュメント、スクロールするパネル内のチャート |
+
+`'page'`でも、横スワイプ、2本指、長押しはチャートで処理します。長押しでクロスヘアが表示された後は、指を上下に動かすとページではなくクロスヘアが動きます。ただし、価格軸の自動スケールがオフの場合、1本指では価格方向にパンできません。2本指を使ってください。`FerroPlot`も同じオプションを受け取ります。
 
 ## 後片付け
 

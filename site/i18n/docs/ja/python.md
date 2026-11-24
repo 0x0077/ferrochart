@@ -1,4 +1,4 @@
-<!-- source: 4bfbed7d9a -->
+<!-- source: 29436687cf -->
 # Python
 
 `ferrochart`パッケージは、Pythonからネイティブウィンドウ、Jupyter、またはPNGにチャートを描画します。描画にはGPU（Metal、Vulkan、DirectX 12）を使い、CPUへのフォールバックもあります。pandasやpolarsのDataFrame、またはNumPy配列のdictを受け取ります。
@@ -51,7 +51,10 @@ candles.set_markers([{"time": t, "position": "below_bar", "shape": "arrow_up", "
 whale = chart.add_icon(avatar)       # a (height, width, 4) uint8 array; RGB works too
 candles.set_markers([{"time": t, "icon": whale, "size": 24, "border": "#2fbf71"},
                      {"time": t, "label": "DB", "position": "below_bar"}])
-candles.apply_options(marker_stack_limit=4)   # 3 markers per bar side, then "+k"
+candles.apply_options(marker_stack_limit=4, marker_cluster=28)
+candles.set_markers([{"id": 101, "time": t, "position": "at_price", "price": 101.5, "text": "fill"}])
+candles.set_bar_flags([t], filled=[True], clipped=[False])
+candles.apply_options(filled_bar_color="#78909c")
 chart.apply_price_scale_options(mode="logarithmic")
 
 rsi = chart.add_indicator(candles, "rsi", n=14)
@@ -72,6 +75,8 @@ saved = json.dumps(chart.save_state())   # view, panes, price scales, drawings
 chart.load_state(json.loads(saved))      # on a chart set up the same way
 ```
 
+マーカーには整数の`id`を指定できます（0はなし）。`"at_price"`には有限の`price`が必要で、積み重ねやクラスタリングの対象にはなりません。`marker_cluster`はCSSピクセル単位の正の距離で、`None`にすると無効になります。`marker_stack_limit`は引き続き1本の足での折りたたみを制御します。`set_bar_flags`はUTCミリ秒の時刻と同じ長さの真偽値配列を使って品質フラグを置き換えます。`filled`は足を中空に描画し、`clipped`はヒゲの両端に目盛りを付けます。ツールチップ用の元の価格はアプリケーション側で保持してください。[マーカーの配置](markers.md#placement-and-snapping)、[クラスタリング](markers.md#clustering-across-bars)、[足の品質フラグ](data.md#bar-quality-flags)を参照してください。
+
 ## イベント
 
 ```python
@@ -82,7 +87,9 @@ def clicked(e):
 chart.on("crosshair_move", lambda e: print(e["point"]))
 ```
 
-イベント：`click`、`crosshair_move`、`visible_range_changed`、`need_more_history`、`drawing_created`、`drawing_modified`、`drawing_removed`、`drawing_selected`、`warning`、`marker_hover`（`series`、`index`、`overflow`、`x`、`y`、`size`を持つdict。ポインターがマーカーから離れたときは`None`）。コールバックはチャートの表示中にメインスレッドで実行されます。
+イベント：`click`、`crosshair_move`、`visible_range_changed`、`need_more_history`、`drawing_created`、`drawing_modified`、`drawing_removed`、`drawing_selected`、`warning`、`marker_hover`（`series`、`index`、`id`、`overflow`、`bars`、`x`、`y`、`size`を持つdict。ポインターがマーカーから離れたときは`None`）。コールバックはチャートの表示中にメインスレッドで実行されます。
+
+マーカーのクリックターゲットには`id`が含まれます。`marker_overflow`ターゲットには、両端を含む足の論理インデックス範囲を表す`bars`も含まれます（ネイティブウィンドウのイベントでは`(from, to)`タプル）。バッジの`id`は、描画されなかった最初のマーカーを識別します。ネイティブPythonのイベントは元のマーカー辞書を返しません。アプリケーションのオブジェクトは、`id`をキーとする対応表に保持してください。
 
 ## 中国語、日本語、韓国語のテキスト
 

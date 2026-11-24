@@ -89,6 +89,7 @@ fn main() {
         let src = &mut charts[hovered];
         src.handle_input(InputEvent::PointerMove {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: PointCss {
                 x: 20.0 + phase * 6.0,
                 y: SIZE.h * 0.4,

@@ -1,4 +1,4 @@
-<!-- source: 325f16fb0e -->
+<!-- source: 610fb1bc72 -->
 # 마커와 가격선
 
 마커는 봉에 붙는 작은 도형이며 텍스트를 함께 달 수 있습니다. 매수·매도 신호나
@@ -32,7 +32,9 @@ candles.setMarkers([]);
 | 필드 | 타입 | 기본값 | 의미 |
 |---|---|---|---|
 | `time` | `number \| bigint \| Date` | 필수 | UTC 밀리초(정수) 또는 `Date`, `markers()`는 숫자를 반환 |
-| `position` | `'aboveBar' \| 'belowBar'` | `'aboveBar'` | 봉의 고가 위 또는 저가 아래. 단일 값 시리즈에서는 값의 위 또는 아래. |
+| `id` | `number` | `0` | 사용자 지정 식별자: 0부터 2^53−1까지의 정수이며 0은 없음을 뜻합니다. 클릭과 호버 이벤트가 보고합니다. |
+| `position` | `'aboveBar' \| 'belowBar' \| 'atPrice'` | `'aboveBar'` | 고가 위, 저가 아래 또는 `price`를 중심으로 배치합니다. 단일 값 시리즈에서는 값의 위 또는 아래. |
+| `price` | `number` | 없음 | `'atPrice'`에서는 필수이며 유한해야 합니다. 다른 위치에서는 허용되지 않습니다. 시리즈의 가격 단위입니다. |
 | `shape` | `'circle' \| 'square' \| 'arrowUp' \| 'arrowDown'` | `'circle'` | 채워진 아이콘 |
 | `color` | `Color \| null` | `null` | 아이콘과 텍스트 색상, `null`이면 시리즈의 주 색상(캔들과 봉은 상승 색상) 사용 |
 | `text` | `string` | `''` | 아이콘 옆, 봉에서 먼 쪽에 표시되는 텍스트, 없으면 빈 문자열 |
@@ -45,7 +47,8 @@ candles.setMarkers([]);
 알 수 없는 `position`이나 `shape`, 없거나 정수가 아닌 `time`, 유효하지 않은
 색상, 4–64 범위를 벗어난 `size`, 8자를 넘는 `label`, 화살표에 지정한 `icon`이나
 `label`, 또는 한 마커에 둘 다 지정한 경우 예외를 던지며, 마커는 이전 상태로
-유지됩니다.
+유지됩니다. 안전한 음이 아닌 정수 범위를 벗어난 `id`, `atPrice`에서 없거나
+유한하지 않은 `price`, 다른 위치에 지정한 `price`도 예외를 발생시킵니다.
 
 ### 마커 읽기
 
@@ -57,6 +60,41 @@ candles.setMarkers([]);
 ([크로스헤어와 이벤트](crosshair-events.md) 참고). 목록이 정렬되어 있으므로
 인덱스는 `setMarkers`에 전달한 배열에서의 위치와 다를 수 있습니다.
 
+### 마커에 사용자 데이터 담기
+
+각 마커에 직접 정한 `id`를 부여하고 같은 객체에 애플리케이션 데이터를 붙이세요.
+JavaScript의 `click`과 `markerHover` 이벤트는 사용자 정의 필드를 포함한 원래
+객체를 `marker`로 반환합니다.
+
+```ts
+import type { Marker } from '@ferrochart/core';
+
+const trades: (Marker & { trade: { wallet: string; quantity: number } })[] = [
+  { id: 101, time: Date.UTC(2024, 0, 15), position: 'belowBar', text: 'Buy',
+    trade: { wallet: 'wallet-a', quantity: 2 } },
+];
+candles.setMarkers(trades);
+
+chart.on('click', ({ target }) => {
+  if (target?.type !== 'marker' || target.series.id !== candles.id) return;
+  const marker = target.marker as (typeof trades)[number];
+  console.log(target.id, marker.trade.wallet, marker.trade.quantity);
+});
+chart.on('markerHover', (e) => {
+  if (!e || e.series.id !== candles.id || e.overflow > 0) return;
+  const marker = e.marker as (typeof trades)[number];
+  console.log(e.id, marker.trade.wallet);
+});
+```
+
+위 타입 단언은 이 시리즈의 마커에 있는 사용자 정의 필드를 나타냅니다.
+`index`는 시간순 정렬 후의 위치이며 애플리케이션 식별자가 아닙니다. 이벤트를
+사용자 데이터와 연결할 때는 `id`나 원래 `marker`를 사용하세요.
+"+k" 배지의 `id`와 `marker`는 별도의 배지 객체가 아니라 숨겨진 첫 번째 마커를
+가리킵니다. `markers()`는 원래 객체가 아닌 정규화된 마커 필드를 반환합니다.
+`setMarkers`로 마커를 교체할 때 사용자 정의 필드를 유지하려면 목록을 직접
+보관하세요.
+
 ### 배치와 맞춤
 
 - 마커는 시간이 `time`과 같은 봉에 그려집니다. 두 봉 사이의 시간은 **다음** 봉에
@@ -64,13 +102,16 @@ candles.setMarkers([]);
   시간은 첫 번째 봉에 맞춰집니다.
 - 그 봉에 시리즈 값이 없으면(공백) 마커는 그려지지 않습니다.
 - 마커는 시리즈의 `shift` 옵션을 따릅니다.
-- 아이콘 크기는 `size` CSS px(기본값 10)이며 봉에서 4 CSS px 떨어져
-  있습니다.
-- 같은 봉의 같은 쪽에 있는 여러 마커는 `markers()` 순서대로 봉에서 멀어지는
+- 아이콘 크기는 `size` CSS px(기본값 10)입니다. 위/아래 마커는 봉에서
+  4 CSS px 떨어져 있습니다.
+- 같은 봉의 같은 쪽에 있는 여러 위/아래 마커는 `markers()` 순서대로 봉에서 멀어지는
   방향으로 쌓입니다. 텍스트가 있는 마커는 아이콘에 텍스트 한 줄을 더한 공간을
   차지합니다.
 - 텍스트는 봉을 중심으로, `aboveBar`면 아이콘 위에, `belowBar`면 아이콘 아래에
   마커 색상으로 표시됩니다.
+- `'atPrice'` 마커는 유한한 `price`를 중심으로 배치되며 텍스트는 오른쪽에
+  표시됩니다. 시간은 여전히 봉에 맞춰지지만 쌓이거나 군집화되지 않습니다.
+  시간과 가격이 같은 마커가 여러 개면 겹칠 수 있습니다.
 - 마커는 플롯 영역 밖으로 나가는 부분이 잘립니다.
 
 ```ts
@@ -78,6 +119,14 @@ candles.setMarkers([]);
 candles.setMarkers([
   { time: t, position: 'belowBar', shape: 'arrowUp', text: 'Entry' },
   { time: t, position: 'belowBar', shape: 'circle', text: 'Alert' },
+]);
+```
+
+정확한 가격에서 발생한 이벤트를 표시하려면 다음과 같이 설정합니다.
+
+```ts
+candles.setMarkers([
+  { id: 102, time: t, position: 'atPrice', price: 101.25, shape: 'circle', text: 'Fill' },
 ]);
 ```
 
@@ -128,9 +177,38 @@ candles.applyOptions({ markerStackLimit: null }); // no limit (the default)
 ```
 
 배지는 시리즈의 주 색상으로 그린 원이며, 대신하는 마커와 크기가 같습니다. 배지를
-클릭하면 target이 `{ type: 'markerOverflow', series, first, count }`인 `click`이
-전송됩니다. 그려지지 않은 마커는 `series.markers().slice(first, first + count)`이며,
-예를 들어 팝업에 목록으로 보여 줄 수 있습니다.
+클릭하면 target이 `{ type: 'markerOverflow', series, first, count, id, marker, bars }`인
+`click`이 전송됩니다. `first`는 숨겨진 첫 번째 마커의 정렬된 인덱스이며, `count`는
+해당 쪽에서 숨겨진 개수이고, `id`/`marker`는 그 첫 번째 마커를 식별합니다.
+`bars`는 첫 번째와 마지막 논리 봉 인덱스를 담으며, 한 봉에서 접힌 경우 둘이
+같습니다. 정렬된 목록에는 다른 쪽의 마커가 사이에 끼어 있을 수 있으므로,
+`count`가 목록의 연속된 구간을 나타내지는 않습니다.
+
+### 여러 봉의 마커 군집화
+
+가까운 여러 봉에 걸쳐 마커를 묶으려면 `markerCluster`에 CSS 픽셀 단위의 유한한
+양수를 설정하세요. `null`(기본값)은 군집화를 끕니다.
+
+```ts
+candles.applyOptions({ markerCluster: 28, markerStackLimit: 4 });
+// Later, keep per-bar folding but turn off cross-bar clustering:
+candles.applyOptions({ markerCluster: null });
+```
+
+버킷에는 `ceil(markerCluster / bar spacing)`개의 논리 인덱스가 들어갑니다
+(최소 하나). 논리 인덱스에 맞춰 정렬되므로 이동해도 마커가 다시 묶이지 않으며,
+확대·축소하면 버킷 크기가 바뀔 수 있습니다. 버킷의 같은 쪽에서 두 개 이상의
+봉에 마커가 있으면 첫 번째 마커와 "+k" 배지만 표시하며, 그쪽에 마커가 가장
+많은 봉에 그립니다. `atPrice` 마커는 참여하지 않습니다.
+
+이런 그룹에서는 군집화가 `markerStackLimit`보다 우선합니다. 그 밖의 경우에는
+`markerStackLimit`이 한 봉의 마커 접기를 계속 제어합니다. 배지를 클릭하면
+`markerOverflow` target이 전달되고, 호버하면 `overflow > 0`입니다.
+`bars: { from, to }`는 배지가 나타내는 첫 번째와 마지막 논리 인덱스를 양 끝을
+포함해 담습니다. 상세 목록을 만들 때는 이 범위, `marker`의 위/아래 위치, 직접
+보관한 마커 데이터를 사용하세요. `first`/`index`와 개수만으로는 구성원의 연속된
+목록을 얻을 수 없습니다. [논리 인덱스](data.md#logical-indices)와
+[클릭 이벤트](crosshair-events.md#click)를 참고하세요.
 
 ### 마커 호버
 
@@ -141,17 +219,18 @@ candles.applyOptions({ markerStackLimit: null }); // no limit (the default)
 ```ts
 chart.on('markerHover', (e) => {
   if (!e) return hideTooltip();
-  const list = e.series.markers();
   if (e.overflow > 0) {
-    showTooltip(e.x, e.y - e.size / 2, `${e.overflow} more`, list.slice(e.index, e.index + e.overflow));
+    showTooltip(e.x, e.y - e.size / 2, `${e.overflow} more · bars ${e.bars.from}–${e.bars.to}`);
   } else {
-    showTooltip(e.x, e.y - e.size / 2, list[e.index].text ?? '');
+    showTooltip(e.x, e.y - e.size / 2, e.marker.text ?? '');
   }
 });
 ```
 
 `index`는 `series.markers()`에서의 위치입니다. 배지의 경우 그려지지 않은 첫 번째
-마커이며 `overflow`는 k입니다(마커는 0). 호버된 마커는 프레임을 그릴 때 찾으므로
+마커이며 `overflow`는 k입니다(마커는 0). `id`와 `marker`는 그 마커를 식별하며,
+`bars`는 마커나 배지가 나타내는 양 끝을 포함한 논리 범위입니다.
+호버된 마커는 프레임을 그릴 때 찾으므로
 이벤트는 프레임당 최대 한 번 전송됩니다. 인트로 애니메이션이 재생되는 동안에는
 어떤 마커도 호버된 것으로 보지 않습니다.
 [크로스헤어와 이벤트](crosshair-events.md)를 참고하세요.
@@ -181,7 +260,7 @@ chart.on('markerHover', (e) => {
 
 ### Python, C, Rust
 
-필드는 모든 바인딩에서 같습니다.
+바인딩마다 고유한 이름 규칙을 사용합니다.
 
 ```python
 red = chart.add_icon(avatar)          # a (height, width, 4) or (height, width, 3) uint8 array
@@ -189,9 +268,17 @@ candles.set_markers([
     {"time": t, "icon": red, "size": 24, "border": "#2fbf71"},
     {"time": t, "position": "below_bar", "label": "DB", "color": "#2962ff"},
 ])
-candles.apply_options(marker_stack_limit=4)
+candles.apply_options(marker_stack_limit=4, marker_cluster=28)
 chart.on("marker_hover", lambda e: print(e))   # None when the pointer leaves
 ```
+
+Python의 마커 딕셔너리는 `id`와 `price`를 동반한 `position="at_price"`를
+받으며, 이벤트는 `id`와 배지의 `bars`를 보고합니다. 원래 객체를 `marker`로
+돌려받는 것은 JavaScript 기능입니다. 네이티브 Python에서는 id를 사용자 객체와
+연결하는 매핑을 직접 보관하세요. Rust에서는 `Marker::id`, `Marker::price`,
+`MarkerPosition::AtPrice`를 쓰며, `SeriesOptions::marker_cluster`로 군집화를
+제어합니다. C에서는 `FerroChartMarker.id`, `.price`,
+`FERROCHART_MARKER_AT_PRICE`를 쓰며, 시리즈 옵션은 `marker_cluster`입니다.
 
 Python에서 `add_icon`은 정수 id를 반환하고 `remove_icon(id)`는 이미지를
 제거합니다. C에서 `ferrochart_add_icon`과 `ferrochart_set_markers`는 같은 필드를

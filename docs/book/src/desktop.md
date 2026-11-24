@@ -90,7 +90,8 @@ cargo run -p example-desktop --release
 Ten million one-minute bars with a simulated feed of 100 ticks per second.
 Drag to pan (flick for kinetic scrolling), wheel or pinch to zoom, drag an axis
 to scale it, double-click an axis to reset it, arrow keys and Home/End to
-navigate.
+navigate. On a touch screen the [touch gestures](interaction.md#touch) work
+too: winit's touch events become touch pointers.
 
 ## Your own event loop
 

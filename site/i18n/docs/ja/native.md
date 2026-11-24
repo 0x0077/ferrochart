@@ -1,4 +1,4 @@
-<!-- source: e853ddc392 -->
+<!-- source: 824d4ea76a -->
 # C、C++、C#
 
 `ferrochart-ffi`は、ヘッダー1つ（`ferrochart.h`）のCライブラリです。CとC++ からは直接、C#、Swift、Go、Qt、FlutterなどCを呼べる言語からも使えます。ライブラリは、あなたが所有するネイティブウィンドウ、またはRGBAバッファに描画します。
@@ -78,6 +78,12 @@ ferrochart_set_markers(chart, candles, m, 2); // replaces the series' markers
 
 1本の足に多数のマーカーがある場合は、シリーズオプションで`marker_stack_limit`を設定します。それを超えた分は「+k」バッジでまとめて表されます。`FERROCHART_EVENT_MARKER_HOVER`はポインターの下にあるマーカーまたはバッジ（`target_type`、`target_index`、`x`/`y`にその中心）を通知するので、たとえばツールチップの表示に使えます。バッジをクリックすると、`target_type`が`FERROCHART_TARGET_MARKER_OVERFLOW`になり、`count`が設定されます。
 
+`FerroChartMarker.id`はアプリケーション側の`uint64_t`識別子です（0はなし）。マーカーのクリックとホバーのイベントは、これを`marker_id`として返します。独自のオブジェクトとの対応はアプリケーション側で保持してください。指定した価格にマーカーを置くには、`position`を`FERROCHART_MARKER_AT_PRICE`、`price`をシリーズの単位で有限の値に設定します。積み重ねやクラスタリングの対象にはなりません。他の位置では、Cの`price`フィールドは無視されます。
+
+`FerroChartSeriesOptions.marker_cluster`は、複数の足にまたがるクラスタリングの距離をCSS pxで設定します。0で無効になります。バッジのイベントには、両端を含む足の論理インデックス範囲を示す`bars_from`と`bars_to`が含まれ、`marker_id`は描画されなかった最初のマーカーのidです。[クラスタリング](markers.md#clustering-across-bars)を参照してください。
+
+品質フラグには、タイムスタンプとフラグの配列を渡して`ferrochart_set_bar_flags`を呼び、`FERROCHART_BAR_FILLED`と`FERROCHART_BAR_CLIPPED`のビットを使います。`FerroChartSeriesOptions.filled_bar_color`は、補完された中空の足の色を`0xRRGGBBAA`で設定します（0ではメインカラーを不透明度40%で使います）。[足の品質フラグ](data.md#bar-quality-flags)を参照してください。
+
 同梱フォントはASCIIと一般的な記号に対応しています。中国語、日本語、韓国語やその他の文字体系には、フォントファイルを追加します。文字は追加したフォントから順に検索され、どのフォントにもない場合は`□`として描画されます。
 
 ```c
@@ -90,7 +96,7 @@ ferrochart_add_font(chart, font_data, font_len);
 
 ## 入力とイベント
 
-マウス、ホイール、キーの入力を`ferrochart_handle_input`（CSSピクセル単位の`FERROCHART_INPUT_*`イベント）で転送すると、チャートはパン、ズーム、クロスヘアの移動、アクティブなツールでの描画を行います。その後、何が起きたかを読み出します。
+マウス、タッチ、ホイール、キーの入力を`ferrochart_handle_input`（CSSピクセル単位の`FERROCHART_INPUT_*`イベント）で転送すると、チャートはパン、ズーム、クロスヘアの移動、アクティブなツールでの描画を行います。タッチでは、`pointer_kind`を`FERROCHART_POINTER_TOUCH`に設定し、指ごとに固有の`pointer_id`を割り当て、システムがタッチ操作を引き継いだときは`FERROCHART_INPUT_POINTER_CANCEL`を送ります。これによりチャートは[タッチ操作](interaction.md#touch)を適用します。古いヘッダーの`FerroChartInput`（`size`が小さいもの）はマウスとして扱われます。その後、何が起きたかを読み出します。
 
 ```c
 FerroChartEvent ev = { .size = sizeof ev };

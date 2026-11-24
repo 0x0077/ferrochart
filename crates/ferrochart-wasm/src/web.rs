@@ -110,6 +110,10 @@ impl Scene for ChartScene {
         self.chart.set_reveal(reveal);
     }
 
+    fn captures_touch(&self) -> bool {
+        self.chart.captures_touch()
+    }
+
     fn logo_anchor(&self) -> PointPx {
         // The lowest pane ends at the time axis.
         let l = self.chart.layout();
@@ -189,6 +193,12 @@ export interface ChartCreateOptions {
    *  the lowest pane (a DOM element next to the canvas, not drawn into it).
    *  Default `true`; turning it off is fine (courtesy, not a license term). */
   attributionLogo?: boolean;
+  /** Who handles a vertical one-finger swipe on a touch screen. `'chart'`
+   *  (default): the chart handles every gesture (full-screen and app-like
+   *  pages). `'page'`: the page scrolls; horizontal swipes, two fingers and
+   *  the long press stay with the chart (charts inside articles). Change it
+   *  with `setTouchScroll`. */
+  touchScroll?: 'chart' | 'page';
 }
 
 /** Options of `playIntro`. */
@@ -731,6 +741,19 @@ impl FerroChart {
     #[wasm_bindgen(js_name = setAttributionLogo)]
     pub fn set_attribution_logo(&self, on: bool) {
         self.shared.set_logo(on);
+    }
+
+    /// Changes `touchScroll` (see `ChartCreateOptions`).
+    ///
+    /// @param {'chart' | 'page'} mode
+    #[wasm_bindgen(js_name = setTouchScroll)]
+    pub fn set_touch_scroll(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "'chart' | 'page'")] mode: &str,
+    ) -> Result<(), JsError> {
+        self.shared
+            .set_touch_scroll(crate::host::touch_scroll(Some(mode))?);
+        Ok(())
     }
 
     /// Removes all listeners and releases the GPU resources. The object can

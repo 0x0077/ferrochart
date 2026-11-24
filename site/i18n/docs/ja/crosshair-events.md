@@ -1,4 +1,4 @@
-<!-- source: 5f948529f4 -->
+<!-- source: bc2d94fef4 -->
 # クロスヘアとイベント
 
 チャートは、その上で起きたことをイベントで通知します。クロスヘアの移動、クリック、表示範囲の変化、描画の作成や編集などです。この章ではすべてのイベントについて、ペイロードと発火タイミングを一覧にし、よくある使い方を2つ紹介します。クロスヘアに追従する凡例と、マーカーやシリーズのクリックへの応答です。
@@ -92,8 +92,8 @@ interface ClickEvent {
 
 type ClickTarget =
   | { type: 'drawing'; id: number }
-  | { type: 'marker'; series: Series; index: number }
-  | { type: 'markerOverflow'; series: Series; first: number; count: number }
+  | { type: 'marker'; series: Series; index: number; id: number; marker: Marker }
+  | { type: 'markerOverflow'; series: Series; first: number; count: number; id: number; bars: { from: number; to: number }; marker: Marker }
   | { type: 'series'; series: Series };
 ```
 
@@ -102,7 +102,7 @@ type ClickTarget =
 `target`はポインターの下にあったもので、次の順で判定されます。
 
 1. **描画**（本体またはハンドルのいずれか）：`{ type: 'drawing', id }`。描画を押すと、その描画が選択されます。
-2. **マーカー**：`{ type: 'marker', series, index }`。`index`は`series.markers()`（時刻順にソート済み）におけるマーカーの位置です。折りたたまれたマーカーの「+k」バッジでは`{ type: 'markerOverflow', series, first, count }`となり、描画されなかったマーカーは`series.markers().slice(first, first + count)`です（[マーカー](markers.md)を参照）。
+2. **マーカー**：`{ type: 'marker', series, index, id, marker }`。`index`は時刻順にソートした`series.markers()`での位置、`id`は独自のマーカーid（省略時は0）、`marker`は独自のフィールドも含めた、`setMarkers`に渡した元のオブジェクトです。折りたたみやクラスタリングの「+k」バッジは`{ type: 'markerOverflow', series, first, count, id, bars, marker }`を持ちます。`first`は描画されなかった最初のマーカーのソート後のインデックス、`count`はその側で描画されなかった数、`id`/`marker`は最初のマーカーを指し、`bars: { from, to }`は両端を含む足の論理インデックス範囲です。描画されなかったマーカーは、ソート済みリスト内で連続しているとは限りません。独自のデータには`id`/`marker`を使ってください。[マーカーの独自データ](markers.md#your-own-data-on-a-marker)と[クラスタリング](markers.md#clustering-across-bars)を参照してください。
 3. **シリーズ**：ポインターがローソク足の実体やヒゲの上、ラインから4 CSS px以内、ヒストグラムのバーの内側、またはドットの上にあるとき`{ type: 'series', series }`。シリーズが重なっている場合は、最後に追加されたものが優先されます。
 4. 何もない場所では`null`。
 
@@ -226,6 +226,9 @@ chart.on('warning', (w) => {
 interface MarkerHoverEvent {
   series: Series;
   index: number;          // position in series.markers(); for a badge, the first marker not drawn
+  id: number;             // your marker id, 0 if absent
+  marker: Marker;         // original object; for a badge, the first hidden marker
+  bars: { from: number; to: number }; // inclusive logical bar range
   overflow: number;       // k for a "+k" badge, 0 for a marker
   x: number;              // center, CSS px from the canvas' top-left corner
   y: number;
@@ -250,8 +253,12 @@ interface MarkerHoverEvent {
 ```ts
 import { FerroChart, type ChartEventMap } from '@ferrochart/core';
 
-const canvas = document.getElementById('chart') as HTMLCanvasElement;
-const legend = document.getElementById('legend') as HTMLDivElement;
+const canvas = document.getElementById('chart');
+const legend = document.getElementById('legend');
+
+if (!(canvas instanceof HTMLCanvasElement) || !(legend instanceof HTMLDivElement)) {
+  throw new Error('Expected #chart canvas and #legend div');
+}
 
 const chart = await FerroChart.create(canvas);
 const candles = chart.addCandlestickSeries();
@@ -260,10 +267,10 @@ const sma = chart.addIndicator(candles, 'sma', { n: 20 }).outputs()[0];
 
 const fmt = (v: number | undefined) => (v === undefined || Number.isNaN(v) ? '–' : v.toFixed(2));
 
-function show(index: number) {
+const show = (index: number) => {
   const bar = candles.dataAt(index);
   const avg = sma.dataAt(index);
-  if (!bar) {
+  if (!bar || !('open' in bar)) {
     legend.textContent = '';
     return;
   }
@@ -271,8 +278,8 @@ function show(index: number) {
   const date = time === null ? '' : new Date(time).toISOString().slice(0, 16).replace('T', ' ');
   legend.textContent =
     `${date}  O ${fmt(bar.open)}  H ${fmt(bar.high)}  L ${fmt(bar.low)}  C ${fmt(bar.close)}` +
-    `  SMA 20 ${fmt(avg?.value)}`;
-}
+    `  SMA 20 ${fmt(avg && 'value' in avg ? avg.value : undefined)}`;
+};
 
 function showLatest() {
   const range = chart.dataRange();
@@ -286,7 +293,7 @@ chart.on('crosshairMove', (e: ChartEventMap['crosshairMove']) => {
 showLatest();
 ```
 
-`dataAt`は、OHLCシリーズでは`{ open, high, low, close, volume }`、それ以外では`{ value }`を返し、データがないか欠損部分の場合は`null`を返します。インジケーターの出力はウォームアップ期間の足では`NaN`です。リアルタイム更新で最新の足が変わったときは、ポインターがチャート上になければ`update`の後に`showLatest()`を呼んでください。
+`dataAt`は、OHLCシリーズでは`{ open, high, low, close, volume }`、それ以外では`{ value }`を返し、データがないか欠損部分の場合は`null`を返します。`null`でないことを確認してから、`'open' in bar`または`'value' in avg`で戻り値の型を絞り込んでフィールドを読み取ります。インジケーターの出力はウォームアップ期間の足では`NaN`です。リアルタイム更新で最新の足が変わったときは、ポインターがチャート上になければ`update`の後に`showLatest()`を呼んでください。
 
 ## 例：マーカーとシリーズのクリック
 
@@ -310,7 +317,7 @@ chart.on('click', (e: ChartEventMap['click']) => {
   }
   switch (t.type) {
     case 'marker': {
-      const marker = t.series.markers()[t.index];
+      const marker = t.marker;
       console.log(`marker "${marker.text}" at`, new Date(Number(marker.time)));
       break;
     }

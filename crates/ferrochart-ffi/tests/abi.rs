@@ -716,6 +716,119 @@ fn input_events_and_drawings() {
     }
 }
 
+fn pointer(kind: u32, pointer_kind: u32, x: f32, t: f64) -> FerroChartInput {
+    FerroChartInput {
+        pointer_id: 1,
+        pointer_kind,
+        time_ms: t,
+        ..input(kind, x, 200.0)
+    }
+}
+
+fn clicks(ch: &Chart) -> usize {
+    events(ch)
+        .iter()
+        .filter(|e| e.r#type == FERROCHART_EVENT_CLICK)
+        .count()
+}
+
+#[test]
+fn touch_pointers_and_cancel() {
+    let ch = chart(FERROCHART_THEME_LIGHT, 600.0, 400.0, 1.0);
+    candles(&ch, 100);
+    render(&ch);
+    events(&ch);
+    let send = |e: FerroChartInput| unsafe { ferrochart_handle_input(ch.0, &e, ptr::null_mut()) };
+    // A 5 px move is a tap for a finger (8 px threshold)…
+    assert_eq!(
+        send(pointer(
+            FERROCHART_INPUT_POINTER_DOWN,
+            FERROCHART_POINTER_TOUCH,
+            300.0,
+            0.0
+        )),
+        FERROCHART_OK
+    );
+    send(pointer(
+        FERROCHART_INPUT_POINTER_MOVE,
+        FERROCHART_POINTER_TOUCH,
+        305.0,
+        10.0,
+    ));
+    send(pointer(
+        FERROCHART_INPUT_POINTER_UP,
+        FERROCHART_POINTER_TOUCH,
+        305.0,
+        20.0,
+    ));
+    assert_eq!(clicks(&ch), 1);
+    // …and a pan for a mouse (3 px).
+    send(pointer(
+        FERROCHART_INPUT_POINTER_DOWN,
+        FERROCHART_POINTER_MOUSE,
+        300.0,
+        100.0,
+    ));
+    send(pointer(
+        FERROCHART_INPUT_POINTER_MOVE,
+        FERROCHART_POINTER_MOUSE,
+        305.0,
+        110.0,
+    ));
+    send(pointer(
+        FERROCHART_INPUT_POINTER_UP,
+        FERROCHART_POINTER_MOUSE,
+        305.0,
+        300.0,
+    ));
+    assert_eq!(clicks(&ch), 0);
+    // A cancelled press is no click.
+    send(pointer(
+        FERROCHART_INPUT_POINTER_DOWN,
+        FERROCHART_POINTER_TOUCH,
+        300.0,
+        1000.0,
+    ));
+    assert_eq!(
+        send(pointer(FERROCHART_INPUT_POINTER_CANCEL, 0, 0.0, 1010.0)),
+        FERROCHART_OK
+    );
+    assert_eq!(clicks(&ch), 0);
+    // A struct from before `pointer_kind` existed is a mouse: 5 px pans.
+    let old = (std::mem::offset_of!(FerroChartInput, pointer_kind)) as u32;
+    let mut e = pointer(
+        FERROCHART_INPUT_POINTER_DOWN,
+        FERROCHART_POINTER_TOUCH,
+        300.0,
+        2000.0,
+    );
+    e.size = old;
+    send(e);
+    let mut e = pointer(
+        FERROCHART_INPUT_POINTER_MOVE,
+        FERROCHART_POINTER_TOUCH,
+        305.0,
+        2010.0,
+    );
+    e.size = old;
+    send(e);
+    let mut e = pointer(
+        FERROCHART_INPUT_POINTER_UP,
+        FERROCHART_POINTER_TOUCH,
+        305.0,
+        2200.0,
+    );
+    e.size = old;
+    send(e);
+    assert_eq!(clicks(&ch), 0);
+    // An unknown kind is refused.
+    assert_eq!(
+        send(pointer(FERROCHART_INPUT_POINTER_DOWN, 7, 300.0, 3000.0)),
+        FERROCHART_ERR_INVALID_ARGUMENT
+    );
+    assert!(last_error().contains("pointer kind"));
+}
+
 #[test]
 fn state_round_trips_as_json() {
     let ch = chart(FERROCHART_THEME_LIGHT, 600.0, 400.0, 1.0);

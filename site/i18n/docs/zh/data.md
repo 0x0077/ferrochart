@@ -1,4 +1,4 @@
-<!-- source: d69da2a7ed -->
+<!-- source: 8ace0a0ae7 -->
 # 数据
 
 本章介绍如何把 K 线和数值放进系列：数据格式、校验规则、实时更新、加载更早的历史数据，以及读回数据。
@@ -102,6 +102,32 @@ line.setData([
 ### 多个系列共用一条时间轴
 
 图表中的所有系列共用一条时间轴：逻辑索引 42 在每个系列中都对应同一时间。当各系列的时间不同时，时间轴是它们时间的并集。某个系列在只有其他系列才有的时间点上没有数据点：OHLC 系列、柱状图和散点在那里不显示任何内容；折线、面积和基线则连接相邻的数据点。如果新时间落在时间轴已有的 K 线之间，时间轴会被重建，图表会发送 `warning` 事件。
+
+## K 线质量标记
+
+在 K 线、OHLC 柱或 Heikin-Ashi 系列上使用 `setBarFlags`，描述应用补齐或裁剪过的数据。标记不会改变价格；请先传入处理好的 OHLC 数据：
+
+```ts
+const start = Date.UTC(2024, 0, 1);
+candles.setData([
+  { time: start, open: 100, high: 102, low: 99, close: 101 },
+  { time: start + 60_000, open: 101, high: 101, low: 101, close: 101 },
+  { time: start + 120_000, open: 101, high: 104, low: 100, close: 103 },
+]);
+candles.applyOptions({ filledBarColor: '#78909c' });
+candles.setBarFlags([
+  { time: start + 60_000, filled: true },
+  { time: start + 120_000, clipped: true },
+]);
+// Clear all quality flags when they are no longer needed:
+// candles.setBarFlags([]);
+```
+
+- `filled` 标识数据源在没有真实成交时合成的 K 线。它以 `filledBarColor` 绘制为空心（默认使用系列主色，不透明度为 40%）。真正缺失的 K 线也可表示为[缺口](#gaps)；此标记不会自动补齐缺失数据。
+- `clipped` 标识已裁剪异常影线的 K 线。影线两端各显示一条短刻度线。请在应用中按时间保存原始最高价和最低价，并在提示框中展示；图表只有你传入的裁剪后数值。同一根 K 线可以同时设置这两个标记。
+- 每次调用都会替换全部标记；`[]` 清空标记。时间为 UTC 毫秒（也可使用 `Date`/`bigint`，与数据相同）；时间重复时最后一项生效。缩小时若多根 K 线合并，仅当所有原始 K 线都为 filled 时，合并后的 K 线才为 filled；只要任意一根为 clipped，合并后的 K 线就为 clipped。
+
+Python 使用 `candles.set_bar_flags(times, filled=..., clipped=...)`，布尔数组的长度需与 `times` 相同，并使用 `candles.apply_options(filled_bar_color="#78909c")`。参见 [Python](python.md#options-indicators-and-drawings)和[系列选项](series.md#series-options)。
 
 ## 实时更新
 

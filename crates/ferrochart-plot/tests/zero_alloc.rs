@@ -247,6 +247,7 @@ fn interact(p: &mut Plot, t0: f64) -> (usize, usize) {
         };
         p.handle_input(InputEvent::PointerMove {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos,
             mods,
             time_ms: t,
@@ -271,6 +272,7 @@ fn interact(p: &mut Plot, t0: f64) -> (usize, usize) {
     }
     p.handle_input(InputEvent::PointerDown {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos,
         button: Button::Left,
         mods,
@@ -284,6 +286,7 @@ fn interact(p: &mut Plot, t0: f64) -> (usize, usize) {
         };
         p.handle_input(InputEvent::PointerMove {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: q,
             mods,
             time_ms: t,
@@ -292,6 +295,7 @@ fn interact(p: &mut Plot, t0: f64) -> (usize, usize) {
     }
     p.handle_input(InputEvent::PointerUp {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos: PointCss {
             x: pos.x + 96.0,
             y: pos.y + 24.0,

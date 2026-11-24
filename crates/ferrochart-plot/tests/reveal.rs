@@ -40,6 +40,7 @@ fn plot() -> Plot {
     };
     p.handle_input(InputEvent::PointerMove {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos,
         mods: Modifiers::default(),
         time_ms: 0.0,

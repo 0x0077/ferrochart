@@ -1,4 +1,4 @@
-<!-- source: 8cc76ebe6c -->
+<!-- source: 29952e0395 -->
 # JavaScript API 概覽
 
 套件 `@ferrochart/core`。本頁說明如何載入模組，以及 API 各部分共同遵循的慣例。完整參考文件（所有類別、方法與型別）由套件的 TypeScript 宣告自動產生：[JavaScript API 參考](https://ferrochart.com/docs/api)。
@@ -82,7 +82,7 @@ API 的每個物件都持有 WebAssembly 記憶體。圖表傳回的物件（`Se
 
 ### 畫布處理的輸入
 
-指標（滑鼠、觸控筆、觸控）、滾輪、鍵盤（畫布會取得 `tabindex="0"`）、雙擊以及觸控板雙指縮放（Chrome 與 Firefox 中為 Ctrl+滾輪，Safari 中為 gesture 事件）。畫布樣式會設定 `touch-action: none`。各手勢的作用請參見[手勢與鍵盤](interaction.md)。
+指標（滑鼠、觸控筆、觸控）、滾輪、鍵盤（畫布會取得 `tabindex="0"`）、雙擊、觸控板雙指縮放（Chrome 與 Firefox 中為 Ctrl+滾輪，Safari 中為 gesture 事件），以及由圖表自行辨識的雙指觸控。畫布樣式會設定 `touch-action: none`；設為 `touchScroll: 'page'` 時則使用 `pan-y`（參見[觸控螢幕](web.md#touch-screens)）。各手勢的作用請參見[手勢與鍵盤](interaction.md)。
 
 ## 測試資料
 

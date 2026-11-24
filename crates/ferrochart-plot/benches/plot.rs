@@ -163,6 +163,7 @@ fn bench_pan(
     let c = center();
     p.handle_input(InputEvent::PointerDown {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos: c,
         button: Button::Left,
         mods: MODS,
@@ -177,6 +178,7 @@ fn bench_pan(
             let t = f64::from(i);
             p.handle_input(InputEvent::PointerMove {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss {
                     x: c.x + dx,
                     y: c.y + dx * 0.1,
@@ -233,6 +235,7 @@ fn bench_hover(
             let u = i as f32 / 400.0;
             p.handle_input(InputEvent::PointerMove {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss {
                     x: r.x + r.w * u,
                     y: r.y + r.h * (0.5 + 0.4 * (u * 20.0).sin()),

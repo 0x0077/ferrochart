@@ -8,13 +8,18 @@
 //!   category x axis); over a y axis, or with Alt, it zooms that y axis.
 //!   Shift and horizontal scrolls pan. Dragging along an axis zooms it.
 //! - Double click fits.
+//! - Touch: a press shows the hover at the finger (no hover otherwise);
+//!   moving more than 8 CSS px pans and clears it; two fingers zoom x and
+//!   the unlocked y axes by the change of their distance along each
+//!   direction around their midpoint, and pan with it; hits reach 8 CSS px
+//!   further. The host's pinch is ignored during a two-finger pinch.
 //!
 
 use ferrochart_core::frame::Invalidation;
 use ferrochart_core::geom::{PointCss, PointPx};
 use ferrochart_core::interaction::{
     Button, CursorIcon, GesturePhase, InputEvent, InputResult, KINETIC_MIN_SPEED, KINETIC_TAU_MS,
-    Modifiers, VelocityTracker, WheelDelta,
+    Modifiers, PointerKind, VelocityTracker, WheelDelta,
 };
 
 use crate::axis::{AxisId, AxisKind};
@@ -30,6 +35,13 @@ const WHEEL_ZOOM: f64 = 0.002;
 const AXIS_DRAG_ZOOM: f64 = 0.005;
 /// A press becomes a drag beyond this distance (CSS px).
 const DRAG_THRESHOLD: f32 = 3.0;
+/// The same for a finger.
+const TOUCH_DRAG_THRESHOLD: f32 = 8.0;
+/// A finger hits points this much further away (CSS px).
+pub(crate) const TOUCH_SLOP_CSS: f32 = 8.0;
+/// Two fingers closer than this along a direction do not zoom that
+/// direction (CSS px): the ratio would jump.
+const PINCH_MIN_SPAN_CSS: f32 = 16.0;
 
 /// An element under the pointer.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -82,6 +94,11 @@ pub(crate) enum Gesture {
         id: u64,
         last: PointPx,
     },
+    /// Two fingers: `(id, position)` of each.
+    Pinch {
+        a: (u64, PointPx),
+        b: (u64, PointPx),
+    },
     /// Dragging along an axis zooms it.
     Scale {
         id: u64,
@@ -109,6 +126,8 @@ pub(crate) struct Interaction {
     pub pointer: Option<PointPx>,
     /// The hovered element and what to highlight.
     pub hover: Option<(Hit, Shape)>,
+    /// The last pointer event came from a finger.
+    pub touch: bool,
 }
 
 /// Where a point is.
@@ -135,12 +154,21 @@ impl Plot {
         match event {
             InputEvent::PointerDown {
                 id,
+                kind,
                 pos,
                 button: Button::Left,
                 time_ms,
                 ..
             } => {
                 let p = pos.to_px(dpr);
+                let touch = kind == PointerKind::Touch;
+                self.input.touch = touch;
+                if touch && let Some(result) = self.second_finger(id, p) {
+                    return result;
+                }
+                if !matches!(self.input.gesture, Gesture::Idle) {
+                    return InputResult::default();
+                }
                 self.input.kinetic = None;
                 match self.region(p) {
                     Region::Plot => {
@@ -149,6 +177,10 @@ impl Plot {
                         self.input.ty.clear();
                         self.input.tx.record(time_ms, p.x);
                         self.input.ty.record(time_ms, p.y);
+                        if touch {
+                            // A finger has no hover: show it at the press.
+                            self.set_pointer(Some(p));
+                        }
                         consumed(self.hover_cursor())
                     }
                     Region::Axis(axis) if self.scalable(axis) => {
@@ -159,12 +191,18 @@ impl Plot {
                 }
             }
             InputEvent::PointerMove {
-                id, pos, time_ms, ..
+                id,
+                kind,
+                pos,
+                time_ms,
+                ..
             } => {
                 let p = pos.to_px(dpr);
+                self.input.touch = kind == PointerKind::Touch;
                 match self.input.gesture {
+                    Gesture::Pinch { a, b } if a.0 == id || b.0 == id => self.pinch_move(id, p),
                     Gesture::Press { id: d, start } if d == id => {
-                        if (p.x - start.x).hypot(p.y - start.y) > DRAG_THRESHOLD * dpr {
+                        if (p.x - start.x).hypot(p.y - start.y) > self.drag_threshold() {
                             self.input.gesture = Gesture::Pan { id, last: start };
                             self.set_pointer(None);
                             return self.drag_to(p, time_ms);
@@ -195,9 +233,17 @@ impl Plot {
                 }
             }
             InputEvent::PointerUp {
-                id, pos, time_ms, ..
+                id,
+                kind,
+                pos,
+                time_ms,
+                ..
             } => {
                 let p = pos.to_px(dpr);
+                self.input.touch = kind == PointerKind::Touch;
+                if self.end_pinch_finger(id) {
+                    return consumed(CursorIcon::Grabbing);
+                }
                 match self.input.gesture {
                     Gesture::Press { id: d, .. } if d == id => {
                         self.input.gesture = Gesture::Idle;
@@ -216,12 +262,30 @@ impl Plot {
                             });
                             self.invalidation = self.invalidation.max(Invalidation::Light);
                         }
-                        self.set_pointer(self.layout.plot.contains(p).then_some(p));
+                        // A finger that panned leaves no hover behind.
+                        let hover = self.layout.plot.contains(p) && !self.input.touch;
+                        self.set_pointer(hover.then_some(p));
                         consumed(self.hover_cursor())
                     }
                     Gesture::Scale { id: d, axis, .. } if d == id => {
                         self.input.gesture = Gesture::Idle;
                         consumed(axis_cursor(axis))
+                    }
+                    _ => InputResult::default(),
+                }
+            }
+            InputEvent::PointerCancel { id } => {
+                if self.end_pinch_finger(id) {
+                    return consumed(CursorIcon::Grabbing);
+                }
+                match self.input.gesture {
+                    Gesture::Press { id: d, .. }
+                    | Gesture::Pan { id: d, .. }
+                    | Gesture::Scale { id: d, .. }
+                        if d == id =>
+                    {
+                        self.input.gesture = Gesture::Idle;
+                        consumed(CursorIcon::Default)
                     }
                     _ => InputResult::default(),
                 }
@@ -240,6 +304,10 @@ impl Plot {
                 scale,
             } => {
                 let p = center.to_px(dpr);
+                // The same gesture as the two fingers tracked here.
+                if matches!(self.input.gesture, Gesture::Pinch { .. }) {
+                    return consumed(CursorIcon::Grabbing);
+                }
                 if self.region(p) != Region::Plot {
                     return InputResult::default();
                 }
@@ -262,9 +330,108 @@ impl Plot {
         }
     }
 
+    /// Movement (physical px) before a press of the last pointer kind
+    /// becomes a drag.
+    fn drag_threshold(&self) -> f32 {
+        let css = if self.input.touch {
+            TOUCH_DRAG_THRESHOLD
+        } else {
+            DRAG_THRESHOLD
+        };
+        css * self.dpr
+    }
+
+    /// A finger pressed while another one presses or pans: a pinch (a
+    /// third finger is ignored). `None`: not a second finger.
+    fn second_finger(&mut self, id: u64, p: PointPx) -> Option<InputResult> {
+        let first = match self.input.gesture {
+            Gesture::Press { id: d, start } if d != id => (d, start),
+            Gesture::Pan { id: d, last } if d != id => (d, last),
+            Gesture::Pinch { .. } => return Some(consumed(CursorIcon::Grabbing)),
+            _ => return None,
+        };
+        self.input.gesture = Gesture::Pinch {
+            a: first,
+            b: (id, p),
+        };
+        self.input.kinetic = None;
+        self.set_pointer(None);
+        Some(consumed(CursorIcon::Grabbing))
+    }
+
+    /// A finger of a pinch moved: each direction zooms by the change of the
+    /// fingers' distance along it (when they are far enough apart) around
+    /// their midpoint, then everything pans with the midpoint.
+    fn pinch_move(&mut self, id: u64, p: PointPx) -> InputResult {
+        let Gesture::Pinch { mut a, mut b } = self.input.gesture else {
+            return InputResult::default();
+        };
+        let (oa, ob) = (a.1, b.1);
+        if a.0 == id {
+            a.1 = p;
+        } else if b.0 == id {
+            b.1 = p;
+        } else {
+            return InputResult::default();
+        }
+        let min = PINCH_MIN_SPAN_CSS * self.dpr;
+        let ratio = |d0: f32, d1: f32| {
+            (d0.abs() >= min && d1.abs() >= min).then(|| f64::from(d1.abs() / d0.abs()))
+        };
+        let (mx0, my0) = (f64::from(oa.x + ob.x) * 0.5, f64::from(oa.y + ob.y) * 0.5);
+        let (mx1, my1) = (
+            f64::from(a.1.x + b.1.x) * 0.5,
+            f64::from(a.1.y + b.1.y) * 0.5,
+        );
+        let mut changed = false;
+        if let Some(f) = ratio(oa.x - ob.x, a.1.x - b.1.x) {
+            changed |= self.x.zoom_px(mx0, f);
+        }
+        if let Some(f) = ratio(oa.y - ob.y, a.1.y - b.1.y) {
+            changed |= self.left.zoom_px(my0, f);
+            changed |= self.right.zoom_px(my0, f);
+        }
+        changed |= self.pan_by(mx1 - mx0, my1 - my0);
+        if changed {
+            self.view_changed();
+        }
+        self.input.gesture = Gesture::Pinch { a, b };
+        consumed(CursorIcon::Grabbing)
+    }
+
+    /// Finger `id` of a pinch lifted: the other one pans on from where it
+    /// is. Whether `id` was part of the pinch.
+    fn end_pinch_finger(&mut self, id: u64) -> bool {
+        let Gesture::Pinch { a, b } = self.input.gesture else {
+            return false;
+        };
+        let (rest_id, rest) = if a.0 == id {
+            b
+        } else if b.0 == id {
+            a
+        } else {
+            return false;
+        };
+        self.input.gesture = Gesture::Pan {
+            id: rest_id,
+            last: rest,
+        };
+        self.input.tx.clear();
+        self.input.ty.clear();
+        true
+    }
+
     /// The element under `pos` in the last layout.
     pub fn hit_test(&self, pos: PointCss) -> Option<Hit> {
         self.hit_shape(pos.to_px(self.dpr)).map(|h| h.0)
+    }
+
+    /// Whether a touch gesture the page must not take over is running (a
+    /// two-finger pinch): a web host keeps the page from scrolling meanwhile
+    /// (`touchScroll`). A finger's pan is not one (see
+    /// `Chart::captures_touch`).
+    pub fn captures_touch(&self) -> bool {
+        matches!(self.input.gesture, Gesture::Pinch { .. })
     }
 
     /// Whether kinetic panning is running (keep requesting frames).

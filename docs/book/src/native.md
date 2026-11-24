@@ -96,6 +96,23 @@ reports the marker or badge under the pointer (`target_type`, `target_index`,
 its center in `x`/`y`), for example to show a tooltip; a click on a badge has
 `target_type` `FERROCHART_TARGET_MARKER_OVERFLOW` and `count`.
 
+`FerroChartMarker.id` is your `uint64_t` identifier (0 means none); marker
+click and hover events return it as `marker_id`. Keep a host-side lookup for
+your own objects. To place a marker at a price, set `position` to
+`FERROCHART_MARKER_AT_PRICE` and `price` to a finite value in series units;
+it is not stacked or clustered. Other positions ignore the C `price` field.
+
+`FerroChartSeriesOptions.marker_cluster` sets the cross-bar clustering
+distance in CSS px; 0 disables it. Badge events include `bars_from` and
+`bars_to`, the inclusive logical bar range; `marker_id` is the first hidden
+marker's id. See [Clustering](markers.md#clustering-across-bars).
+
+For quality flags, call `ferrochart_set_bar_flags` with timestamp and flag
+arrays, using `FERROCHART_BAR_FILLED` and `FERROCHART_BAR_CLIPPED` bits.
+`FerroChartSeriesOptions.filled_bar_color` sets the hollow filled-bar color
+as `0xRRGGBBAA` (0 uses the main color at 40% opacity). See
+[Bar quality flags](data.md#bar-quality-flags).
+
 The bundled font covers ASCII and common symbols. For Chinese, Japanese,
 Korean or other scripts, add a font file; characters are looked up in the
 added fonts in order, and drawn as `□` when none has them:
@@ -111,9 +128,14 @@ the text color.
 
 ## Input and events
 
-Forward mouse, wheel and key input with `ferrochart_handle_input`
+Forward mouse, touch, wheel and key input with `ferrochart_handle_input`
 (`FERROCHART_INPUT_*` events in CSS pixels); the chart pans, zooms, moves the
-crosshair and draws with the active tool. Then read what happened:
+crosshair and draws with the active tool. For touch, set `pointer_kind` to
+`FERROCHART_POINTER_TOUCH`, give each finger its own `pointer_id`, and send
+`FERROCHART_INPUT_POINTER_CANCEL` when the system takes a touch over; the
+chart then applies the [touch gestures](interaction.md#touch). A
+`FerroChartInput` from an older header (a smaller `size`) is a mouse. Then
+read what happened:
 
 ```c
 FerroChartEvent ev = { .size = sizeof ev };

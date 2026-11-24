@@ -1,4 +1,4 @@
-<!-- source: c694d739d5 -->
+<!-- source: fbce18a0e1 -->
 # Web（JavaScript / TypeScript）
 
 npm 包 `@ferrochart/core` 包含 WebAssembly 构建产物和 TypeScript
@@ -61,6 +61,23 @@ chart.on('needMoreHistory', ({ barsBeforeStart }) => { /* load older bars */ });
 ```
 
 事件会在产生它们的那一帧之后派发。
+
+## 触屏
+
+在手机和平板上，单指平移图表，双指缩放，长按 500 ms 后显示十字光标（完整列表见[手势与键盘](interaction.md#touch)）。`touchScroll` 选项决定由谁处理竖向滑动：
+
+```js
+const chart = await FerroChart.create(canvas, { touchScroll: 'page' });
+chart.setTouchScroll('chart'); // change it later
+```
+
+| `touchScroll` | Canvas `touch-action` | 竖向滑动 | 适用场景 |
+|---|---|---|---|
+| `'chart'`（默认） | `none` | 平移图表 | 全屏图表、应用式页面 |
+| `'page'` | `pan-y` | 滚动页面 | 文章、文档和滚动面板中的图表 |
+
+使用 `'page'` 时，水平滑动、双指操作和长按仍由图表处理；长按十字光标显示后，上下移动手指会移动十字光标，而不是滚动页面。代价是：价格轴关闭自动缩放时，单指无法平移价格，需使用双指。
+`FerroPlot` 接受相同选项。
 
 ## 清理
 

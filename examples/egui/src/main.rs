@@ -387,6 +387,7 @@ impl InputState {
                             self,
                             InputEvent::PointerMove {
                                 id: 0,
+                                kind: ferrochart_core::interaction::PointerKind::Mouse,
                                 pos: local(p),
                                 mods: m,
                                 time_ms,
@@ -411,6 +412,7 @@ impl InputState {
                             self,
                             InputEvent::PointerDown {
                                 id: 0,
+                                kind: ferrochart_core::interaction::PointerKind::Mouse,
                                 pos: local(pos),
                                 button: b,
                                 mods: m,
@@ -423,6 +425,7 @@ impl InputState {
                             self,
                             InputEvent::PointerUp {
                                 id: 0,
+                                kind: ferrochart_core::interaction::PointerKind::Mouse,
                                 pos: local(pos),
                                 button: b,
                                 mods: m,

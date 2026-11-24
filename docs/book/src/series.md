@@ -199,6 +199,9 @@ s.applyOptions({ color: null });        // back to the theme color
 | `priceLineVisible` | `boolean` | `true` | all but volume | Dotted horizontal line at the last value |
 | `shift` | `number` | `0` | all | Display shift in bars, see [Shift](#shift) |
 | `pricePrecision` | `number \| null` | `null` | all | Decimals of price labels, see [Price precision](#price-precision) |
+| `markerStackLimit` | `number \| null` | `null` | series with markers | Integer 1–65535: places per bar side, including the "+k" badge; `null` means no limit. See [Folding](markers.md#folding-crowded-bars). |
+| `markerCluster` | `number \| null` | `null` | series with markers | Positive, finite CSS-pixel distance for cross-bar clustering; `null` disables it. Excludes `atPrice`. See [Clustering](markers.md#clustering-across-bars). |
+| `filledBarColor` | `Color \| null` | `null` | candlestick, ohlc, heikinAshi | Color of bars flagged `filled`, drawn hollow; `null` uses the main color at 40% opacity. See [Bar quality flags](data.md#bar-quality-flags). |
 
 Invalid values (an unknown line style, a malformed color, a negative width)
 throw, and the series keeps its old options.

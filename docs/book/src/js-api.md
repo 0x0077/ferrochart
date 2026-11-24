@@ -126,9 +126,10 @@ different thing: it takes it off the chart.
 
 Pointer (mouse, pen, touch), wheel, keyboard (the canvas gets
 `tabindex="0"`), double-click and trackpad pinch (Ctrl+wheel in Chrome and
-Firefox, gesture events in Safari). The canvas style gets
-`touch-action: none`. See [Gestures and keyboard](interaction.md) for what
-each gesture does.
+Firefox, gesture events in Safari), and two-finger touch, which the chart
+recognizes itself. The canvas style gets `touch-action: none`, or `pan-y` with
+`touchScroll: 'page'` (see [Touch screens](web.md#touch-screens)). See
+[Gestures and keyboard](interaction.md) for what each gesture does.
 
 ## Test data
 

@@ -320,6 +320,8 @@ pub struct DrawingCtx<'a> {
     pub(crate) dpr: f32,
     pub(crate) labels: NumberFormat,
     pub(crate) text: &'a dyn TextMeasurer,
+    /// Line hit tolerance in CSS px (wider for a finger).
+    pub(crate) hit_css: f32,
 }
 
 impl DrawingCtx<'_> {
@@ -340,7 +342,7 @@ impl DrawingCtx<'_> {
 
     /// Distance within which a point hits a line.
     pub fn hit_tolerance(&self) -> f32 {
-        HIT_CSS * self.dpr
+        self.hit_css * self.dpr
     }
 
     /// Width of one bar.

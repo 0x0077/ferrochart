@@ -211,7 +211,7 @@ for the full table):
 | Drag in the plot | Pan (release while moving: kinetic scrolling) |
 | Wheel / trackpad scroll | Zoom time around the pointer |
 | Horizontal scroll or Shift + wheel | Pan |
-| Pinch (trackpad, touch) | Zoom |
+| Pinch (trackpad, two fingers) | Zoom |
 | Drag the time axis | Change the bar spacing |
 | Double-click the time axis | Reset the bar spacing |
 | ← → | Pan by 10 % |

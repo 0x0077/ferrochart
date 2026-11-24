@@ -1,4 +1,4 @@
-<!-- source: 5f948529f4 -->
+<!-- source: bc2d94fef4 -->
 # 크로스헤어와 이벤트
 
 차트는 자신에게 일어나는 일을 이벤트로 알려 줍니다. 크로스헤어 이동, 클릭,
@@ -118,8 +118,8 @@ interface ClickEvent {
 
 type ClickTarget =
   | { type: 'drawing'; id: number }
-  | { type: 'marker'; series: Series; index: number }
-  | { type: 'markerOverflow'; series: Series; first: number; count: number }
+  | { type: 'marker'; series: Series; index: number; id: number; marker: Marker }
+  | { type: 'markerOverflow'; series: Series; first: number; count: number; id: number; bars: { from: number; to: number }; marker: Marker }
   | { type: 'series'; series: Series };
 ```
 
@@ -131,11 +131,16 @@ type ClickTarget =
 
 1. **드로잉**(본체 또는 핸들): `{ type: 'drawing', id }`.
    드로잉을 누르면 그 드로잉이 선택되기도 합니다.
-2. **마커**: `{ type: 'marker', series, index }`. 여기서 `index`는
-   `series.markers()`(시간순으로 정렬됨)에서 마커의 위치입니다. 접힌 마커의
-   "+k" 배지는 `{ type: 'markerOverflow', series, first, count }`를 주며,
-   그려지지 않은 마커는 `series.markers().slice(first, first + count)`입니다
-   ([마커](markers.md) 참고).
+2. **마커**: `{ type: 'marker', series, index, id, marker }`. `index`는 시간순으로
+   정렬된 `series.markers()`에서의 위치이며, `id`는 사용자 마커 id(없으면 0)이고,
+   `marker`는 사용자 정의 필드를 포함해 `setMarkers`에 전달한 원래 객체입니다.
+   접기나 군집화로 생긴 "+k" 배지는 `{ type: 'markerOverflow', series, first,
+   count, id, bars, marker }`를 담습니다. `first`는 숨겨진 첫 번째 마커의 정렬된
+   인덱스이고, `count`는 해당 쪽에서 숨겨진 개수이며, `id`/`marker`는 첫 번째
+   마커를 가리킵니다. `bars: { from, to }`는 양 끝을 포함한 논리 봉 범위입니다.
+   숨겨진 마커는 정렬된 목록에서 연속되지 않을 수 있습니다. 사용자 데이터에는
+   `id`/`marker`를 사용하세요. [마커 데이터](markers.md#your-own-data-on-a-marker)와
+   [군집화](markers.md#clustering-across-bars)를 참고하세요.
 3. **시리즈**: 포인터가 캔들의 몸통이나 꼬리 위, 선에서 4 CSS px 이내,
    히스토그램 막대 안, 또는 점 위에 있을 때 `{ type: 'series', series }`.
    시리즈가 겹치면 마지막에 추가된 시리즈가 우선합니다.
@@ -285,6 +290,9 @@ chart.on('warning', (w) => {
 interface MarkerHoverEvent {
   series: Series;
   index: number;          // position in series.markers(); for a badge, the first marker not drawn
+  id: number;             // your marker id, 0 if absent
+  marker: Marker;         // original object; for a badge, the first hidden marker
+  bars: { from: number; to: number }; // inclusive logical bar range
   overflow: number;       // k for a "+k" badge, 0 for a marker
   x: number;              // center, CSS px from the canvas' top-left corner
   y: number;
@@ -314,8 +322,12 @@ interface MarkerHoverEvent {
 ```ts
 import { FerroChart, type ChartEventMap } from '@ferrochart/core';
 
-const canvas = document.getElementById('chart') as HTMLCanvasElement;
-const legend = document.getElementById('legend') as HTMLDivElement;
+const canvas = document.getElementById('chart');
+const legend = document.getElementById('legend');
+
+if (!(canvas instanceof HTMLCanvasElement) || !(legend instanceof HTMLDivElement)) {
+  throw new Error('Expected #chart canvas and #legend div');
+}
 
 const chart = await FerroChart.create(canvas);
 const candles = chart.addCandlestickSeries();
@@ -324,10 +336,10 @@ const sma = chart.addIndicator(candles, 'sma', { n: 20 }).outputs()[0];
 
 const fmt = (v: number | undefined) => (v === undefined || Number.isNaN(v) ? '–' : v.toFixed(2));
 
-function show(index: number) {
+const show = (index: number) => {
   const bar = candles.dataAt(index);
   const avg = sma.dataAt(index);
-  if (!bar) {
+  if (!bar || !('open' in bar)) {
     legend.textContent = '';
     return;
   }
@@ -335,8 +347,8 @@ function show(index: number) {
   const date = time === null ? '' : new Date(time).toISOString().slice(0, 16).replace('T', ' ');
   legend.textContent =
     `${date}  O ${fmt(bar.open)}  H ${fmt(bar.high)}  L ${fmt(bar.low)}  C ${fmt(bar.close)}` +
-    `  SMA 20 ${fmt(avg?.value)}`;
-}
+    `  SMA 20 ${fmt(avg && 'value' in avg ? avg.value : undefined)}`;
+};
 
 function showLatest() {
   const range = chart.dataRange();
@@ -352,6 +364,7 @@ showLatest();
 
 `dataAt`은 OHLC 시리즈에 대해서는 `{ open, high, low, close, volume }`을, 그 밖의
 시리즈에 대해서는 `{ value }`를, 데이터가 없거나 공백이면 `null`을 반환합니다.
+`null`이 아닌지 확인한 뒤 `'open' in bar` 또는 `'value' in avg`로 반환값의 타입을 좁혀 필드를 읽으세요.
 지표 출력은 워밍업 구간의 봉에서 `NaN`입니다. 실시간 업데이트로 최신 봉이 바뀔
 때 포인터가 차트 위에 없다면 `update` 다음에 `showLatest()`를 호출하세요.
 
@@ -377,7 +390,7 @@ chart.on('click', (e: ChartEventMap['click']) => {
   }
   switch (t.type) {
     case 'marker': {
-      const marker = t.series.markers()[t.index];
+      const marker = t.marker;
       console.log(`marker "${marker.text}" at`, new Date(Number(marker.time)));
       break;
     }

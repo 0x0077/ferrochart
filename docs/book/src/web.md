@@ -62,6 +62,29 @@ chart.on('needMoreHistory', ({ barsBeforeStart }) => { /* load older bars */ });
 
 Events are delivered after the frame that produced them.
 
+## Touch screens
+
+On phones and tablets the chart pans with one finger, zooms with two and shows
+the crosshair after a 500 ms long press (the full list is in
+[Gestures and keyboard](interaction.md#touch)). The `touchScroll` option says
+who gets a vertical swipe:
+
+```js
+const chart = await FerroChart.create(canvas, { touchScroll: 'page' });
+chart.setTouchScroll('chart'); // change it later
+```
+
+| `touchScroll` | Canvas `touch-action` | Vertical swipe | Use it for |
+|---|---|---|---|
+| `'chart'` (default) | `none` | Pans the chart | Full-screen charts, app-like pages |
+| `'page'` | `pan-y` | Scrolls the page | Charts inside articles, docs and scrolling panels |
+
+With `'page'`, horizontal swipes, two fingers and the long press still go to
+the chart, and once the long-press crosshair is showing, moving the finger up
+or down moves the crosshair, not the page. The cost: with the price axis'
+auto-scale off, one finger cannot pan prices; use two fingers.
+`FerroPlot` takes the same option.
+
 ## Cleaning up
 
 ```js

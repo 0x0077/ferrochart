@@ -20,6 +20,12 @@
 //! pointer) unless it is locked. Escape cancels, Delete removes the
 //! selection, Ctrl/⌘+Z undoes, Ctrl/⌘+Shift+Z and Ctrl/⌘+Y redo.
 //!
+//! Touch (touch rules): a wider drag threshold and hit tolerances, a
+//! two-finger pinch recognized here from the two pointers (the host's
+//! `Pinch` is ignored meanwhile), and a long press that shows a crosshair
+//! which stays after the finger lifts until the next touch. The long press
+//! is timed with the events' `time_ms` and `build_frame`'s `now_ms`.
+//!
 
 use smallvec::SmallVec;
 
@@ -43,6 +49,20 @@ pub enum Button {
     Middle,
     /// Secondary button.
     Right,
+}
+
+/// What produced a pointer event. `Pen` behaves like `Mouse`; the
+/// touch rules apply to `Touch` only.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum PointerKind {
+    /// A mouse (or anything that hovers).
+    #[default]
+    Mouse,
+    /// A finger on a touch screen.
+    Touch,
+    /// A pen or stylus.
+    Pen,
 }
 
 /// Keyboard modifiers. Plain flags mirror the DOM/winit events they come from.
@@ -124,6 +144,8 @@ pub enum InputEvent {
     PointerDown {
         /// Pointer id (mouse = 0).
         id: u64,
+        /// Mouse, touch or pen.
+        kind: PointerKind,
         /// Position.
         pos: PointCss,
         /// Button.
@@ -137,6 +159,8 @@ pub enum InputEvent {
     PointerMove {
         /// Pointer id.
         id: u64,
+        /// Mouse, touch or pen.
+        kind: PointerKind,
         /// Position.
         pos: PointCss,
         /// Modifiers.
@@ -148,6 +172,8 @@ pub enum InputEvent {
     PointerUp {
         /// Pointer id.
         id: u64,
+        /// Mouse, touch or pen.
+        kind: PointerKind,
         /// Position.
         pos: PointCss,
         /// Button.
@@ -156,6 +182,12 @@ pub enum InputEvent {
         mods: Modifiers,
         /// Event time.
         time_ms: f64,
+    },
+    /// The system took the pointer over (page scrolling, an incoming call):
+    /// its gesture ends without a click or kinetic scrolling.
+    PointerCancel {
+        /// Pointer id.
+        id: u64,
     },
     /// The pointer left the chart.
     PointerLeave,
@@ -243,6 +275,16 @@ pub enum CrosshairMode {
 
 /// Pointer movement (CSS px) before a press becomes a pan.
 const DRAG_THRESHOLD: f32 = 3.0;
+/// The same for a finger (touch rules).
+const TOUCH_DRAG_THRESHOLD: f32 = 8.0;
+/// A finger held still this long (ms) shows the crosshair.
+pub const LONG_PRESS_MS: f64 = 500.0;
+/// Line hit tolerance for a finger (CSS px; the mouse's is `HIT_CSS`).
+pub(crate) const TOUCH_HIT_CSS: f32 = 10.0;
+/// Handle hit radius for a finger (CSS px).
+const TOUCH_HANDLE_CSS: f32 = 12.0;
+/// A finger hits a marker this far outside its circle (CSS px).
+pub(crate) const TOUCH_MARKER_SLOP_CSS: f32 = 8.0;
 /// Kinetic velocity decay time constant: after a release at speed `v`, the
 /// speed is `v · exp(-t / KINETIC_TAU_MS)`.
 pub const KINETIC_TAU_MS: f64 = 325.0;
@@ -336,15 +378,30 @@ impl VelocityTracker {
 pub(crate) enum Drag {
     #[default]
     Idle,
+    /// `touch`: the time of a finger's press (for the long press); `at`:
+    /// where the pointer is now (within the drag threshold of `start`).
     PressPending {
         id: u64,
         start: PointPx,
+        at: PointPx,
         pane: PaneId,
+        touch: Option<f64>,
     },
     Panning {
         id: u64,
         last: PointPx,
         pane: PaneId,
+        touch: bool,
+    },
+    /// Two fingers: `(id, position)` of each.
+    Pinching {
+        a: (u64, PointPx),
+        b: (u64, PointPx),
+        pane: PaneId,
+    },
+    /// A long press: the crosshair follows the finger.
+    TouchCrosshair {
+        id: u64,
     },
     ScalingPrice {
         id: u64,
@@ -380,10 +437,11 @@ impl Drag {
         match self {
             Self::PressPending { pane, .. }
             | Self::Panning { pane, .. }
+            | Self::Pinching { pane, .. }
             | Self::ScalingPrice { pane, .. }
             | Self::EditingDrawing { pane, .. } => Some(pane),
             Self::ResizingPanes { upper, .. } => Some(upper),
-            Self::Idle | Self::ScalingTime { .. } => None,
+            Self::Idle | Self::ScalingTime { .. } | Self::TouchCrosshair { .. } => None,
         }
     }
 
@@ -407,6 +465,8 @@ pub(crate) struct Interaction {
     /// Pointer position in physical px, `None` when outside.
     pub(crate) pointer: Option<PointPx>,
     pub(crate) crosshair: CrosshairMode,
+    /// The last pointer event came from a finger: wider hit tolerances.
+    pub(crate) touch: bool,
 }
 
 impl Default for Interaction {
@@ -417,6 +477,7 @@ impl Default for Interaction {
             velocity: VelocityTracker::default(),
             pointer: None,
             crosshair: CrosshairMode::Normal,
+            touch: false,
         }
     }
 }
@@ -584,7 +645,11 @@ impl Chart {
             .and_then(|s| self.drawings.entry(s))
             .filter(|e| e.pane == pane && e.visible);
         if let Some(e) = selected {
-            let r = HANDLE_CSS * 0.5 * self.dpr + tol * 0.5;
+            let r = if self.input.touch {
+                TOUCH_HANDLE_CSS * self.dpr
+            } else {
+                HANDLE_CSS * 0.5 * self.dpr + tol * 0.5
+            };
             let hit = self
                 .handle_buf
                 .try_borrow_mut()
@@ -734,6 +799,175 @@ impl Chart {
         self.drawings.dirty = true;
     }
 
+    /// Movement (physical px) before a press of the last pointer kind
+    /// becomes a drag.
+    fn drag_threshold(&self) -> f32 {
+        let css = if self.input.touch {
+            TOUCH_DRAG_THRESHOLD
+        } else {
+            DRAG_THRESHOLD
+        };
+        css * self.dpr
+    }
+
+    /// Whether a finger is down and may become a long press: the host keeps
+    /// building frames until it is decided.
+    pub(crate) fn long_press_pending(&self) -> bool {
+        matches!(self.input.drag, Drag::PressPending { touch: Some(_), .. })
+    }
+
+    /// Turns a finger held long enough into the touch crosshair (called by
+    /// `build_frame`, and by pointer events with their own time).
+    pub(crate) fn step_long_press(&mut self, now_ms: f64) {
+        if let Drag::PressPending {
+            id,
+            at,
+            touch: Some(t0),
+            ..
+        } = self.input.drag
+            && now_ms - t0 >= LONG_PRESS_MS
+            && self.input.crosshair != CrosshairMode::Hidden
+        {
+            self.input.drag = Drag::TouchCrosshair { id };
+            self.set_pointer(Some(at));
+        }
+    }
+
+    /// A finger pressed while another one is down: starts a pinch, or is
+    /// ignored (a third finger, a long press). `None`: not a second finger.
+    fn second_finger(&mut self, id: u64, p: PointPx) -> Option<InputResult> {
+        let first = match self.input.drag {
+            Drag::PressPending {
+                id: d,
+                at,
+                pane,
+                touch: Some(_),
+                ..
+            } if d != id => Some((d, at, pane)),
+            Drag::Panning {
+                id: d,
+                last,
+                pane,
+                touch: true,
+            } if d != id => Some((d, last, pane)),
+            Drag::Pinching { .. } | Drag::TouchCrosshair { .. } => None,
+            _ => return None,
+        };
+        if let Some((d, at, pane)) = first {
+            self.input.drag = Drag::Pinching {
+                a: (d, at),
+                b: (id, p),
+                pane,
+            };
+        }
+        Some(InputResult {
+            consumed: true,
+            cursor: CursorIcon::Grabbing,
+        })
+    }
+
+    /// A finger of a pinch moved: zooms the time scale by the change of the
+    /// fingers' distance around their midpoint, then pans by the midpoint's
+    /// movement, so the time under the midpoint stays under it.
+    fn pinch_move(&mut self, id: u64, p: PointPx) -> InputResult {
+        let Drag::Pinching { mut a, mut b, pane } = self.input.drag else {
+            return InputResult::default();
+        };
+        let (oa, ob) = (a.1, b.1);
+        if a.0 == id {
+            a.1 = p;
+        } else if b.0 == id {
+            b.1 = p;
+        } else {
+            return InputResult::default();
+        }
+        let mid = |u: PointPx, v: PointPx| PointPx {
+            x: (u.x + v.x) * 0.5,
+            y: (u.y + v.y) * 0.5,
+        };
+        let (m0, m1) = (mid(oa, ob), mid(a.1, b.1));
+        let d0 = (oa.x - ob.x).hypot(oa.y - ob.y);
+        let d1 = (a.1.x - b.1.x).hypot(a.1.y - b.1.y);
+        if d0 >= 1.0 && d1 >= 1.0 {
+            let x = self.plot_x(m0);
+            self.zoom_time(x, f64::from(d1) / f64::from(d0));
+        }
+        self.time_scale.scroll_by(Px(m1.x - m0.x));
+        if let Some(pane) = self.pane_mut(pane)
+            && !pane.price_scale.auto_scale()
+        {
+            let h = f64::from(pane.plot.h);
+            pane.price_scale.pan_px(f64::from(m1.y - m0.y), h);
+        }
+        self.input.drag = Drag::Pinching { a, b, pane };
+        InputResult {
+            consumed: true,
+            cursor: CursorIcon::Grabbing,
+        }
+    }
+
+    /// Finger `id` of a pinch lifted: the other one pans on from where it
+    /// is, without a jump. Returns whether `id` was part of the pinch.
+    fn end_pinch_finger(&mut self, id: u64) -> bool {
+        let Drag::Pinching { a, b, pane } = self.input.drag else {
+            return false;
+        };
+        let rest = if a.0 == id {
+            b
+        } else if b.0 == id {
+            a
+        } else {
+            return false;
+        };
+        self.input.drag = Drag::Panning {
+            id: rest.0,
+            last: rest.1,
+            pane,
+            touch: true,
+        };
+        self.input.velocity.clear();
+        true
+    }
+
+    /// The system took pointer `id` over: its gesture ends without a click
+    /// or kinetic scrolling.
+    fn cancel_pointer(&mut self, id: u64) -> InputResult {
+        let done = InputResult {
+            consumed: true,
+            cursor: CursorIcon::Default,
+        };
+        if self.end_pinch_finger(id) {
+            return done;
+        }
+        match self.input.drag {
+            Drag::EditingDrawing { id: d, drawing, .. } if d == id => {
+                self.input.drag = Drag::Idle;
+                let before = core::mem::take(&mut self.drawings.edit_before);
+                self.drawings.moved(drawing, before);
+            }
+            Drag::PressPending { id: d, .. }
+            | Drag::Panning { id: d, .. }
+            | Drag::ScalingPrice { id: d, .. }
+            | Drag::ScalingTime { id: d, .. }
+            | Drag::ResizingPanes { id: d, .. }
+            | Drag::TouchCrosshair { id: d }
+                if d == id =>
+            {
+                self.input.drag = Drag::Idle;
+            }
+            Drag::Idle
+                if self
+                    .drawings
+                    .creating
+                    .is_some_and(|c| c.count == AnchorCount::Freehand) =>
+            {
+                self.drawings.freehand_release();
+            }
+            _ => return InputResult::default(),
+        }
+        done
+    }
+
     /// The current crosshair mode.
     pub fn crosshair_mode(&self) -> CrosshairMode {
         self.input.crosshair
@@ -743,6 +977,18 @@ impl Chart {
     pub fn set_crosshair_mode(&mut self, mode: CrosshairMode) {
         self.input.crosshair = mode;
         self.invalidation = self.invalidation.max(Invalidation::Cursor);
+    }
+
+    /// Whether a touch gesture the page must not take over is running (the
+    /// long-press crosshair, a two-finger pinch): a web host keeps the page
+    /// from scrolling meanwhile (`touchScroll`). A finger's pan is not
+    /// one: with `touch-action: pan-y` the browser locks the direction when
+    /// the swipe starts, so a vertical swipe stays the page's.
+    pub fn captures_touch(&self) -> bool {
+        matches!(
+            self.input.drag,
+            Drag::TouchCrosshair { .. } | Drag::Pinching { .. }
+        )
     }
 
     /// Whether kinetic scrolling is running (the host keeps requesting frames).
@@ -783,7 +1029,7 @@ impl Chart {
     /// use ferrochart_core::chart::{SeriesData, SeriesOptions};
     /// use ferrochart_core::frame::SeriesKind;
     /// use ferrochart_core::geom::{PointCss, SizeCss};
-    /// use ferrochart_core::interaction::{Button, InputEvent, Modifiers};
+    /// use ferrochart_core::interaction::{Button, InputEvent, Modifiers, PointerKind};
     /// use ferrochart_core::testing::{random_walk, MonoMeasurer};
     /// use ferrochart_core::{Chart, ChartOptions};
     ///
@@ -796,9 +1042,9 @@ impl Chart {
     /// let before = chart.time_scale().visible_range();
     /// let mods = Modifiers::default();
     /// let at = |x| PointCss { x, y: 200.0 };
-    /// chart.handle_input(InputEvent::PointerDown { id: 0, pos: at(400.0), button: Button::Left, mods, time_ms: 0.0 });
-    /// chart.handle_input(InputEvent::PointerMove { id: 0, pos: at(460.0), mods, time_ms: 16.0 });
-    /// chart.handle_input(InputEvent::PointerUp { id: 0, pos: at(460.0), button: Button::Left, mods, time_ms: 500.0 });
+    /// chart.handle_input(InputEvent::PointerDown { id: 0, kind: PointerKind::Mouse, pos: at(400.0), button: Button::Left, mods, time_ms: 0.0 });
+    /// chart.handle_input(InputEvent::PointerMove { id: 0, kind: PointerKind::Mouse, pos: at(460.0), mods, time_ms: 16.0 });
+    /// chart.handle_input(InputEvent::PointerUp { id: 0, kind: PointerKind::Mouse, pos: at(460.0), button: Button::Left, mods, time_ms: 500.0 });
     /// // Dragging right by 60 px shows bars 10 bars earlier (6 px spacing).
     /// let after = chart.time_scale().visible_range();
     /// assert!((before.0 - after.0 - 10.0).abs() < 1e-9);
@@ -813,12 +1059,18 @@ impl Chart {
         match event {
             InputEvent::PointerDown {
                 id,
+                kind,
                 pos,
                 button,
                 time_ms,
                 ..
             } => {
                 let p = pos.to_px(dpr);
+                let touch = kind == PointerKind::Touch;
+                self.input.touch = touch;
+                if touch && let Some(result) = self.second_finger(id, p) {
+                    return result;
+                }
                 self.input.kinetic = None;
                 if button != Button::Left || !matches!(self.input.drag, Drag::Idle) {
                     return InputResult {
@@ -826,16 +1078,28 @@ impl Chart {
                         cursor: self.hover_cursor(p),
                     };
                 }
+                if touch {
+                    // A touch hides the crosshair a long press left behind.
+                    self.set_pointer(None);
+                }
                 match self.region(p) {
                     Region::Plot(pane) => {
                         if let Some(result) = self.drawing_press(id, pane, p) {
                             self.set_pointer(Some(p));
                             return result;
                         }
-                        self.input.drag = Drag::PressPending { id, start: p, pane };
+                        self.input.drag = Drag::PressPending {
+                            id,
+                            start: p,
+                            at: p,
+                            pane,
+                            touch: touch.then_some(time_ms),
+                        };
                         self.input.velocity.clear();
                         self.input.velocity.record(time_ms, p.x);
-                        self.set_pointer(Some(p));
+                        if !touch {
+                            self.set_pointer(Some(p));
+                        }
                         consumed(CursorIcon::Crosshair)
                     }
                     Region::PriceAxis(pane) => {
@@ -868,11 +1132,21 @@ impl Chart {
                 }
             }
             InputEvent::PointerMove {
-                id, pos, time_ms, ..
+                id,
+                kind,
+                pos,
+                time_ms,
+                ..
             } => {
                 let p = pos.to_px(dpr);
+                self.input.touch = kind == PointerKind::Touch;
                 let in_plot = matches!(self.region(p), Region::Plot(_));
                 match self.input.drag {
+                    Drag::Pinching { a, b, .. } if a.0 == id || b.0 == id => self.pinch_move(id, p),
+                    Drag::TouchCrosshair { id: d } if d == id => {
+                        self.set_pointer(in_plot.then_some(p));
+                        consumed(CursorIcon::Crosshair)
+                    }
                     Drag::Idle if self.drawings.creating.is_some() => {
                         if let Some(c) = self.drawings.creating {
                             if c.count == AnchorCount::Freehand {
@@ -900,18 +1174,34 @@ impl Chart {
                         }
                     }
                     Drag::PressPending {
-                        id: d, start, pane, ..
+                        id: d,
+                        start,
+                        pane,
+                        touch,
+                        ..
                     } if d == id => {
                         let moved = (p.x - start.x).hypot(p.y - start.y);
-                        if moved > DRAG_THRESHOLD * dpr {
+                        if moved > self.drag_threshold() {
                             self.input.drag = Drag::Panning {
                                 id,
                                 last: start,
                                 pane,
+                                touch: touch.is_some(),
                             };
                             return self.pan_to(p, time_ms);
                         }
-                        self.set_pointer(in_plot.then_some(p));
+                        self.input.drag = Drag::PressPending {
+                            id,
+                            start,
+                            at: p,
+                            pane,
+                            touch,
+                        };
+                        if touch.is_some() {
+                            self.step_long_press(time_ms);
+                        } else {
+                            self.set_pointer(in_plot.then_some(p));
+                        }
                         consumed(CursorIcon::Crosshair)
                     }
                     Drag::Panning { id: d, .. } if d == id => self.pan_to(p, time_ms),
@@ -947,9 +1237,28 @@ impl Chart {
                 }
             }
             InputEvent::PointerUp {
-                id, pos, time_ms, ..
+                id,
+                kind,
+                pos,
+                time_ms,
+                ..
             } => {
                 let p = pos.to_px(dpr);
+                self.input.touch = kind == PointerKind::Touch;
+                if self.end_pinch_finger(id) {
+                    return consumed(CursorIcon::Grabbing);
+                }
+                // A finger held long enough is a long press even if no frame
+                // decided it yet.
+                self.step_long_press(time_ms);
+                if let Drag::TouchCrosshair { id: d } = self.input.drag {
+                    if d != id {
+                        return InputResult::default();
+                    }
+                    // The crosshair stays where the finger lifted.
+                    self.input.drag = Drag::Idle;
+                    return consumed(CursorIcon::Crosshair);
+                }
                 let drag = self.input.drag;
                 if let Some(c) = self.drawings.creating
                     && matches!(drag, Drag::Idle)
@@ -957,7 +1266,7 @@ impl Chart {
                     // Releasing far from the press is a click (drag creation).
                     let far = c
                         .down
-                        .is_some_and(|d| (p.x - d.x).hypot(p.y - d.y) > DRAG_THRESHOLD * dpr);
+                        .is_some_and(|d| (p.x - d.x).hypot(p.y - d.y) > self.drag_threshold());
                     if c.count == AnchorCount::Freehand {
                         if let Some(a) = self.free_anchor_at(c.pane, p) {
                             // The release point, unless the last anchor is close.
@@ -989,7 +1298,7 @@ impl Chart {
                     let before = core::mem::take(&mut self.drawings.edit_before);
                     self.drawings.moved(drawing, before);
                     // A press on a drawing that did not move it is a click.
-                    if (p.x - start.x).hypot(p.y - start.y) <= DRAG_THRESHOLD * dpr {
+                    if (p.x - start.x).hypot(p.y - start.y) <= self.drag_threshold() {
                         self.emit_click(pane, p, Some(drawing));
                     }
                     return consumed(self.hover_cursor(p));
@@ -1022,6 +1331,7 @@ impl Chart {
                 }
                 consumed(self.hover_cursor(p))
             }
+            InputEvent::PointerCancel { id } => self.cancel_pointer(id),
             InputEvent::PointerLeave => {
                 self.set_pointer(None);
                 InputResult::default()
@@ -1032,6 +1342,11 @@ impl Chart {
                 center,
                 scale,
             } => {
+                // Two fingers this chart tracks itself: the host's pinch of
+                // the same gesture (iOS Safari sends both) is ignored.
+                if matches!(self.input.drag, Drag::Pinching { .. }) {
+                    return consumed(CursorIcon::Grabbing);
+                }
                 if phase == GesturePhase::Start {
                     self.input.kinetic = None;
                 }
@@ -1075,7 +1390,13 @@ impl Chart {
     }
 
     fn pan_to(&mut self, p: PointPx, time_ms: f64) -> InputResult {
-        let Drag::Panning { id, last, pane } = self.input.drag else {
+        let Drag::Panning {
+            id,
+            last,
+            pane,
+            touch,
+        } = self.input.drag
+        else {
             return InputResult::default();
         };
         self.time_scale.scroll_by(Px(p.x - last.x));
@@ -1086,9 +1407,17 @@ impl Chart {
             pane.price_scale.pan_px(f64::from(p.y - last.y), h);
         }
         self.input.velocity.record(time_ms, p.x);
-        self.input.drag = Drag::Panning { id, last: p, pane };
-        let in_plot = matches!(self.region(p), Region::Plot(_));
-        self.set_pointer(in_plot.then_some(p));
+        self.input.drag = Drag::Panning {
+            id,
+            last: p,
+            pane,
+            touch,
+        };
+        // A finger shows no crosshair while panning.
+        if !touch {
+            let in_plot = matches!(self.region(p), Region::Plot(_));
+            self.set_pointer(in_plot.then_some(p));
+        }
         InputResult {
             consumed: true,
             cursor: CursorIcon::Grabbing,

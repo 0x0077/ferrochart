@@ -129,12 +129,14 @@ fn main() {
         let mut renderer = WgpuRenderer::offscreen(&ctx);
         chart.handle_input(InputEvent::PointerMove {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: center,
             mods,
             time_ms: 0.0,
         });
         chart.handle_input(InputEvent::PointerDown {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: center,
             button: Button::Left,
             mods,
@@ -145,6 +147,7 @@ fn main() {
             let dx = if phase < 40.0 { phase } else { 80.0 - phase } * 10.0 - 200.0;
             chart.handle_input(InputEvent::PointerMove {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss {
                     x: center.x + dx,
                     y: center.y,

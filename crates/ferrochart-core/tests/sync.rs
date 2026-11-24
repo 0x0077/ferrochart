@@ -73,6 +73,7 @@ fn hover(chart: &mut Chart, fx: f32) {
     };
     chart.handle_input(InputEvent::PointerMove {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos,
         mods: NONE,
         time_ms: 0.0,
@@ -88,6 +89,7 @@ fn drag(chart: &mut Chart, dx: f32) {
     let button = Button::Left;
     chart.handle_input(InputEvent::PointerDown {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos: at(0.0),
         button,
         mods: NONE,
@@ -95,6 +97,7 @@ fn drag(chart: &mut Chart, dx: f32) {
     });
     chart.handle_input(InputEvent::PointerMove {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos: at(dx),
         mods: NONE,
         time_ms: 10.0,
@@ -102,6 +105,7 @@ fn drag(chart: &mut Chart, dx: f32) {
     // Released long after the last move: no kinetic scrolling.
     chart.handle_input(InputEvent::PointerUp {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos: at(dx),
         button,
         mods: NONE,
@@ -494,6 +498,7 @@ fn joining_shares_existing_drawings() {
     for e in [
         InputEvent::PointerDown {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: at,
             button: Button::Left,
             mods: NONE,
@@ -501,6 +506,7 @@ fn joining_shares_existing_drawings() {
         },
         InputEvent::PointerUp {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: at,
             button: Button::Left,
             mods: NONE,

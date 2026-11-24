@@ -1,4 +1,4 @@
-<!-- source: c2e84c153f -->
+<!-- source: bec9dd6da7 -->
 # 系列类型
 
 一个系列就是以某种方式绘制的一组数据：K 线、折线、柱状图等等。一个图表可以在任意多个窗格上容纳任意多个系列。同一图表的所有系列共享一条时间轴（参见[数据](data.md)）。
@@ -178,6 +178,9 @@ s.applyOptions({ color: null });        // back to the theme color
 | `priceLineVisible` | `boolean` | `true` | 除成交量外全部 | 在最新值处画一条水平点线 |
 | `shift` | `number` | `0` | 全部 | 以 K 线数为单位的显示偏移，参见[偏移](#shift) |
 | `pricePrecision` | `number \| null` | `null` | 全部 | 价格标签的小数位数，参见[价格精度](#price-precision) |
+| `markerStackLimit` | `number \| null` | `null` | 支持标记的系列 | 整数 1–65535：K 线每侧的位置数，包含“+k”徽标；`null` 表示不限。参见[折叠](markers.md#folding-crowded-bars)。 |
+| `markerCluster` | `number \| null` | `null` | 支持标记的系列 | 以 CSS 像素表示的正有限距离，用于跨 K 线聚合；`null` 禁用。不包含 `atPrice`。参见[聚合](markers.md#clustering-across-bars)。 |
+| `filledBarColor` | `Color \| null` | `null` | candlestick、ohlc、heikinAshi | 带有 `filled` 标记的空心 K 线颜色；`null` 使用系列主色，不透明度为 40%。参见 [K 线质量标记](data.md#bar-quality-flags)。 |
 
 无效的值（未知的线型、格式错误的颜色、负的宽度）会抛出异常，系列保留原来的选项。
 

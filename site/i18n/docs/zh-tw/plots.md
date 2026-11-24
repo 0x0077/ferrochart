@@ -1,4 +1,4 @@
-<!-- source: de9b1ca7fd -->
+<!-- source: 0b3cf203ce -->
 # 繪圖（FerroPlot）
 
 `FerroChart` 是圍繞時間序列 K 線設計的。其他所有用途，例如波動率微笑、報酬率分佈直方圖、產業別長條圖、損益瀑布圖或相關係數熱力圖，請使用 `FerroPlot`：一種通用的 x/y 繪圖，支援數值、對數、類別與日期座標軸。它與圖表使用相同的渲染器（WebGPU，其次 WebGL2）、相同的 canvas 處理方式與相同的主題。
@@ -37,6 +37,7 @@ plot.axis('x').applyOptions({ title: 'Strike' });
 | `crosshair` | 穿過滑鼠所指元素的十字游標線 | `false` |
 | `hoverHighlight` | 醒目標示滑鼠所指的元素 | `true` |
 | `attributionLogo` | 繪圖區左下角的 FerroChart 標誌 | `true` |
+| `touchScroll` | `'chart'`、`'page'`：由誰處理垂直滑動；參見[觸控螢幕](web.md#touch-screens) | `'chart'` |
 
 `FerroPlot` 的其他成員：
 
@@ -54,6 +55,8 @@ plot.axis('x').applyOptions({ title: 'Strike' });
 | `destroy()` | 移除監聽器與標誌，釋放 GPU 資源（`dispose()` 是同一個方法，為其舊名稱） |
 
 使用者可以平移與縮放繪圖：拖曳會平移；滾輪或雙指縮放會以指標為中心縮放 x 軸（在 y 軸上方或按住 Alt 時，則縮放該座標軸）；Shift+滾輪與水平捲動會平移；沿著座標軸拖曳會縮放該座標軸；雙擊則還原至完整範圍。類別座標軸可平移但不能縮放。
+
+在觸控螢幕上，單指可平移，雙指則以中點為中心縮放；每個方向的縮放幅度取決於兩指在該方向上的距離變化（若兩指在某方向的距離小於 16 CSS px，該方向就不會縮放）。手指按在元素上會顯示其懸停狀態，抬起後仍會保留，除非手指曾平移圖表；手指對資料點的命中範圍比滑鼠多出 8 CSS px。
 
 ## 圖形
 

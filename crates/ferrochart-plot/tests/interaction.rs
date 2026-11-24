@@ -47,6 +47,7 @@ fn at(p: &Plot, x: f64, y: f64) -> PointCss {
 fn mv(p: &mut Plot, pos: PointCss, t: f64) {
     p.handle_input(InputEvent::PointerMove {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos,
         mods: Modifiers::default(),
         time_ms: t,
@@ -56,6 +57,7 @@ fn mv(p: &mut Plot, pos: PointCss, t: f64) {
 fn down(p: &mut Plot, pos: PointCss, t: f64) {
     p.handle_input(InputEvent::PointerDown {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos,
         button: Button::Left,
         mods: Modifiers::default(),
@@ -66,6 +68,7 @@ fn down(p: &mut Plot, pos: PointCss, t: f64) {
 fn up(p: &mut Plot, pos: PointCss, t: f64) {
     p.handle_input(InputEvent::PointerUp {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos,
         button: Button::Left,
         mods: Modifiers::default(),
@@ -540,4 +543,174 @@ proptest! {
         let tol = (hi - lo) * 1e-5 + v.abs() * 1e-6;
         prop_assert!((back - v).abs() <= tol, "{v} -> {px:?} -> {back}");
     }
+}
+
+fn touch(p: &mut Plot, phase: u8, id: u64, pos: PointCss, t: f64) {
+    use ferrochart_core::interaction::PointerKind::Touch;
+    let mods = Modifiers::default();
+    let (button, kind, time_ms) = (Button::Left, Touch, t);
+    p.handle_input(match phase {
+        0 => InputEvent::PointerDown {
+            id,
+            kind,
+            pos,
+            button,
+            mods,
+            time_ms,
+        },
+        1 => InputEvent::PointerMove {
+            id,
+            kind,
+            pos,
+            mods,
+            time_ms,
+        },
+        _ => InputEvent::PointerUp {
+            id,
+            kind,
+            pos,
+            button,
+            mods,
+            time_ms,
+        },
+    });
+}
+
+/// A finger: the hover shows at the press and stays after a tap,
+/// points are hit from further away, a pan clears the hover.
+#[test]
+fn touch_hovers_at_the_finger() {
+    let mut p = plot();
+    p.set_axis(AxisId::X, fixed(0.0, 10.0)).unwrap();
+    p.set_axis(AxisId::Right, fixed(0.0, 10.0)).unwrap();
+    let m = p
+        .add_mark(
+            MarkKind::Scatter,
+            MarkOptions {
+                point_size: Css(10.0),
+                ..MarkOptions::default()
+            },
+        )
+        .unwrap();
+    p.set_data(m, MarkData::xy(vec![5.0], vec![5.0])).unwrap();
+    frame(&mut p, 0.0);
+    let pos = at(&p, 5.0, 5.0);
+    // 15 CSS px away: out of reach for the mouse (5 + 6), within a finger's.
+    let off = PointCss {
+        x: pos.x + 15.0,
+        y: pos.y,
+    };
+    mv(&mut p, off, 1.0);
+    assert_eq!(hovered(&mut p), None);
+    p.handle_input(InputEvent::PointerLeave);
+    events(&mut p);
+    touch(&mut p, 0, 1, off, 10.0);
+    assert_eq!(hovered(&mut p).unwrap().unwrap().index, 0);
+    touch(&mut p, 2, 1, off, 20.0);
+    let ev = events(&mut p);
+    assert!(
+        ev.iter()
+            .any(|e| matches!(e, PlotEvent::Click { hit: Some(_), .. }))
+    );
+    assert!(!ev.iter().any(|e| matches!(e, PlotEvent::Hover(None))));
+    // A pan clears it and leaves none behind.
+    touch(&mut p, 0, 1, off, 100.0);
+    touch(
+        &mut p,
+        1,
+        1,
+        PointCss {
+            x: off.x - 60.0,
+            y: off.y,
+        },
+        110.0,
+    );
+    touch(
+        &mut p,
+        2,
+        1,
+        PointCss {
+            x: off.x - 60.0,
+            y: off.y,
+        },
+        400.0,
+    );
+    assert_eq!(hovered(&mut p), Some(None));
+}
+
+/// Two fingers zoom x around their midpoint; the host's pinch of
+/// the same gesture is ignored; lifting one finger pans on.
+#[test]
+fn two_fingers_zoom_and_pan() {
+    let mut p = plot();
+    p.set_axis(AxisId::X, fixed(0.0, 100.0)).unwrap();
+    p.set_axis(AxisId::Right, fixed(0.0, 100.0)).unwrap();
+    let m = p.add_mark(MarkKind::Line, MarkOptions::default()).unwrap();
+    p.set_data(m, MarkData::xy(vec![0.0, 100.0], vec![0.0, 100.0]))
+        .unwrap();
+    frame(&mut p, 0.0);
+    let a = at(&p, 40.0, 50.0);
+    let b = at(&p, 60.0, 50.0);
+    let mid = (a.x + b.x) * 0.5;
+    let x_at = |p: &Plot, x: f32| p.px_to_value(AxisId::X, Px(x)).unwrap();
+    let before = x_at(&p, mid);
+    let span = |p: &Plot| x_at(p, b.x) - x_at(p, a.x);
+    let s0 = span(&p);
+    touch(&mut p, 0, 1, a, 0.0);
+    touch(&mut p, 0, 2, b, 10.0);
+    let spread = (b.x - a.x) * 0.5;
+    touch(
+        &mut p,
+        1,
+        1,
+        PointCss {
+            x: mid - spread * 2.0,
+            y: a.y,
+        },
+        20.0,
+    );
+    touch(
+        &mut p,
+        1,
+        2,
+        PointCss {
+            x: mid + spread * 2.0,
+            y: b.y,
+        },
+        30.0,
+    );
+    assert!((x_at(&p, mid) - before).abs() < 1e-6);
+    assert!((span(&p) / s0 - 0.5).abs() < 1e-6);
+    let s1 = span(&p);
+    p.handle_input(InputEvent::Pinch {
+        phase: ferrochart_core::interaction::GesturePhase::Update,
+        center: PointCss { x: mid, y: a.y },
+        scale: 2.0,
+    });
+    assert_eq!(span(&p), s1);
+    assert!(p.captures_touch());
+    touch(
+        &mut p,
+        2,
+        2,
+        PointCss {
+            x: mid + spread * 2.0,
+            y: b.y,
+        },
+        40.0,
+    );
+    let v = x_at(&p, mid);
+    touch(
+        &mut p,
+        1,
+        1,
+        PointCss {
+            x: mid - spread * 2.0 + 30.0,
+            y: a.y,
+        },
+        50.0,
+    );
+    assert!(x_at(&p, mid) < v);
+    // A one-finger pan leaves vertical swipes to the page.
+    assert!(!p.captures_touch());
 }

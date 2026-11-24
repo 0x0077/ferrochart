@@ -127,6 +127,47 @@ series, histograms and points show nothing there; lines, areas and baselines
 connect the neighboring points. If new times fall between existing bars of the
 axis, the axis is rebuilt and the chart sends a `warning` event.
 
+## Bar quality flags
+
+Use `setBarFlags` on candlestick, OHLC bar or Heikin-Ashi series to describe
+data your application has filled in or clipped. Flags do not change the
+prices; pass the prepared OHLC data first:
+
+```ts
+const start = Date.UTC(2024, 0, 1);
+candles.setData([
+  { time: start, open: 100, high: 102, low: 99, close: 101 },
+  { time: start + 60_000, open: 101, high: 101, low: 101, close: 101 },
+  { time: start + 120_000, open: 101, high: 104, low: 100, close: 103 },
+]);
+candles.applyOptions({ filledBarColor: '#78909c' });
+candles.setBarFlags([
+  { time: start + 60_000, filled: true },
+  { time: start + 120_000, clipped: true },
+]);
+// Clear all quality flags when they are no longer needed:
+// candles.setBarFlags([]);
+```
+
+- `filled` marks a bar your source synthesized without real trades. It is
+  drawn hollow in `filledBarColor` (by default the series' main color at
+  40% opacity). A truly missing bar can instead be a [gap](#gaps); this flag
+  does not fill missing data for you.
+- `clipped` marks a bar whose outlier wick you clipped. A tick appears at
+  each end of its wick. Keep the raw high/low values in your application,
+  keyed by time, and show them in your tooltip; the chart only has the
+  clipped values you supplied. Both flags can be set on one bar.
+- Each call replaces all flags; `[]` clears them. Times are UTC milliseconds
+  (or `Date`/`bigint`, as for data); for duplicate times the last entry wins.
+  When zooming out merges bars, the merged bar is filled only if all its
+  bars are filled, and clipped if any is clipped.
+
+Python uses `candles.set_bar_flags(times, filled=..., clipped=...)`, with
+boolean arrays of the same length as `times`, and
+`candles.apply_options(filled_bar_color="#78909c")`. See
+[Python](python.md#options-indicators-and-drawings) and
+[Series options](series.md#series-options).
+
 ## Real-time updates
 
 `update` changes the last bar or adds a new one:

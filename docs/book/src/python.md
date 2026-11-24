@@ -57,7 +57,10 @@ candles.set_markers([{"time": t, "position": "below_bar", "shape": "arrow_up", "
 whale = chart.add_icon(avatar)       # a (height, width, 4) uint8 array; RGB works too
 candles.set_markers([{"time": t, "icon": whale, "size": 24, "border": "#2fbf71"},
                      {"time": t, "label": "DB", "position": "below_bar"}])
-candles.apply_options(marker_stack_limit=4)   # 3 markers per bar side, then "+k"
+candles.apply_options(marker_stack_limit=4, marker_cluster=28)
+candles.set_markers([{"id": 101, "time": t, "position": "at_price", "price": 101.5, "text": "fill"}])
+candles.set_bar_flags([t], filled=[True], clipped=[False])
+candles.apply_options(filled_bar_color="#78909c")
 chart.apply_price_scale_options(mode="logarithmic")
 
 rsi = chart.add_indicator(candles, "rsi", n=14)
@@ -78,6 +81,16 @@ saved = json.dumps(chart.save_state())   # view, panes, price scales, drawings
 chart.load_state(json.loads(saved))      # on a chart set up the same way
 ```
 
+Markers accept an integer `id` (0 means none). `"at_price"` requires a
+finite `price` and is neither stacked nor clustered. `marker_cluster` is a
+positive CSS-pixel distance, or `None` to disable; `marker_stack_limit`
+still handles single-bar folding. `set_bar_flags` replaces quality flags
+using UTC-millisecond times and matching boolean arrays: `filled` draws a
+hollow bar, `clipped` marks the wick ends. Keep original prices yourself
+for tooltips. See [Marker placement](markers.md#placement-and-snapping),
+[Clustering](markers.md#clustering-across-bars) and
+[Bar quality flags](data.md#bar-quality-flags).
+
 ## Events
 
 ```python
@@ -91,8 +104,14 @@ chart.on("crosshair_move", lambda e: print(e["point"]))
 Events: `click`, `crosshair_move`, `visible_range_changed`,
 `need_more_history`, `drawing_created`, `drawing_modified`, `drawing_removed`,
 `drawing_selected`, `warning`, `marker_hover` (a dict with `series`, `index`,
-`overflow`, `x`, `y`, `size`, or `None` when the pointer leaves the marker). Callbacks run on the main thread while the
+`id`, `overflow`, `bars`, `x`, `y`, `size`, or `None` when the pointer leaves the marker). Callbacks run on the main thread while the
 chart is shown.
+
+A marker click target includes `id`; a `marker_overflow` target also has
+`bars`, the inclusive logical bar range (a `(from, to)` tuple in native
+window events). For a badge, `id` identifies the first hidden marker. Native Python events do not
+return the original marker dictionary; keep your application objects in a
+mapping keyed by `id`.
 
 ## Chinese, Japanese and Korean text
 

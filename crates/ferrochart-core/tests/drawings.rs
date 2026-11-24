@@ -78,6 +78,7 @@ fn down(chart: &mut Chart, pos: PointCss) -> CursorIcon {
     chart
         .handle_input(InputEvent::PointerDown {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos,
             button: Button::Left,
             mods: NONE,
@@ -90,6 +91,7 @@ fn mv(chart: &mut Chart, pos: PointCss) -> CursorIcon {
     chart
         .handle_input(InputEvent::PointerMove {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos,
             mods: NONE,
             time_ms: 0.0,
@@ -100,6 +102,7 @@ fn mv(chart: &mut Chart, pos: PointCss) -> CursorIcon {
 fn up(chart: &mut Chart, pos: PointCss) {
     chart.handle_input(InputEvent::PointerUp {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos,
         button: Button::Left,
         mods: NONE,

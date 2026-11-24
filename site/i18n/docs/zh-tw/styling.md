@@ -1,4 +1,4 @@
-<!-- source: 5a217efdb8 -->
+<!-- source: 0c15830930 -->
 # 主題與樣式
 
 本章說明圖表的外觀以及它如何融入頁面：主題、顏色、署名標誌、開場動畫、GPU 渲染器、尺寸與清理。除非另有說明，這裡的內容同樣適用於 `FerroPlot`。
@@ -176,7 +176,7 @@ try {
 - `display: block` 可避免行內畫布下方多出的幾個像素空白。
 - 在 flex 或 grid 版面中，請為畫布設定 `min-height: 0`（或 `min-width: 0`），讓容器能夠縮小它。
 
-建立圖表時，畫布還會被設定 `tabindex="0"`（除非它已有 `tabindex`）以便接收按鍵，設定 `touch-action: none` 讓觸控手勢平移與縮放的是圖表而非頁面，並設定 `outline: none`。指標位於圖表上時會設定游標樣式。
+建立圖表時，畫布還會被設定 `tabindex="0"`（除非它已有 `tabindex`）以便接收按鍵，設定 `touch-action: none` 讓觸控手勢平移與縮放的是圖表而非頁面（設為 `touchScroll: 'page'` 時使用 `pan-y`，將垂直滑動留給頁面；參見[觸控螢幕](web.md#touch-screens)），並設定 `outline: none`。指標位於圖表上時會設定游標樣式。
 
 ## 清理
 

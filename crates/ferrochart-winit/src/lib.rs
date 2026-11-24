@@ -36,13 +36,13 @@ use ferrochart_core::chart::ChartEvent;
 use ferrochart_core::frame::Invalidation;
 use ferrochart_core::geom::{Css, PointCss, SizeCss, SizePx};
 use ferrochart_core::interaction::{
-    Button, CursorIcon, GesturePhase, InputEvent, Key, Modifiers, WheelDelta,
+    Button, CursorIcon, GesturePhase, InputEvent, Key, Modifiers, PointerKind, WheelDelta,
 };
 use ferrochart_core::render::{RenderError, Renderer};
 use ferrochart_render_wgpu::{GpuContext, WgpuRenderer};
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalSize};
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
+use winit::event::{ElementState, MouseButton, MouseScrollDelta, Touch, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WKey, ModifiersState, NamedKey};
 use winit::window::{Window, WindowId};
@@ -158,7 +158,15 @@ pub struct InputConverter {
     mods: Modifiers,
     pos: Option<PointCss>,
     last_press: Option<(Button, PointCss, f64)>,
+    /// A finger's press that may become a tap: pointer id and position.
+    tap_start: Option<(u64, PointCss)>,
+    /// The last tap: position and time (for the double tap).
+    last_tap: Option<(PointCss, f64)>,
 }
+
+/// Two taps this close in time (ms) and space (CSS px) are a double tap.
+const DOUBLE_TAP_MS: f64 = 300.0;
+const DOUBLE_TAP_CSS: f32 = 16.0;
 
 fn button(b: MouseButton) -> Option<Button> {
     match b {
@@ -230,6 +238,7 @@ impl InputConverter {
         self.pos = Some(pos);
         emit(InputEvent::PointerMove {
             id: 0,
+            kind: PointerKind::Mouse,
             pos,
             mods: self.mods,
             time_ms,
@@ -244,6 +253,7 @@ impl InputConverter {
         if !pressed {
             emit(InputEvent::PointerUp {
                 id: 0,
+                kind: PointerKind::Mouse,
                 pos,
                 button: b,
                 mods,
@@ -253,6 +263,7 @@ impl InputConverter {
         }
         emit(InputEvent::PointerDown {
             id: 0,
+            kind: PointerKind::Mouse,
             pos,
             button: b,
             mods,
@@ -269,6 +280,71 @@ impl InputConverter {
             emit(InputEvent::DoubleClick { pos, button: b });
         } else {
             self.last_press = Some((b, pos, time_ms));
+        }
+    }
+
+    /// A finger (touch rules): ids are winit's plus one (the mouse is
+    /// 0); a cancelled touch is `PointerCancel`; taps make double taps.
+    fn touch(
+        &mut self,
+        t: &Touch,
+        scale_factor: f64,
+        time_ms: f64,
+        mut emit: impl FnMut(InputEvent),
+    ) {
+        let id = t.id.saturating_add(1);
+        let pos = PointCss {
+            x: (t.location.x / scale_factor) as f32,
+            y: (t.location.y / scale_factor) as f32,
+        };
+        let (kind, mods, button) = (PointerKind::Touch, self.mods, Button::Left);
+        let near = |a: PointCss, b: PointCss| (a.x - b.x).hypot(a.y - b.y) <= DOUBLE_TAP_CSS;
+        match t.phase {
+            TouchPhase::Started => {
+                self.tap_start = Some((id, pos));
+                emit(InputEvent::PointerDown {
+                    id,
+                    kind,
+                    pos,
+                    button,
+                    mods,
+                    time_ms,
+                });
+            }
+            TouchPhase::Moved => emit(InputEvent::PointerMove {
+                id,
+                kind,
+                pos,
+                mods,
+                time_ms,
+            }),
+            TouchPhase::Ended => {
+                emit(InputEvent::PointerUp {
+                    id,
+                    kind,
+                    pos,
+                    button,
+                    mods,
+                    time_ms,
+                });
+                let tap = self
+                    .tap_start
+                    .take()
+                    .is_some_and(|(d, start)| d == id && near(start, pos));
+                let double = tap
+                    && self
+                        .last_tap
+                        .is_some_and(|(p0, t0)| time_ms - t0 <= DOUBLE_TAP_MS && near(p0, pos));
+                self.last_tap = (tap && !double).then_some((pos, time_ms));
+                if double {
+                    emit(InputEvent::DoubleClick { pos, button });
+                }
+            }
+            TouchPhase::Cancelled => {
+                self.tap_start = None;
+                self.last_tap = None;
+                emit(InputEvent::PointerCancel { id });
+            }
         }
     }
 
@@ -351,6 +427,7 @@ impl InputConverter {
                     });
                 }
             }
+            WindowEvent::Touch(t) => self.touch(t, scale_factor, time_ms, emit),
             WindowEvent::Focused(false) => {
                 self.mods = Modifiers::default();
             }

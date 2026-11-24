@@ -1,4 +1,4 @@
-<!-- source: e853ddc392 -->
+<!-- source: 824d4ea76a -->
 # C, C++, C#
 
 `ferrochart-ffi`는 헤더 하나(`ferrochart.h`)로 된 C 라이브러리입니다. C와
@@ -97,6 +97,23 @@ ferrochart_set_markers(chart, candles, m, 2); // replaces the series' markers
 예를 들어 툴팁을 표시하는 데 쓸 수 있습니다. 배지를 클릭하면 `target_type`이
 `FERROCHART_TARGET_MARKER_OVERFLOW`이고 `count`가 함께 전달됩니다.
 
+`FerroChartMarker.id`는 사용자 지정 `uint64_t` 식별자(0은 없음)이며, 마커 클릭과
+호버 이벤트는 이를 `marker_id`로 반환합니다. 사용자 객체는 호스트 쪽 조회 테이블에
+보관하세요. 가격에 마커를 배치하려면 `position`을 `FERROCHART_MARKER_AT_PRICE`로,
+`price`를 시리즈 단위의 유한한 값으로 설정합니다. 이 마커는 쌓이거나 군집화되지
+않습니다. 다른 위치에서는 C의 `price` 필드를 무시합니다.
+
+`FerroChartSeriesOptions.marker_cluster`는 여러 봉의 군집화 거리를 CSS px로
+설정하며, 0이면 끕니다. 배지 이벤트에는 양 끝을 포함한 논리 봉 범위인 `bars_from`과
+`bars_to`가 담기며, `marker_id`는 숨겨진 첫 번째 마커의 id입니다.
+[군집화](markers.md#clustering-across-bars)를 참고하세요.
+
+품질 플래그에는 타임스탬프와 플래그 배열로 `ferrochart_set_bar_flags`를 호출하고,
+`FERROCHART_BAR_FILLED`와 `FERROCHART_BAR_CLIPPED` 비트를 사용합니다.
+`FerroChartSeriesOptions.filled_bar_color`는 속이 빈 filled 봉의 색상을
+`0xRRGGBBAA`로 설정합니다(0이면 주 색상을 40% 불투명도로 사용).
+[봉 품질 플래그](data.md#bar-quality-flags)를 참고하세요.
+
 내장 폰트는 ASCII와 일반 기호를 지원합니다. 중국어, 일본어, 한국어 또는 다른
 문자를 쓰려면 폰트 파일을 추가하세요. 문자는 추가한 폰트에서 순서대로 찾으며,
 어떤 폰트에도 없으면 `□`로 그려집니다.
@@ -112,9 +129,14 @@ ferrochart_add_font(chart, font_data, font_len);
 
 ## 입력과 이벤트
 
-마우스, 휠, 키 입력을 `ferrochart_handle_input`으로 전달하세요
+마우스, 터치, 휠, 키 입력을 `ferrochart_handle_input`으로 전달하세요
 (`FERROCHART_INPUT_*` 이벤트, CSS 픽셀 단위). 차트가 이동, 확대·축소, 크로스헤어
-이동, 활성 도구로 그리기를 처리합니다. 그런 다음 일어난 일을 읽습니다.
+이동, 활성 도구로 그리기를 처리합니다. 터치에서는 `pointer_kind`를
+`FERROCHART_POINTER_TOUCH`로 설정하고, 손가락마다 고유한 `pointer_id`를 부여하며,
+시스템이 터치를 넘겨받을 때 `FERROCHART_INPUT_POINTER_CANCEL`을 보내세요.
+그러면 차트가 [터치 제스처](interaction.md#touch)를 적용합니다. 이전 헤더에서
+온 `FerroChartInput`(`size`가 더 작음)은 마우스로 처리됩니다. 그런 다음 일어난
+일을 읽습니다.
 
 ```c
 FerroChartEvent ev = { .size = sizeof ev };

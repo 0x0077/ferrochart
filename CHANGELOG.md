@@ -7,6 +7,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Touch screens.** On phones, tablets and touch laptops: two fingers zoom
+  and pan, a long press (500 ms) shows the crosshair, which stays after the
+  finger lifts until the next tap, and drawings, handles and markers are
+  easier to hit with a finger. A double tap is a double click. Plots zoom
+  and pan with two fingers and show the hovered element under the finger.
+- **`touchScroll`** creation option in JavaScript (`'chart'`, the default,
+  or `'page'`) and `setTouchScroll`: with `'page'` a vertical swipe scrolls
+  the page, so charts inside articles no longer trap scrolling.
+- Desktop windows (winit, Python) now handle touch input.
+
+### Changed
+
+- Breaking for Rust code that builds input events: `PointerDown`,
+  `PointerMove` and `PointerUp` have a `kind: PointerKind` field (`Mouse`,
+  `Touch`, `Pen`), and there is a new `InputEvent::PointerCancel`. In C,
+  `FerroChartInput` gains `pointer_kind` at the end (programs built with the
+  shorter struct keep working as mouse input) and
+  `FERROCHART_INPUT_POINTER_CANCEL`.
+- In the browser a cancelled pointer (the page took the gesture over) no
+  longer counts as a click.
+
 ### Fixed
 
 - **Real-time updates of sparse line series** ([#1](https://github.com/0x0077/ferrochart/issues/1)).

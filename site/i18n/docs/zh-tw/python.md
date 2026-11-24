@@ -1,4 +1,4 @@
-<!-- source: 4bfbed7d9a -->
+<!-- source: 29436687cf -->
 # Python
 
 `ferrochart` 套件讓你從 Python 在原生視窗、Jupyter 中繪製圖表或輸出為 PNG，使用 GPU（Metal、Vulkan、DirectX 12）並具備 CPU 備援。它接受 pandas 或 polars DataFrame，或由 NumPy 陣列組成的 dict。
@@ -51,7 +51,10 @@ candles.set_markers([{"time": t, "position": "below_bar", "shape": "arrow_up", "
 whale = chart.add_icon(avatar)       # a (height, width, 4) uint8 array; RGB works too
 candles.set_markers([{"time": t, "icon": whale, "size": 24, "border": "#2fbf71"},
                      {"time": t, "label": "DB", "position": "below_bar"}])
-candles.apply_options(marker_stack_limit=4)   # 3 markers per bar side, then "+k"
+candles.apply_options(marker_stack_limit=4, marker_cluster=28)
+candles.set_markers([{"id": 101, "time": t, "position": "at_price", "price": 101.5, "text": "fill"}])
+candles.set_bar_flags([t], filled=[True], clipped=[False])
+candles.apply_options(filled_bar_color="#78909c")
 chart.apply_price_scale_options(mode="logarithmic")
 
 rsi = chart.add_indicator(candles, "rsi", n=14)
@@ -72,6 +75,8 @@ saved = json.dumps(chart.save_state())   # view, panes, price scales, drawings
 chart.load_state(json.loads(saved))      # on a chart set up the same way
 ```
 
+標記接受整數 `id`（0 表示無）。`"at_price"` 要求提供有限的 `price`，且不參與堆疊或聚合。`marker_cluster` 是以 CSS 像素表示的正距離，設為 `None` 可停用；`marker_stack_limit` 仍處理單根 K 棒上的收合。`set_bar_flags` 透過 UTC 毫秒時間和長度一致的布林陣列取代品質旗標：`filled` 繪製空心 K 棒，`clipped` 在影線兩端繪製標示。請自行保留原始價格，供提示框使用。參見[標記放置](markers.md#placement-and-snapping)、[聚合](markers.md#clustering-across-bars)和 [K 棒品質旗標](data.md#bar-quality-flags)。
+
 ## 事件
 
 ```python
@@ -82,7 +87,9 @@ def clicked(e):
 chart.on("crosshair_move", lambda e: print(e["point"]))
 ```
 
-事件：`click`、`crosshair_move`、`visible_range_changed`、`need_more_history`、`drawing_created`、`drawing_modified`、`drawing_removed`、`drawing_selected`、`warning`、`marker_hover`（一個包含 `series`、`index`、`overflow`、`x`、`y`、`size` 的 dict，指標離開標記時為 `None`）。圖表顯示期間，回呼函式在主執行緒上執行。
+事件：`click`、`crosshair_move`、`visible_range_changed`、`need_more_history`、`drawing_created`、`drawing_modified`、`drawing_removed`、`drawing_selected`、`warning`、`marker_hover`（一個包含 `series`、`index`、`id`、`overflow`、`bars`、`x`、`y`、`size` 的 dict，指標離開標記時為 `None`）。圖表顯示期間，回呼函式在主執行緒上執行。
+
+標記點擊的 target 包含 `id`；`marker_overflow` target 還包含 `bars`，即包含兩端的邏輯 K 棒範圍（原生視窗事件中為 `(from, to)` 元組）。對於徽章，`id` 識別第一個隱藏標記。原生 Python 事件不會傳回原始標記字典；請將應用程式物件保存在以 `id` 為鍵的對應表中。
 
 ## 中文、日文與韓文文字
 

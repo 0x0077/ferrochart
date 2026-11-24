@@ -33,7 +33,9 @@ candles.setMarkers([]);
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `time` | `number \| bigint \| Date` | required | UTC milliseconds (an integer) or a `Date`; `markers()` returns numbers |
-| `position` | `'aboveBar' \| 'belowBar'` | `'aboveBar'` | Above the bar's high or below its low. For single-value series, above or below the value. |
+| `id` | `number` | `0` | Your identifier: an integer from 0 to 2^53−1; 0 means none. Reported by click and hover events. |
+| `position` | `'aboveBar' \| 'belowBar' \| 'atPrice'` | `'aboveBar'` | Above the high, below the low, or centered on `price`. For single-value series, above or below the value. |
+| `price` | `number` | absent | Required and finite for `'atPrice'`; not allowed for other positions. In the series' price units. |
 | `shape` | `'circle' \| 'square' \| 'arrowUp' \| 'arrowDown'` | `'circle'` | Filled icon |
 | `color` | `Color \| null` | `null` | Icon and text color; `null` uses the series' main color (the up color for candles and bars) |
 | `text` | `string` | `''` | Text next to the icon, on the side away from the bar; empty for none |
@@ -46,7 +48,9 @@ candles.setMarkers([]);
 An unknown `position` or `shape`, a missing or non-integer `time`, an
 invalid color, a `size` outside 4–64, a `label` longer than 8 characters, or
 an `icon` or `label` on an arrow or both on one marker throws, and the markers
-are left as they were.
+are left as they were. An `id` outside the safe non-negative integer range,
+a missing or non-finite `price` for `atPrice`, or a `price` on another
+position also throws.
 
 ### Reading markers
 
@@ -59,6 +63,41 @@ The index of a marker in this list is what a `click` event reports as
 list is sorted, the index can differ from the position in the array you passed
 to `setMarkers`.
 
+### Your own data on a marker
+
+Give each marker your own `id` and attach application data to the same
+object. JavaScript `click` and `markerHover` events return that original
+object as `marker`, including custom fields:
+
+```ts
+import type { Marker } from '@ferrochart/core';
+
+const trades: (Marker & { trade: { wallet: string; quantity: number } })[] = [
+  { id: 101, time: Date.UTC(2024, 0, 15), position: 'belowBar', text: 'Buy',
+    trade: { wallet: 'wallet-a', quantity: 2 } },
+];
+candles.setMarkers(trades);
+
+chart.on('click', ({ target }) => {
+  if (target?.type !== 'marker' || target.series.id !== candles.id) return;
+  const marker = target.marker as (typeof trades)[number];
+  console.log(target.id, marker.trade.wallet, marker.trade.quantity);
+});
+chart.on('markerHover', (e) => {
+  if (!e || e.series.id !== candles.id || e.overflow > 0) return;
+  const marker = e.marker as (typeof trades)[number];
+  console.log(e.id, marker.trade.wallet);
+});
+```
+
+The assertions above describe the custom fields on this series' markers.
+`index` is the position after sorting by time, not an application identifier;
+prefer `id` or the original `marker` to reconnect an event to your data.
+For a "+k" badge, `id` and `marker` refer to the first hidden marker, not a
+separate badge object. `markers()` returns normalized marker fields, not
+these original objects. Keep your own list if you need to preserve custom
+fields when replacing markers with `setMarkers`.
+
 ### Placement and snapping
 
 - A marker is drawn at the bar whose time equals `time`. A time between two
@@ -66,13 +105,16 @@ to `setMarkers`.
   bar. A time before the first bar snaps to the first bar.
 - If the series has no value at that bar (a gap), the marker is not drawn.
 - Markers follow the series' `shift` option.
-- The icon is `size` CSS px across (10 by default), 4 CSS px away from the
-  bar.
-- Several markers on the same bar and side stack away from the bar, in the
+- The icon is `size` CSS px across (10 by default). Above/below markers
+  sit 4 CSS px away from the bar.
+- Several above/below markers on the same bar and side stack away from the bar, in the
   order of `markers()`. A marker with text takes the icon plus one line of
   text.
 - The text is centered on the bar, above the icon for `aboveBar` and below it
   for `belowBar`, in the marker's color.
+- An `'atPrice'` marker is centered on its finite `price`, with text to the
+  right. It still snaps in time, but is neither stacked nor clustered;
+  several markers at the same time and price can overlap.
 - Markers are clipped to the plot area.
 
 ```ts
@@ -80,6 +122,14 @@ to `setMarkers`.
 candles.setMarkers([
   { time: t, position: 'belowBar', shape: 'arrowUp', text: 'Entry' },
   { time: t, position: 'belowBar', shape: 'circle', text: 'Alert' },
+]);
+```
+
+For an event at an exact price:
+
+```ts
+candles.setMarkers([
+  { id: 102, time: t, position: 'atPrice', price: 101.25, shape: 'circle', text: 'Fill' },
 ]);
 ```
 
@@ -134,9 +184,39 @@ candles.applyOptions({ markerStackLimit: null }); // no limit (the default)
 
 The badge is a circle in the series' main color, as large as the marker it
 replaces. Clicking it sends a `click` whose target is
-`{ type: 'markerOverflow', series, first, count }`: the markers not drawn are
-`series.markers().slice(first, first + count)`, for example to list them in a
-popup.
+`{ type: 'markerOverflow', series, first, count, id, marker, bars }`.
+`first` is the sorted index of the first hidden marker, `count` is the number
+hidden on that side, and `id`/`marker` identify the first one. `bars` gives
+the first and last logical bar index; for a single-bar fold they are equal.
+The markers may be interleaved with markers on another side in the sorted
+list, so `count` does not define a contiguous slice of that list.
+
+### Clustering across bars
+
+Set `markerCluster` to a positive, finite distance in CSS pixels to group
+markers across nearby bars. `null` (the default) disables clustering:
+
+```ts
+candles.applyOptions({ markerCluster: 28, markerStackLimit: 4 });
+// Later, keep per-bar folding but turn off cross-bar clustering:
+candles.applyOptions({ markerCluster: null });
+```
+
+Buckets contain `ceil(markerCluster / bar spacing)` logical indices (at
+least one). They align to logical indices, so panning does not regroup
+markers; zooming can change the bucket size. On each side of a bucket with
+markers on two or more bars, only the first marker and a "+k" badge are
+shown, on the bar with the most markers on that side. `atPrice` markers do
+not participate.
+
+Clustering takes precedence over `markerStackLimit` for such a group.
+Otherwise, `markerStackLimit` still controls folding on a single bar.
+A badge click has a `markerOverflow` target; hover has `overflow > 0`.
+Their `bars: { from, to }` contains the inclusive first and last logical
+indices represented by the badge. Use the range, the side of `marker`, and
+your own marker data to build a details list; `first`/`index` and the count
+alone are not a contiguous list of members. See
+[Logical indices](data.md#logical-indices) and [Click events](crosshair-events.md#click).
 
 ### Hovering markers
 
@@ -147,17 +227,18 @@ center and diameter in CSS px, which is what a tooltip needs:
 ```ts
 chart.on('markerHover', (e) => {
   if (!e) return hideTooltip();
-  const list = e.series.markers();
   if (e.overflow > 0) {
-    showTooltip(e.x, e.y - e.size / 2, `${e.overflow} more`, list.slice(e.index, e.index + e.overflow));
+    showTooltip(e.x, e.y - e.size / 2, `${e.overflow} more · bars ${e.bars.from}–${e.bars.to}`);
   } else {
-    showTooltip(e.x, e.y - e.size / 2, list[e.index].text ?? '');
+    showTooltip(e.x, e.y - e.size / 2, e.marker.text ?? '');
   }
 });
 ```
 
 `index` is the position in `series.markers()`; for a badge it is the first
-marker not drawn and `overflow` is k (0 for a marker). The hovered marker is
+marker not drawn and `overflow` is k (0 for a marker). `id` and `marker`
+identify that marker; `bars` is the inclusive logical range represented by
+the marker or badge. The hovered marker is
 found when a frame is drawn, so the event comes at most once per frame. While
 the intro animation plays, no marker counts as hovered. See
 [Crosshair and events](crosshair-events.md).
@@ -187,7 +268,7 @@ or right-to-left layout, so Arabic and Hebrew do not come out right.
 
 ### Python, C and Rust
 
-The fields are the same in every binding:
+The bindings use their own naming conventions:
 
 ```python
 red = chart.add_icon(avatar)          # a (height, width, 4) or (height, width, 3) uint8 array
@@ -195,9 +276,17 @@ candles.set_markers([
     {"time": t, "icon": red, "size": 24, "border": "#2fbf71"},
     {"time": t, "position": "below_bar", "label": "DB", "color": "#2962ff"},
 ])
-candles.apply_options(marker_stack_limit=4)
+candles.apply_options(marker_stack_limit=4, marker_cluster=28)
 chart.on("marker_hover", lambda e: print(e))   # None when the pointer leaves
 ```
+
+In Python, marker dictionaries accept `id` and `position="at_price"` with
+`price`; events report `id` and badge `bars`. Original-object `marker`
+round-tripping is a JavaScript feature; in native Python, keep a mapping
+from ids to your own objects. In Rust use `Marker::id`, `Marker::price` and
+`MarkerPosition::AtPrice`; `SeriesOptions::marker_cluster` controls
+clustering. In C use `FerroChartMarker.id`, `.price` and
+`FERROCHART_MARKER_AT_PRICE`; series options use `marker_cluster`.
 
 In Python, `add_icon` returns an integer id and `remove_icon(id)` removes the
 image. In C, `ferrochart_add_icon` and `ferrochart_set_markers` take the same

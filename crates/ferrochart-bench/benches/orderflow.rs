@@ -198,6 +198,7 @@ fn main() {
         let dx = if phase < 40.0 { phase } else { 80.0 - phase } * 10.0 - 200.0;
         chart.handle_input(InputEvent::PointerMove {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: PointCss {
                 x: center.x + dx,
                 y: center.y,
@@ -209,12 +210,14 @@ fn main() {
     let press = |chart: &mut Chart| {
         chart.handle_input(InputEvent::PointerMove {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: center,
             mods,
             time_ms: 0.0,
         });
         chart.handle_input(InputEvent::PointerDown {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: center,
             button: Button::Left,
             mods,
@@ -224,6 +227,7 @@ fn main() {
     let release = |chart: &mut Chart| {
         chart.handle_input(InputEvent::PointerUp {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: center,
             button: Button::Left,
             mods,

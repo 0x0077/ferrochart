@@ -1,4 +1,4 @@
-<!-- source: c2e84c153f -->
+<!-- source: bec9dd6da7 -->
 # シリーズの種類
 
 シリーズとは、ひとつの描き方で描画されるひとまとまりのデータです。ローソク足、ライン、ヒストグラムなどがあります。チャートには任意の数のシリーズを任意の数のペインに配置できます。チャート内のすべてのシリーズは1本の時間軸を共有します（[データ](data.md)を参照）。
@@ -171,6 +171,9 @@ s.applyOptions({ color: null });        // back to the theme color
 | `priceLineVisible` | `boolean` | `true` | volume以外すべて | 最終値の位置に引かれる水平の点線 |
 | `shift` | `number` | `0` | すべて | 足数単位の表示シフト。[シフト](#shift)を参照 |
 | `pricePrecision` | `number \| null` | `null` | すべて | 価格ラベルの小数点以下の桁数。[価格の精度](#price-precision)を参照 |
+| `markerStackLimit` | `number \| null` | `null` | マーカーを持つシリーズ | 1〜65535の整数。「+k」バッジを含め、足の各側で使う場所の数。`null`は制限なし。[混み合った足をまとめる](markers.md#folding-crowded-bars)を参照。 |
+| `markerCluster` | `number \| null` | `null` | マーカーを持つシリーズ | 複数の足にまたがるクラスタリングの距離。CSSピクセル単位の正の有限値で、`null`は無効。`atPrice`は対象外。[クラスタリング](markers.md#clustering-across-bars)を参照。 |
+| `filledBarColor` | `Color \| null` | `null` | candlestick、ohlc、heikinAshi | `filled`フラグの付いた、中空に描画される足の色。`null`ではメインカラーを不透明度40%で使います。[足の品質フラグ](data.md#bar-quality-flags)を参照。 |
 
 無効な値（未知のラインスタイル、不正な形式の色、負の太さ）を指定すると例外がthrowされ、シリーズは以前のオプションを保持します。
 

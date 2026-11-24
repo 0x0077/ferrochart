@@ -1,4 +1,4 @@
-<!-- source: 5a217efdb8 -->
+<!-- source: 0c15830930 -->
 # 主题与样式
 
 本章介绍图表的外观以及它如何融入页面：主题、颜色、署名标志、入场动画、GPU 渲染器、尺寸调整和清理。除非特别说明，这里的内容同样适用于 `FerroPlot`。
@@ -176,7 +176,7 @@ canvas 的尺寸用 CSS 设置。FerroChart 会自行把 canvas 的后备存储�
 - `display: block` 可以避免行内 canvas 下方出现几像素的空隙。
 - 在 flex 或 grid 布局中，给 canvas 设置 `min-height: 0`（或 `min-width: 0`），以便容器可以把它缩小。
 
-创建图表时，canvas 还会获得 `tabindex="0"`（除非它已有 `tabindex`），以便接收按键；获得 `touch-action: none`，使触摸手势平移和缩放的是图表而不是页面；以及 `outline: none`。指针位于图表上时会设置光标样式。
+创建图表时，canvas 还会获得 `tabindex="0"`（除非它已有 `tabindex`），以便接收按键；获得 `touch-action: none`，使触摸手势平移和缩放的是图表而不是页面（使用 `touchScroll: 'page'` 时为 `pan-y`，将竖向滑动交给页面，见[触屏](web.md#touch-screens)）；以及 `outline: none`。指针位于图表上时会设置光标样式。
 
 ## 清理
 

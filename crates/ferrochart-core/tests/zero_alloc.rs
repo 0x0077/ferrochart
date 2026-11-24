@@ -194,6 +194,148 @@ mod chart_hot_paths {
         assert!(!chart.frame().layers[1].cmds.is_empty());
     }
 
+    /// Touch gestures (touch rules): a two-finger pinch and the
+    /// long-press crosshair following the finger, with frames between.
+    #[test]
+    fn touch_gestures_do_not_allocate() {
+        use ferrochart_core::geom::PointCss;
+        use ferrochart_core::interaction::{Button, InputEvent, Modifiers, PointerKind};
+        let (mut chart, _) = chart(1_000_000);
+        let touch = PointerKind::Touch;
+        let mods = Modifiers::default();
+        let at = |x: f32, y: f32| PointCss { x, y };
+        let gestures = |chart: &mut Chart, t0: f64| {
+            let mut t = t0;
+            let ev = |chart: &mut Chart, e: InputEvent, t: f64| {
+                chart.handle_input(e);
+                chart.build_frame(t, &MonoMeasurer);
+            };
+            // Pinch out and back in, moving right.
+            ev(
+                chart,
+                InputEvent::PointerDown {
+                    id: 1,
+                    kind: touch,
+                    pos: at(400.0, 300.0),
+                    button: Button::Left,
+                    mods,
+                    time_ms: t,
+                },
+                t,
+            );
+            ev(
+                chart,
+                InputEvent::PointerDown {
+                    id: 2,
+                    kind: touch,
+                    pos: at(700.0, 300.0),
+                    button: Button::Left,
+                    mods,
+                    time_ms: t,
+                },
+                t,
+            );
+            for i in 0..60 {
+                t += 16.0;
+                let d = 150.0 + 60.0 * ((i as f32) * 0.1).sin();
+                let c = 550.0 + i as f32;
+                ev(
+                    chart,
+                    InputEvent::PointerMove {
+                        id: 1,
+                        kind: touch,
+                        pos: at(c - d, 300.0),
+                        mods,
+                        time_ms: t,
+                    },
+                    t,
+                );
+                ev(
+                    chart,
+                    InputEvent::PointerMove {
+                        id: 2,
+                        kind: touch,
+                        pos: at(c + d, 300.0),
+                        mods,
+                        time_ms: t,
+                    },
+                    t,
+                );
+            }
+            ev(
+                chart,
+                InputEvent::PointerUp {
+                    id: 2,
+                    kind: touch,
+                    pos: at(700.0, 300.0),
+                    button: Button::Left,
+                    mods,
+                    time_ms: t,
+                },
+                t,
+            );
+            ev(
+                chart,
+                InputEvent::PointerUp {
+                    id: 1,
+                    kind: touch,
+                    pos: at(400.0, 300.0),
+                    button: Button::Left,
+                    mods,
+                    time_ms: t,
+                },
+                t,
+            );
+            // Long press, then the crosshair follows the finger.
+            t += 100.0;
+            ev(
+                chart,
+                InputEvent::PointerDown {
+                    id: 3,
+                    kind: touch,
+                    pos: at(500.0, 250.0),
+                    button: Button::Left,
+                    mods,
+                    time_ms: t,
+                },
+                t,
+            );
+            t += 600.0;
+            chart.build_frame(t, &MonoMeasurer);
+            for i in 0..60 {
+                t += 16.0;
+                let x = 300.0 + 8.0 * i as f32;
+                ev(
+                    chart,
+                    InputEvent::PointerMove {
+                        id: 3,
+                        kind: touch,
+                        pos: at(x, 250.0),
+                        mods,
+                        time_ms: t,
+                    },
+                    t,
+                );
+            }
+            ev(
+                chart,
+                InputEvent::PointerUp {
+                    id: 3,
+                    kind: touch,
+                    pos: at(780.0, 250.0),
+                    button: Button::Left,
+                    mods,
+                    time_ms: t,
+                },
+                t,
+            );
+        };
+        gestures(&mut chart, 0.0);
+        gestures(&mut chart, 10_000.0);
+        let ((), n) = count_allocations(|| gestures(&mut chart, 20_000.0));
+        assert_eq!(n, 0);
+    }
+
     /// An intro animation: the host advances `set_reveal` every
     /// frame from 0 to 1, with the pen.
     #[test]
@@ -367,6 +509,7 @@ mod chart_hot_paths {
             }
             chart.handle_input(InputEvent::PointerMove {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss {
                     x: 100.0 + (k % 50) as f32 * 10.0,
                     y: 200.0,
@@ -480,6 +623,7 @@ mod chart_hot_paths {
             }
             chart.handle_input(InputEvent::PointerMove {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss {
                     x: 700.0 + (k % 50) as f32 * 9.0,
                     y: 40.0 + (k % 26) as f32 * 20.0,
@@ -587,6 +731,7 @@ mod chart_hot_paths {
             }
             chart.handle_input(InputEvent::PointerMove {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss {
                     x: 600.0 + (k % 50) as f32 * 9.0,
                     y: 40.0 + (k % 26) as f32 * 20.0,
@@ -684,6 +829,7 @@ mod chart_hot_paths {
         let mods = Modifiers::default();
         let mv = |x: f32, t: f64| InputEvent::PointerMove {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: PointCss { x, y: 250.0 },
             mods,
             time_ms: t,
@@ -700,6 +846,7 @@ mod chart_hot_paths {
             }
             chart.handle_input(InputEvent::PointerDown {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss { x: 600.0, y: 250.0 },
                 button: Button::Left,
                 mods,
@@ -711,6 +858,7 @@ mod chart_hot_paths {
             }
             chart.handle_input(InputEvent::PointerUp {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss { x: 3.0, y: 250.0 },
                 button: Button::Left,
                 mods,
@@ -760,6 +908,7 @@ mod chart_hot_paths {
         let mods = Modifiers::default();
         let mv = |y: f32, t: f64| InputEvent::PointerMove {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: PointCss { x: 500.0, y },
             mods,
             time_ms: t,
@@ -775,6 +924,7 @@ mod chart_hot_paths {
             }
             chart.handle_input(InputEvent::PointerDown {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss { x: 500.0, y: sep },
                 button: Button::Left,
                 mods,
@@ -786,6 +936,7 @@ mod chart_hot_paths {
             }
             chart.handle_input(InputEvent::PointerUp {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss { x: 500.0, y: sep },
                 button: Button::Left,
                 mods,
@@ -878,6 +1029,7 @@ mod chart_hot_paths {
                 chart.time_scale().scroll_by(Px(29.0 + i as f32));
                 chart.handle_input(InputEvent::PointerMove {
                     id: 0,
+                    kind: ferrochart_core::interaction::PointerKind::Mouse,
                     pos: PointCss {
                         x: 100.0 + (i * 13) as f32,
                         y: 30.0 + (i * 17) as f32,
@@ -936,6 +1088,7 @@ mod chart_hot_paths {
             let src = k % charts.len();
             charts[src].handle_input(InputEvent::PointerMove {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss {
                     x: 100.0 + (k % 50) as f32 * 10.0,
                     y: 200.0,

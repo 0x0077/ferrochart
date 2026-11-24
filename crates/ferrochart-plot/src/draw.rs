@@ -33,6 +33,8 @@ pub(crate) struct Geometry<'a> {
     pub plot: RectPx,
     pub dpr: f32,
     pub theme: &'a Theme,
+    /// Extra hit radius for a finger, CSS px.
+    pub touch_slop: f32,
 }
 
 /// Everything mark drawing reads: the geometry plus text and colors.

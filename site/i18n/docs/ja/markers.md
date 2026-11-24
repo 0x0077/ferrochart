@@ -1,4 +1,4 @@
-<!-- source: 325f16fb0e -->
+<!-- source: 610fb1bc72 -->
 # マーカーと価格ライン
 
 マーカーは、足に付ける小さな図形で、テキストも付けられます。売買シグナルやニュースなどに使います。マーカーには画像（ウォレットやアカウントのアバター）や`DB`のような短いバッジも表示でき、混み合った足ではマーカーを「+k」バッジにまとめられます。価格ラインは固定価格の水平線で、注文、ストップ、ターゲットなどに使います。どちらもシリーズに属します。各シリーズには最新値ラベルと最新値ラインもあり、シリーズのオプションでオン・オフを切り替えます。
@@ -27,7 +27,9 @@ candles.setMarkers([]);
 | フィールド | 型 | デフォルト | 意味 |
 |---|---|---|---|
 | `time` | `number \| bigint \| Date` | 必須 | UTCミリ秒（整数）または`Date`。`markers()`は数値を返します |
-| `position` | `'aboveBar' \| 'belowBar'` | `'aboveBar'` | 足の高値の上、または安値の下。単一値のシリーズでは値の上または下。 |
+| `id` | `number` | `0` | アプリケーション側の識別子。0〜2^53−1の整数で、0はなしを意味します。クリックとホバーのイベントで通知されます。 |
+| `position` | `'aboveBar' \| 'belowBar' \| 'atPrice'` | `'aboveBar'` | 高値の上、安値の下、または`price`を中心とする位置。単一値のシリーズでは値の上または下。 |
+| `price` | `number` | なし | `'atPrice'`では必須で、有限の値。他の位置では指定できません。シリーズの価格単位で指定します。 |
 | `shape` | `'circle' \| 'square' \| 'arrowUp' \| 'arrowDown'` | `'circle'` | 塗りつぶしのアイコン |
 | `color` | `Color \| null` | `null` | アイコンとテキストの色。`null`ではシリーズのメインカラー（ローソク足とバーでは陽線の色）を使います |
 | `text` | `string` | `''` | アイコンの隣、足と反対側に表示するテキスト。なしの場合は空 |
@@ -37,7 +39,7 @@ candles.setMarkers([]);
 | `border` | `Color \| null` | `null` | 図形の縁の内側に描くリング。`null`ではなし |
 | `borderWidth` | `number` | `2` | リングの幅（CSS px） |
 
-不明な`position`や`shape`、`time`の欠落や整数でない`time`、無効な色、4〜64の範囲外の`size`、8文字を超える`label`、矢印への`icon`や`label`の指定、または1つのマーカーへの両方の指定は例外を投げ、マーカーは元のままです。
+不明な`position`や`shape`、`time`の欠落や整数でない`time`、無効な色、4〜64の範囲外の`size`、8文字を超える`label`、矢印への`icon`や`label`の指定、または1つのマーカーへの両方の指定は例外を投げ、マーカーは元のままです。`id`が安全に表現できる非負整数の範囲外の場合、`atPrice`で`price`が欠落しているか有限でない場合、他の位置に`price`を指定した場合も例外を投げます。
 
 ### マーカーの読み出し
 
@@ -45,14 +47,42 @@ candles.setMarkers([]);
 
 このリストにおけるマーカーのインデックスが、`click`イベントが`target.index`として通知する値です（[クロスヘアとイベント](crosshair-events.md)を参照）。リストはソートされているため、このインデックスは`setMarkers`に渡した配列での位置と異なる場合があります。
 
+### マーカーに独自のデータを持たせる
+
+各マーカーに独自の`id`を付け、同じオブジェクトにアプリケーションのデータを追加できます。JavaScriptの`click`と`markerHover`イベントは、独自のフィールドも含めた元のオブジェクトを`marker`として返します。
+
+```ts
+import type { Marker } from '@ferrochart/core';
+
+const trades: (Marker & { trade: { wallet: string; quantity: number } })[] = [
+  { id: 101, time: Date.UTC(2024, 0, 15), position: 'belowBar', text: 'Buy',
+    trade: { wallet: 'wallet-a', quantity: 2 } },
+];
+candles.setMarkers(trades);
+
+chart.on('click', ({ target }) => {
+  if (target?.type !== 'marker' || target.series.id !== candles.id) return;
+  const marker = target.marker as (typeof trades)[number];
+  console.log(target.id, marker.trade.wallet, marker.trade.quantity);
+});
+chart.on('markerHover', (e) => {
+  if (!e || e.series.id !== candles.id || e.overflow > 0) return;
+  const marker = e.marker as (typeof trades)[number];
+  console.log(e.id, marker.trade.wallet);
+});
+```
+
+上の型アサーションは、このシリーズのマーカーに追加した独自のフィールドを表しています。`index`は時刻順にソートした後の位置であり、アプリケーションの識別子ではありません。イベントから自分のデータを取り出すには、`id`または元の`marker`を使ってください。「+k」バッジの`id`と`marker`は、独立したバッジオブジェクトではなく、描画されなかった最初のマーカーを指します。`markers()`は正規化されたマーカーのフィールドを返し、元のオブジェクトは返しません。`setMarkers`でマーカーを置き換える際に独自のフィールドを保持する必要がある場合は、元のリストをアプリケーション側で保持してください。
+
 ### 配置とスナップ
 
 - マーカーは、時刻が`time`と等しい足に描画されます。2本の足の間の時刻は**次の**足にスナップし、最後の足より後の時刻は最後の足にスナップします。最初の足より前の時刻は最初の足にスナップします。
 - その足でシリーズに値がない（欠損）場合、マーカーは描画されません。
 - マーカーはシリーズの`shift`オプションに従います。
-- アイコンの大きさは`size` CSS px（デフォルトは10）で、足から4 CSS px離れています。
-- 同じ足の同じ側にある複数のマーカーは、`markers()`の順で足から離れる方向に積み重なります。テキスト付きのマーカーは、アイコンとテキスト1行分の場所を取ります。
+- アイコンの大きさは`size` CSS px（デフォルトは10）です。足の上または下に置くマーカーは、足から4 CSS px離れています。
+- 同じ足の同じ側にある、足の上または下に置く複数のマーカーは、`markers()`の順で足から離れる方向に積み重なります。テキスト付きのマーカーは、アイコンとテキスト1行分の場所を取ります。
 - テキストは足の中央に揃えられ、`aboveBar`ではアイコンの上、`belowBar`ではアイコンの下に、マーカーの色で表示されます。
+- `'atPrice'`のマーカーは有限の`price`を中心に置かれ、テキストは右側に表示されます。時刻のスナップは行われますが、積み重ねやクラスタリングの対象にはなりません。同じ時刻と価格に複数のマーカーを置くと、重なる場合があります。
 - マーカーはプロット領域でクリップされます。
 
 ```ts
@@ -60,6 +90,14 @@ candles.setMarkers([]);
 candles.setMarkers([
   { time: t, position: 'belowBar', shape: 'arrowUp', text: 'Entry' },
   { time: t, position: 'belowBar', shape: 'circle', text: 'Alert' },
+]);
+```
+
+特定の価格で起きたイベントを表示するには：
+
+```ts
+candles.setMarkers([
+  { id: 102, time: t, position: 'atPrice', price: 101.25, shape: 'circle', text: 'Fill' },
 ]);
 ```
 
@@ -94,7 +132,21 @@ candles.applyOptions({ markerStackLimit: 4 });   // 3 markers, then "+k"
 candles.applyOptions({ markerStackLimit: null }); // no limit (the default)
 ```
 
-バッジはシリーズのメインカラーの円で、置き換えるマーカーと同じ大きさです。クリックすると、ターゲットが`{ type: 'markerOverflow', series, first, count }`の`click`が送られます。描画されなかったマーカーは`series.markers().slice(first, first + count)`で、たとえばポップアップに一覧表示するのに使えます。
+バッジはシリーズのメインカラーの円で、置き換えるマーカーと同じ大きさです。クリックすると、ターゲットが`{ type: 'markerOverflow', series, first, count, id, marker, bars }`の`click`が送られます。`first`は描画されなかった最初のマーカーのソート後のインデックス、`count`はその側で描画されなかった数で、`id`/`marker`は最初のマーカーを識別します。`bars`は最初と最後の論理インデックスを示し、1本の足でまとめた場合は両者が同じです。ソート済みリストには反対側のマーカーが間に入る場合があるため、`count`はそのリストの連続した部分を表すものではありません。
+
+### 複数の足にまたがるクラスタリング
+
+`markerCluster`にCSSピクセル単位の正の有限距離を設定すると、近くの足のマーカーをまとめられます。`null`（デフォルト）ではクラスタリングが無効になります。
+
+```ts
+candles.applyOptions({ markerCluster: 28, markerStackLimit: 4 });
+// Later, keep per-bar folding but turn off cross-bar clustering:
+candles.applyOptions({ markerCluster: null });
+```
+
+各区画には`ceil(markerCluster / bar spacing)`個の論理インデックスが入ります（最小1個）。区画は論理インデックスに揃うため、パンしてもマーカーのグループは変わりません。ズームすると区画の大きさが変わる場合があります。区画の各側で2本以上の足にマーカーがある場合、その側のマーカーが最も多い足に、最初のマーカーと「+k」バッジだけを表示します。`atPrice`マーカーは対象外です。
+
+このようなグループでは、クラスタリングが`markerStackLimit`より優先されます。それ以外では、`markerStackLimit`が引き続き1本の足でのまとめ方を制御します。バッジのクリックは`markerOverflow`ターゲットを持ち、ホバーでは`overflow > 0`となります。イベントの`bars: { from, to }`は、バッジが表す最初と最後の論理インデックスを両端を含む範囲で示します。詳細の一覧を作るには、この範囲、`marker`が置かれている側、アプリケーション側のマーカーデータを使ってください。`first`/`index`と個数だけでは、メンバーの連続したリストを取り出せません。[論理インデックス](data.md#logical-indices)と[クリックイベント](crosshair-events.md#click)を参照してください。
 
 ### マーカーのホバー
 
@@ -103,16 +155,15 @@ candles.applyOptions({ markerStackLimit: null }); // no limit (the default)
 ```ts
 chart.on('markerHover', (e) => {
   if (!e) return hideTooltip();
-  const list = e.series.markers();
   if (e.overflow > 0) {
-    showTooltip(e.x, e.y - e.size / 2, `${e.overflow} more`, list.slice(e.index, e.index + e.overflow));
+    showTooltip(e.x, e.y - e.size / 2, `${e.overflow} more · bars ${e.bars.from}–${e.bars.to}`);
   } else {
-    showTooltip(e.x, e.y - e.size / 2, list[e.index].text ?? '');
+    showTooltip(e.x, e.y - e.size / 2, e.marker.text ?? '');
   }
 });
 ```
 
-`index`は`series.markers()`における位置です。バッジでは描画されなかった最初のマーカーを指し、`overflow`はkです（マーカーでは0）。ホバー中のマーカーはフレームの描画時に判定されるため、イベントは1フレームにつき最大1回です。イントロアニメーションの再生中は、どのマーカーもホバー中とはみなされません。[クロスヘアとイベント](crosshair-events.md)を参照してください。
+`index`は`series.markers()`における位置です。バッジでは描画されなかった最初のマーカーを指し、`overflow`はkです（マーカーでは0）。`id`と`marker`はそのマーカーを識別し、`bars`はマーカーまたはバッジが表す、両端を含む論理インデックスの範囲です。ホバー中のマーカーはフレームの描画時に判定されるため、イベントは1フレームにつき最大1回です。イントロアニメーションの再生中は、どのマーカーもホバー中とはみなされません。[クロスヘアとイベント](crosshair-events.md)を参照してください。
 
 ### 中国語、日本語、韓国語、絵文字
 
@@ -125,7 +176,7 @@ chart.on('markerHover', (e) => {
 
 ### Python、C、Rust
 
-フィールドはどのバインディングでも同じです。
+各バインディングはそれぞれの命名規則に従います。
 
 ```python
 red = chart.add_icon(avatar)          # a (height, width, 4) or (height, width, 3) uint8 array
@@ -133,9 +184,11 @@ candles.set_markers([
     {"time": t, "icon": red, "size": 24, "border": "#2fbf71"},
     {"time": t, "position": "below_bar", "label": "DB", "color": "#2962ff"},
 ])
-candles.apply_options(marker_stack_limit=4)
+candles.apply_options(marker_stack_limit=4, marker_cluster=28)
 chart.on("marker_hover", lambda e: print(e))   # None when the pointer leaves
 ```
+
+Pythonのマーカー辞書は`id`と、`price`を伴う`position="at_price"`を受け取ります。イベントは`id`とバッジの`bars`を通知します。元のオブジェクトを`marker`として取り出せるのはJavaScriptの機能です。ネイティブPythonでは、idと独自のオブジェクトの対応をアプリケーション側で保持してください。Rustでは`Marker::id`、`Marker::price`、`MarkerPosition::AtPrice`を使い、`SeriesOptions::marker_cluster`でクラスタリングを制御します。Cでは`FerroChartMarker.id`、`.price`、`FERROCHART_MARKER_AT_PRICE`を使い、シリーズのオプションには`marker_cluster`を指定します。
 
 Pythonでは、`add_icon`は整数のidを返し、`remove_icon(id)`で画像を削除します。Cでは、`ferrochart_add_icon`と`ferrochart_set_markers`が同じフィールドを受け取ります（[C、C++、C#](native.md)を参照）。Rustでは、`Chart::add_icon`が`IconImage`（ストレートRGBA、最大256 × 256）を受け取り、`Marker::icon`用の`IconId`を返します。イベントは`ChartEvent::MarkerHover`、クリックターゲットは`ClickTarget::MarkerOverflow`です。
 

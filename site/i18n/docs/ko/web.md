@@ -1,4 +1,4 @@
-<!-- source: c694d739d5 -->
+<!-- source: fbce18a0e1 -->
 # 웹 (JavaScript / TypeScript)
 
 npm 패키지 `@ferrochart/core`에는 WebAssembly 빌드와 TypeScript 타입이
@@ -63,6 +63,29 @@ chart.on('needMoreHistory', ({ barsBeforeStart }) => { /* load older bars */ });
 ```
 
 이벤트는 해당 이벤트를 발생시킨 프레임이 그려진 뒤에 전달됩니다.
+
+## 터치스크린
+
+휴대폰과 태블릿에서는 한 손가락으로 차트를 이동하고, 두 손가락으로 확대·축소하며,
+500 ms 동안 길게 누르면 크로스헤어를 표시합니다(전체 목록은
+[제스처와 키보드](interaction.md#touch) 참고). `touchScroll` 옵션은 세로
+스와이프를 어디서 처리할지 정합니다.
+
+```js
+const chart = await FerroChart.create(canvas, { touchScroll: 'page' });
+chart.setTouchScroll('chart'); // change it later
+```
+
+| `touchScroll` | 캔버스 `touch-action` | 세로 스와이프 | 용도 |
+|---|---|---|---|
+| `'chart'` (기본값) | `none` | 차트 이동 | 전체 화면 차트, 앱 같은 페이지 |
+| `'page'` | `pan-y` | 페이지 스크롤 | 글, 문서, 스크롤 패널 안의 차트 |
+
+`'page'`에서도 가로 스와이프, 두 손가락, 길게 누르기는 차트가 처리합니다.
+길게 눌러 크로스헤어가 표시된 뒤에는 손가락을 위아래로 움직여도 페이지가 아닌
+크로스헤어가 움직입니다. 대신 가격 축의 자동 스케일이 꺼져 있을 때는 한 손가락으로
+가격을 이동할 수 없으므로 두 손가락을 사용하세요.
+`FerroPlot`도 같은 옵션을 받습니다.
 
 ## 정리
 

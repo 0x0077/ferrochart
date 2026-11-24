@@ -1,4 +1,4 @@
-<!-- source: d69da2a7ed -->
+<!-- source: 8ace0a0ae7 -->
 # 資料
 
 本章說明如何把 K 棒與數值放進系列：資料格式、驗證規則、即時更新、載入更早的歷史資料，以及讀回資料。
@@ -102,6 +102,32 @@ line.setData([
 ### 同一時間軸上的多個系列
 
 圖表的所有系列共用一條時間軸：邏輯索引 42 在每個系列中都是同一個時間。當系列的時間不同時，時間軸是它們時間的聯集。若某個時間只有其他系列才有，該系列在此處就沒有資料點：OHLC 系列、直方圖與點在該處不顯示任何東西；折線、面積與基準線則連接相鄰的點。若新的時間落在時間軸既有的 K 棒之間，時間軸會重建，圖表並會傳送 `warning` 事件。
+
+## K 棒品質旗標
+
+在 K 線、OHLC 棒或 Heikin-Ashi 系列上使用 `setBarFlags`，描述應用程式補齊或裁切過的資料。旗標不會改變價格；請先傳入處理好的 OHLC 資料：
+
+```ts
+const start = Date.UTC(2024, 0, 1);
+candles.setData([
+  { time: start, open: 100, high: 102, low: 99, close: 101 },
+  { time: start + 60_000, open: 101, high: 101, low: 101, close: 101 },
+  { time: start + 120_000, open: 101, high: 104, low: 100, close: 103 },
+]);
+candles.applyOptions({ filledBarColor: '#78909c' });
+candles.setBarFlags([
+  { time: start + 60_000, filled: true },
+  { time: start + 120_000, clipped: true },
+]);
+// Clear all quality flags when they are no longer needed:
+// candles.setBarFlags([]);
+```
+
+- `filled` 標識資料來源在沒有真實成交時合成的 K 棒。它以 `filledBarColor` 繪製為空心（預設使用系列主色，不透明度為 40%）。真正缺失的 K 棒也可表示為[缺口](#gaps)；此旗標不會自動補齊缺失資料。
+- `clipped` 標識已裁切異常影線的 K 棒。影線兩端各顯示一條短刻度線。請在應用程式中依時間保留原始最高價和最低價，並在提示框中顯示；圖表只有你傳入的裁切後數值。同一根 K 棒可以同時設定這兩個旗標。
+- 每次呼叫都會取代全部旗標；`[]` 清空旗標。時間為 UTC 毫秒（也可使用 `Date`/`bigint`，與資料相同）；時間重複時最後一項生效。縮小時若多根 K 棒合併，僅當所有原始 K 棒都為 filled 時，合併後的 K 棒才為 filled；只要任意一根為 clipped，合併後的 K 棒就為 clipped。
+
+Python 使用 `candles.set_bar_flags(times, filled=..., clipped=...)`，布林陣列的長度需與 `times` 相同，並使用 `candles.apply_options(filled_bar_color="#78909c")`。參見 [Python](python.md#options-indicators-and-drawings)和[系列選項](series.md#series-options)。
 
 ## 即時更新
 

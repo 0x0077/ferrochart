@@ -1,4 +1,4 @@
-<!-- source: de9b1ca7fd -->
+<!-- source: 0b3cf203ce -->
 # 플롯 (FerroPlot)
 
 `FerroChart`는 시간 순서의 봉을 중심으로 만들어졌습니다. 변동성 스마일, 수익률
@@ -44,6 +44,7 @@ plot.axis('x').applyOptions({ title: 'Strike' });
 | `crosshair` | 마우스가 올라간 요소를 지나는 크로스헤어 선 | `false` |
 | `hoverHighlight` | 마우스가 올라간 요소 강조 | `true` |
 | `attributionLogo` | 플롯 영역 왼쪽 아래의 FerroChart 로고 | `true` |
+| `touchScroll` | `'chart'`, `'page'`: 세로 스와이프를 처리할 대상. [터치스크린](web.md#touch-screens) 참고 | `'chart'` |
 
 `FerroPlot`의 그 밖의 멤버:
 
@@ -65,6 +66,12 @@ plot.axis('x').applyOptions({ title: 'Strike' });
 하면 해당 축을 확대·축소). Shift+휠과 가로 스크롤은 이동, 축을 따라 드래그하면 그
 축을 확대·축소, 더블 클릭하면 맞춤입니다. 카테고리 축은 이동은 되지만 확대·축소는
 되지 않습니다.
+
+터치스크린에서는 한 손가락으로 이동하고 두 손가락의 중점을 중심으로 확대·축소합니다.
+각 방향에서 손가락 사이 거리의 변화에 따라 확대·축소하며, 손가락 사이 거리가
+16 CSS px보다 가까운 방향은 확대·축소하지 않습니다. 요소를 손가락으로 누르면
+호버가 표시되며, 손가락으로 이동하지 않았다면 떼어도 유지됩니다. 손가락은
+마우스보다 8 CSS px 더 먼 거리에서도 점을 누를 수 있습니다.
 
 ## 마크
 

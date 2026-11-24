@@ -249,6 +249,7 @@ fn unfinished_drawing_is_not_saved() {
     let mods = Modifiers::default();
     chart.handle_input(InputEvent::PointerDown {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos,
         button: Button::Left,
         mods,
@@ -256,6 +257,7 @@ fn unfinished_drawing_is_not_saved() {
     });
     chart.handle_input(InputEvent::PointerUp {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos,
         button: Button::Left,
         mods,

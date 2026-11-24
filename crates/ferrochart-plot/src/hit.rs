@@ -148,7 +148,7 @@ fn line(c: &Geometry<'_>, m: &MarkEntry, k: usize, p: PointPx, best: &mut Best) 
     };
     if m.x_sorted {
         // Nearest x among points with a position, within the line's extent.
-        let tol = c.px(Css(TOLERANCE_CSS));
+        let tol = c.px(Css(TOLERANCE_CSS + c.touch_slop));
         let (v, _) = data_range(c.x, p.x, 0.0);
         let j = d.x.partition_point(|&w| w < v);
         let after = (j..d.len())
@@ -179,7 +179,7 @@ fn line(c: &Geometry<'_>, m: &MarkEntry, k: usize, p: PointPx, best: &mut Best) 
         consider(pick.0, pick.1);
         return;
     }
-    let r = c.px(Css(LINE_RADIUS_CSS));
+    let r = c.px(Css(LINE_RADIUS_CSS + c.touch_slop));
     let mut near = |i: usize| {
         if let Some(q) = ok(i)
             && dist(p, q) <= r
@@ -214,7 +214,7 @@ fn scatter(c: &Geometry<'_>, m: &MarkEntry, k: usize, p: PointPx, best: &mut Bes
             .unwrap_or(default_css);
         c.px(Css(s))
     };
-    let tol = c.px(Css(TOLERANCE_CSS));
+    let tol = c.px(Css(TOLERANCE_CSS + c.touch_slop));
     let mut near = |i: usize| {
         let q = point_of(c.x, ya, m, i);
         let s = size(i);

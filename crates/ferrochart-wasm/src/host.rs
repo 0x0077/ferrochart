@@ -16,7 +16,7 @@ use std::rc::{Rc, Weak};
 use ferrochart_core::chart::ChartDataView;
 use ferrochart_core::frame::{Frame, Invalidation, Reveal};
 use ferrochart_core::geom::{PointCss, PointPx, SizeCss, SizePx};
-use ferrochart_core::interaction::{GesturePhase, InputEvent, InputResult, Modifiers};
+use ferrochart_core::interaction::{GesturePhase, InputEvent, InputResult, Modifiers, PointerKind};
 use ferrochart_core::render::Renderer;
 use ferrochart_core::theme::Theme;
 use ferrochart_render_wgpu::{GpuContext, WgpuRenderer};
@@ -56,6 +56,9 @@ pub(crate) trait Scene: Sized + 'static {
     /// Where the attribution logo sits: the bottom-left corner of the
     /// lowest plot area, device px.
     fn logo_anchor(&self) -> PointPx;
+    /// Whether a touch gesture the page must not take over is running (the
+    /// long-press crosshair, a pinch): the page must not scroll meanwhile.
+    fn captures_touch(&self) -> bool;
 
     /// Before deciding whether to draw (state borrowed).
     fn prepare(_state: &mut State<Self>) {}
@@ -138,6 +141,13 @@ pub(crate) struct State<S> {
     css: (f64, f64),
     /// Last pointer position over the canvas (CSS px).
     pub(crate) pointer: Option<(f64, f64)>,
+    /// The last press came from a finger (its `dblclick` is synthesized
+    /// from taps instead).
+    touch_down: bool,
+    /// A finger's press that may become a tap: pointer id and position.
+    tap_start: Option<(i32, PointCss)>,
+    /// The last tap: time and position (for the double tap).
+    last_tap: Option<(f64, PointCss)>,
 }
 
 type RafCallback = Closure<dyn FnMut(f64)>;
@@ -189,6 +199,8 @@ pub(crate) struct Surface {
     pub(crate) dpr: f64,
     /// `attributionLogo` (default `true`).
     logo: bool,
+    /// `touchScroll: 'page'` (default `'chart'`).
+    page_scroll: bool,
 }
 
 /// Reads `theme`, `renderer` and `attributionLogo` of `options`, sizes the canvas backing
@@ -205,6 +217,7 @@ pub(crate) async fn open(
     };
     let mode = string_option(options, "renderer").unwrap_or_else(|| "auto".to_owned());
     let logo = crate::js::opt_bool(options, "attributionLogo")?.unwrap_or(true);
+    let page_scroll = touch_scroll(string_option(options, "touchScroll").as_deref())?;
     let dpr = window()?.device_pixel_ratio();
     let rect = canvas.get_bounding_client_rect();
     let css = (rect.width().max(1.0), rect.height().max(1.0));
@@ -230,7 +243,24 @@ pub(crate) async fn open(
         css,
         dpr,
         logo,
+        page_scroll,
     })
+}
+
+/// Whether `touchScroll` leaves vertical swipes to the page.
+pub(crate) fn touch_scroll(mode: Option<&str>) -> Result<bool, JsError> {
+    match mode {
+        None | Some("chart") => Ok(false),
+        Some("page") => Ok(true),
+        Some(other) => Err(js_err(format!(
+            "unknown touchScroll '{other}' (expected 'chart' or 'page')"
+        ))),
+    }
+}
+
+/// The canvas' `touch-action` for a `touchScroll` mode.
+fn touch_action(page_scroll: bool) -> &'static str {
+    if page_scroll { "pan-y" } else { "none" }
 }
 
 impl<S: Scene> Host<S> {
@@ -249,6 +279,7 @@ impl<S: Scene> Host<S> {
             css,
             dpr,
             logo,
+            page_scroll,
         } = surface;
         scene.resize(
             SizeCss {
@@ -261,7 +292,7 @@ impl<S: Scene> Host<S> {
             canvas.set_tab_index(0);
         }
         let style = canvas.style();
-        let _ = style.set_property("touch-action", "none");
+        let _ = style.set_property("touch-action", touch_action(page_scroll));
         let _ = style.set_property("outline", "none");
         let host = Rc::new(Self {
             state: RefCell::new(State {
@@ -276,6 +307,9 @@ impl<S: Scene> Host<S> {
                 dpr,
                 css,
                 pointer: None,
+                touch_down: false,
+                tap_start: None,
+                last_tap: None,
             }),
             backend,
             listeners: RefCell::new(Vec::new()),
@@ -356,6 +390,16 @@ impl<S: Scene> Host<S> {
     }
 
     /// Shows or removes the attribution logo (`setAttributionLogo`).
+    /// Switches `touchScroll`.
+    pub(crate) fn set_touch_scroll(&self, page_scroll: bool) {
+        if let Ok(state) = self.state.try_borrow() {
+            let _ = state
+                .canvas
+                .style()
+                .set_property("touch-action", touch_action(page_scroll));
+        }
+    }
+
     pub(crate) fn set_logo(self: &Rc<Self>, on: bool) {
         let Ok(mut slot) = self.logo.try_borrow_mut() else {
             return;
@@ -613,6 +657,18 @@ fn mods_of(e: &MouseEvent) -> Modifiers {
     }
 }
 
+fn kind_of(e: &PointerEvent) -> PointerKind {
+    match e.pointer_type().as_str() {
+        "touch" => PointerKind::Touch,
+        "pen" => PointerKind::Pen,
+        _ => PointerKind::Mouse,
+    }
+}
+
+/// Two taps this close in time (ms) and space (CSS px) are a double tap.
+const DOUBLE_TAP_MS: f64 = 300.0;
+const DOUBLE_TAP_CSS: f32 = 16.0;
+
 /// Position relative to the canvas in fractional CSS pixels.
 fn pos_of(e: &MouseEvent) -> PointCss {
     let get = |k: &str| {
@@ -665,6 +721,29 @@ fn on<S: 'static>(
     })
 }
 
+/// Whether the release of finger `id` at `pos` is a tap that completes a
+/// double tap: it did not move far from its press, and the previous
+/// tap was close in time and space.
+fn double_tap<S>(host: &Rc<Host<S>>, id: i32, pos: PointCss, t: f64) -> bool {
+    let Ok(mut state) = host.state.try_borrow_mut() else {
+        return false;
+    };
+    let near = |a: PointCss, b: PointCss| (a.x - b.x).hypot(a.y - b.y) <= DOUBLE_TAP_CSS;
+    let tap = state
+        .tap_start
+        .take()
+        .is_some_and(|(d, start)| d == id && near(start, pos));
+    if !tap {
+        state.last_tap = None;
+        return false;
+    }
+    let double = state
+        .last_tap
+        .is_some_and(|(t0, p0)| t - t0 <= DOUBLE_TAP_MS && near(p0, pos));
+    state.last_tap = (!double).then_some((t, pos));
+    double
+}
+
 #[allow(clippy::too_many_lines)]
 fn install_input<S: Scene>(host: &Rc<Host<S>>, canvas: &HtmlCanvasElement) -> Result<(), JsError> {
     let target: &EventTarget = canvas.as_ref();
@@ -677,14 +756,20 @@ fn install_input<S: Scene>(host: &Rc<Host<S>>, canvas: &HtmlCanvasElement) -> Re
         let Some(button) = convert::button(e.button()) else {
             return;
         };
-        if let Ok(state) = s.state.try_borrow() {
+        let kind = kind_of(e);
+        if let Ok(mut state) = s.state.try_borrow_mut() {
             let _ = state.canvas.set_pointer_capture(e.pointer_id());
             let _ = state.canvas.focus();
+            state.touch_down = kind == PointerKind::Touch;
+            if kind == PointerKind::Touch {
+                state.tap_start = Some((e.pointer_id(), pos_of(e)));
+            }
         }
         input(
             s,
             InputEvent::PointerDown {
                 id: u64::from(e.pointer_id().unsigned_abs()),
+                kind,
                 pos: pos_of(e),
                 button,
                 mods: mods_of(e),
@@ -704,6 +789,7 @@ fn install_input<S: Scene>(host: &Rc<Host<S>>, canvas: &HtmlCanvasElement) -> Re
             s,
             InputEvent::PointerMove {
                 id: u64::from(e.pointer_id().unsigned_abs()),
+                kind: kind_of(e),
                 pos: pos_of(e),
                 mods: mods_of(e),
                 time_ms: e.time_stamp(),
@@ -717,24 +803,70 @@ fn install_input<S: Scene>(host: &Rc<Host<S>>, canvas: &HtmlCanvasElement) -> Re
         let Some(button) = convert::button(e.button().max(0)) else {
             return;
         };
+        let kind = kind_of(e);
+        let pos = pos_of(e);
+        let t = e.time_stamp();
         input(
             s,
             InputEvent::PointerUp {
                 id: u64::from(e.pointer_id().unsigned_abs()),
-                pos: pos_of(e),
+                kind,
+                pos,
                 button,
                 mods: mods_of(e),
-                time_ms: e.time_stamp(),
+                time_ms: t,
             },
         );
+        if kind == PointerKind::Touch && double_tap(s, e.pointer_id(), pos, t) {
+            input(
+                s,
+                InputEvent::DoubleClick {
+                    pos,
+                    button: ferrochart_core::interaction::Button::Left,
+                },
+            );
+        }
     };
     dom.push(on(&w, target, "pointerup", true, up)?);
-    dom.push(on(&w, target, "pointercancel", true, up)?);
-    dom.push(on(&w, target, "pointerleave", true, |s, _| {
+    dom.push(on(&w, target, "pointercancel", true, |s, e| {
+        let Some(e) = e.dyn_ref::<PointerEvent>() else {
+            return;
+        };
+        if let Ok(mut state) = s.state.try_borrow_mut() {
+            state.tap_start = None;
+            state.last_tap = None;
+        }
+        input(
+            s,
+            InputEvent::PointerCancel {
+                id: u64::from(e.pointer_id().unsigned_abs()),
+            },
+        );
+    })?);
+    dom.push(on(&w, target, "pointerleave", true, |s, e| {
+        // A finger leaves when it lifts: the long-press crosshair stays.
+        if e.dyn_ref::<PointerEvent>()
+            .is_some_and(|e| kind_of(e) == PointerKind::Touch)
+        {
+            return;
+        }
         if let Ok(mut state) = s.state.try_borrow_mut() {
             state.pointer = None;
         }
         input(s, InputEvent::PointerLeave);
+    })?);
+    // With `touchScroll: 'page'` the browser may scroll the page on a
+    // vertical swipe; while the scene runs the long-press crosshair or a
+    // pinch, the page stays. A finger's pan is left alone: preventing its
+    // first `touchmove` would swallow every vertical swipe.
+    dom.push(on(&w, target, "touchmove", false, |s, e| {
+        let captured = s
+            .state
+            .try_borrow()
+            .is_ok_and(|state| state.scene.captures_touch());
+        if captured && e.cancelable() {
+            e.prevent_default();
+        }
     })?);
     dom.push(on(&w, target, "wheel", false, |s, e| {
         let Some(e) = e.dyn_ref::<WheelEvent>() else {
@@ -826,6 +958,10 @@ fn install_input<S: Scene>(host: &Rc<Host<S>>, canvas: &HtmlCanvasElement) -> Re
         let Some(e) = e.dyn_ref::<MouseEvent>() else {
             return;
         };
+        // Double taps are synthesized from the taps.
+        if s.state.try_borrow().is_ok_and(|state| state.touch_down) {
+            return;
+        }
         if let Some(button) = convert::button(e.button()) {
             input(
                 s,

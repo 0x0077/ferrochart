@@ -53,6 +53,8 @@ export interface PlotCreateOptions {
   hoverHighlight?: boolean;
   /** The FerroChart logo at the bottom-left of the plot area, as for charts. Default `true`. */
   attributionLogo?: boolean;
+  /** Who handles a vertical one-finger swipe, as for charts. Default `'chart'`. */
+  touchScroll?: 'chart' | 'page';
 }
 
 export type MarkKind = 'line' | 'area' | 'scatter' | 'bars' | 'waterfall' | 'cells';
@@ -263,6 +265,10 @@ impl Scene for PlotScene {
 
     fn set_reveal(&mut self, reveal: Option<ferrochart_core::frame::Reveal>) {
         self.plot.set_reveal(reveal);
+    }
+
+    fn captures_touch(&self) -> bool {
+        self.plot.captures_touch()
     }
 
     fn logo_anchor(&self) -> ferrochart_core::geom::PointPx {
@@ -1195,6 +1201,19 @@ impl FerroPlot {
     #[wasm_bindgen(js_name = setAttributionLogo)]
     pub fn set_attribution_logo(&self, on: bool) {
         self.host.set_logo(on);
+    }
+
+    /// Changes `touchScroll` (see `PlotCreateOptions`).
+    ///
+    /// @param {'chart' | 'page'} mode
+    #[wasm_bindgen(js_name = setTouchScroll)]
+    pub fn set_touch_scroll(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "'chart' | 'page'")] mode: &str,
+    ) -> Result<(), JsError> {
+        self.host
+            .set_touch_scroll(crate::host::touch_scroll(Some(mode))?);
+        Ok(())
     }
 
     /// Removes all listeners and releases the GPU resources. The object can

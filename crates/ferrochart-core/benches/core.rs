@@ -278,5 +278,57 @@ fn update_last(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, set_data, build_frame, bar_flags, update_last);
+/// A two-finger pinch on 1M bars (touch rules): one finger moves per
+/// iteration, then a frame is built.
+fn pinch(c: &mut Criterion) {
+    use ferrochart_core::geom::PointCss;
+    use ferrochart_core::interaction::{Button, InputEvent, Modifiers, PointerKind};
+    let mut g = c.benchmark_group("build_frame");
+    let data = random_walk(2, 1_000_000, START, INTERVAL).unwrap();
+    let (mut chart, _) = loaded_chart(&data);
+    let (touch, mods) = (PointerKind::Touch, Modifiers::default());
+    let at = |x: f32| PointCss { x, y: 300.0 };
+    for (id, x) in [(1, 600.0), (2, 1000.0)] {
+        chart.handle_input(InputEvent::PointerDown {
+            id,
+            kind: touch,
+            pos: at(x),
+            button: Button::Left,
+            mods,
+            time_ms: 0.0,
+        });
+    }
+    let mut step = 0_u32;
+    g.bench_function("pinch_1M", |b| {
+        b.iter(|| {
+            // Fingers spread and close again over 60 moves.
+            step = (step + 1) % 60;
+            let d = 200.0 + 150.0 * (step as f32 * std::f32::consts::TAU / 60.0).sin();
+            let (id, x) = if step.is_multiple_of(2) {
+                (1, 800.0 - d)
+            } else {
+                (2, 800.0 + d)
+            };
+            chart.handle_input(InputEvent::PointerMove {
+                id,
+                kind: touch,
+                pos: at(x),
+                mods,
+                time_ms: f64::from(step),
+            });
+            chart.build_frame(f64::from(step), &MonoMeasurer);
+            black_box(chart.frame().layers[1].cmds.len())
+        });
+    });
+    g.finish();
+}
+
+criterion_group!(
+    benches,
+    set_data,
+    build_frame,
+    bar_flags,
+    pinch,
+    update_last
+);
 criterion_main!(benches);

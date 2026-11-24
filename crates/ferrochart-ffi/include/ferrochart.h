@@ -125,6 +125,20 @@
 // Input: double click.
 #define FERROCHART_INPUT_DOUBLE_CLICK 8
 
+// Input: the system took the pointer over (`pointer_id`): its gesture ends
+// without a click or kinetic scrolling.
+#define FERROCHART_INPUT_POINTER_CANCEL 9
+
+// Pointer kind: mouse (also the value when `pointer_kind` is left out).
+#define FERROCHART_POINTER_MOUSE 0
+
+// Pointer kind: a finger on a touch screen (touch rules: wider drag
+// threshold and hit tolerances, two-finger pinch, long-press crosshair).
+#define FERROCHART_POINTER_TOUCH 1
+
+// Pointer kind: a pen (behaves like the mouse).
+#define FERROCHART_POINTER_PEN 2
+
 // Left mouse button (or touch, pen).
 #define FERROCHART_BUTTON_LEFT 0
 
@@ -431,6 +445,9 @@ typedef struct FerroChartInput {
   uint8_t pressed;
   // Reserved, 0.
   uint8_t reserved[3];
+  // `FERROCHART_POINTER_*` (pointer events). Programs built with an
+  // older, shorter struct get `FERROCHART_POINTER_MOUSE`.
+  uint32_t pointer_kind;
 } FerroChartInput;
 
 // What the chart did with an input event (fixed layout).

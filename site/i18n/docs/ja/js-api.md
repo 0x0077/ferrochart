@@ -1,4 +1,4 @@
-<!-- source: 8cc76ebe6c -->
+<!-- source: 29952e0395 -->
 # JavaScript APIの概要
 
 パッケージ`@ferrochart/core`。このページでは、モジュールの読み込みと、API全体に共通する規約を扱います。すべてのクラス、メソッド、型を網羅した完全なリファレンスは、パッケージのTypeScript宣言から生成されています：[JavaScript APIリファレンス](https://ferrochart.com/docs/api)。
@@ -82,7 +82,7 @@ APIのすべてのオブジェクトはWebAssemblyのメモリを保持してい
 
 ### canvasで処理される入力
 
-ポインター（マウス、ペン、タッチ）、ホイール、キーボード（canvasには`tabindex="0"`が付きます）、ダブルクリック、トラックパッドのピンチ（ChromeとFirefoxではCtrl+ホイール、Safariではジェスチャーイベント）です。canvasのスタイルには`touch-action: none`が設定されます。各ジェスチャーの動作は[ジェスチャーとキーボード](interaction.md)を参照してください。
+ポインター（マウス、ペン、タッチ）、ホイール、キーボード（canvasには`tabindex="0"`が付きます）、ダブルクリック、トラックパッドのピンチ（ChromeとFirefoxではCtrl+ホイール、Safariではジェスチャーイベント）、チャート自身が認識する2本指のタッチです。canvasのスタイルには`touch-action: none`が設定され、`touchScroll: 'page'`の場合は`pan-y`になります（[タッチスクリーン](web.md#touch-screens)を参照）。各ジェスチャーの動作は[ジェスチャーとキーボード](interaction.md)を参照してください。
 
 ## テストデータ
 

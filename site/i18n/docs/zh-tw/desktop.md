@@ -1,4 +1,4 @@
-<!-- source: c8a2437334 -->
+<!-- source: 5e934dc0cd -->
 # 桌面（Rust + winit）
 
 `ferrochart-winit` 會開啟視窗、以 wgpu 渲染，並處理滑鼠、觸控板與鍵盤輸入。你提供一個 `Chart`，也可以選擇性地提供回呼。
@@ -77,7 +77,7 @@ impl ChartApp for Feed {
 cargo run -p example-desktop --release
 ```
 
-一千萬根一分鐘 K 棒，搭配每秒 100 筆 tick 的模擬資料源。拖曳以平移（快速甩動可慣性捲動），滾輪或雙指縮放以縮放，拖曳座標軸以調整其刻度，雙擊座標軸以重設，使用方向鍵與 Home/End 瀏覽。
+一千萬根一分鐘 K 棒，搭配每秒 100 筆 tick 的模擬資料源。拖曳以平移（快速甩動可慣性捲動），滾輪或雙指縮放以縮放，拖曳座標軸以調整其刻度，雙擊座標軸以重設，使用方向鍵與 Home/End 瀏覽。在觸控螢幕上也可使用[觸控手勢](interaction.md#touch)：winit 的觸控事件會轉換為觸控指標。
 
 ## 自行管理事件迴圈
 

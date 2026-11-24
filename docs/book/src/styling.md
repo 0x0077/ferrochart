@@ -227,7 +227,9 @@ The canvas is sized with CSS. FerroChart sets the canvas's backing store
 
 When the chart is created, the canvas also gets `tabindex="0"` (unless it has
 a `tabindex`) so it can receive keys, `touch-action: none` so touch gestures
-pan and zoom the chart instead of the page, and `outline: none`. The cursor
+pan and zoom the chart instead of the page (`pan-y` with `touchScroll: 'page'`,
+which leaves vertical swipes to the page; see
+[Touch screens](web.md#touch-screens)), and `outline: none`. The cursor
 style is set while the pointer is over the chart.
 
 ## Cleaning up

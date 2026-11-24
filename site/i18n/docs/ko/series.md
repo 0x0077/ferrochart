@@ -1,4 +1,4 @@
-<!-- source: c2e84c153f -->
+<!-- source: bec9dd6da7 -->
 # 시리즈 유형
 
 시리즈는 한 가지 방식으로 그려지는 하나의 데이터 집합입니다. 캔들, 라인,
@@ -199,6 +199,9 @@ s.applyOptions({ color: null });        // back to the theme color
 | `priceLineVisible` | `boolean` | `true` | volume 제외 전체 | 마지막 값 위치의 점선 수평선 |
 | `shift` | `number` | `0` | 전체 | 봉 단위 표시 이동. [이동](#shift) 참고 |
 | `pricePrecision` | `number \| null` | `null` | 전체 | 가격 레이블의 소수 자릿수. [가격 정밀도](#price-precision) 참고 |
+| `markerStackLimit` | `number \| null` | `null` | 마커가 있는 시리즈 | 정수 1–65535: "+k" 배지를 포함한 봉의 각 쪽 자리 수. `null`이면 제한 없음. [접기](markers.md#folding-crowded-bars) 참고. |
+| `markerCluster` | `number \| null` | `null` | 마커가 있는 시리즈 | 여러 봉의 군집화를 위한 CSS 픽셀 단위의 유한한 양수 거리. `null`이면 끔. `atPrice`는 제외. [군집화](markers.md#clustering-across-bars) 참고. |
+| `filledBarColor` | `Color \| null` | `null` | candlestick, ohlc, heikinAshi | `filled`로 표시된 속이 빈 봉의 색상. `null`이면 주 색상을 40% 불투명도로 사용. [봉 품질 플래그](data.md#bar-quality-flags) 참고. |
 
 잘못된 값(알 수 없는 선 스타일, 형식이 잘못된 색상, 음수 두께)은 예외를
 발생시키며, 시리즈는 이전 옵션을 유지합니다.

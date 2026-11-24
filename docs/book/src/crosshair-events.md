@@ -119,8 +119,8 @@ interface ClickEvent {
 
 type ClickTarget =
   | { type: 'drawing'; id: number }
-  | { type: 'marker'; series: Series; index: number }
-  | { type: 'markerOverflow'; series: Series; first: number; count: number }
+  | { type: 'marker'; series: Series; index: number; id: number; marker: Marker }
+  | { type: 'markerOverflow'; series: Series; first: number; count: number; id: number; bars: { from: number; to: number }; marker: Marker }
   | { type: 'series'; series: Series };
 ```
 
@@ -132,11 +132,17 @@ sent while a drawing is being created.
 
 1. **A drawing** (its body or one of its handles): `{ type: 'drawing', id }`.
    Pressing a drawing also selects it.
-2. **A marker**: `{ type: 'marker', series, index }`, where `index` is the
-   marker's position in `series.markers()` (which is sorted by time). A "+k"
-   badge of folded markers gives `{ type: 'markerOverflow', series, first,
-   count }`: the markers not drawn are `series.markers().slice(first, first +
-   count)` (see [Markers](markers.md)).
+2. **A marker**: `{ type: 'marker', series, index, id, marker }`, where
+   `index` is the position in the time-sorted `series.markers()`, `id` is
+   your marker id (0 if absent), and `marker` is the original object passed
+   to `setMarkers`, including your custom fields. A "+k" badge from folding
+   or clustering has `{ type: 'markerOverflow', series, first, count, id,
+   bars, marker }`: `first` is the first hidden marker's sorted index,
+   `count` is the number hidden on that side, `id`/`marker` refer to the
+   first one, and `bars: { from, to }` is the inclusive logical bar range.
+   Hidden markers need not be contiguous in the sorted list. Prefer
+   `id`/`marker` for your own data; see [Marker data](markers.md#your-own-data-on-a-marker)
+   and [Clustering](markers.md#clustering-across-bars).
 3. **A series**: `{ type: 'series', series }` when the pointer is on a
    candle's body or wick, within 4 CSS px of a line, inside a histogram bar or
    on a dot. With overlapping series, the one added last wins.
@@ -286,6 +292,9 @@ chart.on('warning', (w) => {
 interface MarkerHoverEvent {
   series: Series;
   index: number;          // position in series.markers(); for a badge, the first marker not drawn
+  id: number;             // your marker id, 0 if absent
+  marker: Marker;         // original object; for a badge, the first hidden marker
+  bars: { from: number; to: number }; // inclusive logical bar range
   overflow: number;       // k for a "+k" badge, 0 for a marker
   x: number;              // center, CSS px from the canvas' top-left corner
   y: number;
@@ -316,8 +325,12 @@ latest bar when the pointer is elsewhere.
 ```ts
 import { FerroChart, type ChartEventMap } from '@ferrochart/core';
 
-const canvas = document.getElementById('chart') as HTMLCanvasElement;
-const legend = document.getElementById('legend') as HTMLDivElement;
+const canvas = document.getElementById('chart');
+const legend = document.getElementById('legend');
+
+if (!(canvas instanceof HTMLCanvasElement) || !(legend instanceof HTMLDivElement)) {
+  throw new Error('Expected #chart canvas and #legend div');
+}
 
 const chart = await FerroChart.create(canvas);
 const candles = chart.addCandlestickSeries();
@@ -326,10 +339,10 @@ const sma = chart.addIndicator(candles, 'sma', { n: 20 }).outputs()[0];
 
 const fmt = (v: number | undefined) => (v === undefined || Number.isNaN(v) ? '–' : v.toFixed(2));
 
-function show(index: number) {
+const show = (index: number) => {
   const bar = candles.dataAt(index);
   const avg = sma.dataAt(index);
-  if (!bar) {
+  if (!bar || !('open' in bar)) {
     legend.textContent = '';
     return;
   }
@@ -337,8 +350,8 @@ function show(index: number) {
   const date = time === null ? '' : new Date(time).toISOString().slice(0, 16).replace('T', ' ');
   legend.textContent =
     `${date}  O ${fmt(bar.open)}  H ${fmt(bar.high)}  L ${fmt(bar.low)}  C ${fmt(bar.close)}` +
-    `  SMA 20 ${fmt(avg?.value)}`;
-}
+    `  SMA 20 ${fmt(avg && 'value' in avg ? avg.value : undefined)}`;
+};
 
 function showLatest() {
   const range = chart.dataRange();
@@ -353,8 +366,10 @@ showLatest();
 ```
 
 `dataAt` returns `{ open, high, low, close, volume }` for OHLC series,
-`{ value }` for the others, and `null` for no data or a gap. Indicator outputs
-are `NaN` during their warm-up bars. When live updates change the latest bar,
+`{ value }` for the others, and `null` for no data or a gap. After checking
+for `null`, use `'open' in bar` or `'value' in avg` to narrow the result
+before reading its fields. Indicator outputs are `NaN` during their warm-up
+bars. When live updates change the latest bar,
 call `showLatest()` after `update` if the pointer is not over the chart.
 
 ## Example: clicking markers and series
@@ -379,7 +394,7 @@ chart.on('click', (e: ChartEventMap['click']) => {
   }
   switch (t.type) {
     case 'marker': {
-      const marker = t.series.markers()[t.index];
+      const marker = t.marker;
       console.log(`marker "${marker.text}" at`, new Date(Number(marker.time)));
       break;
     }

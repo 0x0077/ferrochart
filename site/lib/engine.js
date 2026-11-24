@@ -121,7 +121,10 @@ export async function run(demo, canvas, { onCreate } = {}) {
   const made = [];
   const gated = (Engine) => ({
     create: (c, o) => gpuSlot(async () => {
-      const obj = await Engine.create(c, forced ? { ...o, renderer: forced } : o);
+      // The site's charts sit in scrolling panels: vertical swipes scroll
+      // the page on phones (an example may still set its own touchScroll).
+      const opts = { touchScroll: 'page', ...o };
+      const obj = await Engine.create(c, forced ? { ...opts, renderer: forced } : opts);
       made.push(obj);
       onCreate?.(obj);
       return obj;

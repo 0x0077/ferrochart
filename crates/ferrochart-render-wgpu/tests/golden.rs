@@ -531,6 +531,7 @@ fn golden_overlay_on_cached_layers_matches_full_redraw() {
     chart.set_crosshair_mode(CrosshairMode::Magnet);
     chart.handle_input(InputEvent::PointerMove {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos: PointCss { x: 300.0, y: 150.0 },
         mods: Modifiers::default(),
         time_ms: 0.0,

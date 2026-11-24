@@ -44,6 +44,7 @@ is sized by CSS; see [Themes and styling](styling.md#sizing-the-canvas).
 | `crosshair` | Crosshair lines through the hovered element | `false` |
 | `hoverHighlight` | Highlight the hovered element | `true` |
 | `attributionLogo` | The FerroChart logo at the bottom-left of the plot area | `true` |
+| `touchScroll` | `'chart'`, `'page'`: who gets a vertical swipe; see [Touch screens](web.md#touch-screens) | `'chart'` |
 
 Other members of `FerroPlot`:
 
@@ -64,6 +65,13 @@ The user can pan and zoom a plot: dragging pans, the wheel or a pinch zooms the
 x axis around the pointer (over a y axis, or with Alt, it zooms that axis),
 Shift+wheel and horizontal scrolling pan, dragging along an axis zooms it, and
 a double click fits. Category axes pan but do not zoom.
+
+On a touch screen one finger pans and two fingers zoom around their midpoint,
+each direction by the change of the fingers' distance along it (a direction
+in which the fingers are closer than 16 CSS px does not zoom). Pressing a
+finger on an element shows its hover, which stays after lifting unless the
+finger panned; a finger
+hits points 8 CSS px further away than the mouse.
 
 ## Marks
 

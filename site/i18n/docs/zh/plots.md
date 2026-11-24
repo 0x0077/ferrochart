@@ -1,4 +1,4 @@
-<!-- source: de9b1ca7fd -->
+<!-- source: 0b3cf203ce -->
 # 绘图（FerroPlot）
 
 `FerroChart` 是围绕时间序列上的 K 线构建的。对于其他一切，例如波动率微笑、收益分布直方图、行业柱状图、盈亏瀑布图或相关性热力图，请使用 `FerroPlot`：一种通用的 x/y 绘图，支持数值、对数、分类和日期坐标轴。它与图表使用相同的渲染器（先 WebGPU，后 WebGL2）、相同的 canvas 处理方式和相同的主题。
@@ -38,6 +38,7 @@ plot.axis('x').applyOptions({ title: 'Strike' });
 | `crosshair` | 穿过悬停元素的十字光标线 | `false` |
 | `hoverHighlight` | 高亮悬停的元素 | `true` |
 | `attributionLogo` | 绘图区左下角的 FerroChart 标志 | `true` |
+| `touchScroll` | `'chart'`、`'page'`：由谁处理竖向滑动；见[触屏](web.md#touch-screens) | `'chart'` |
 
 `FerroPlot` 的其他成员：
 
@@ -55,6 +56,8 @@ plot.axis('x').applyOptions({ title: 'Strike' });
 | `destroy()` | 移除监听器和标志，释放 GPU 资源（`dispose()` 是同一个方法的旧名称） |
 
 用户可以平移和缩放绘图：拖动即平移，滚轮或双指捏合以指针为中心缩放 x 轴（在 y 轴上方或按住 Alt 时缩放该轴），Shift+滚轮和水平滚动用于平移，沿坐标轴拖动可缩放该轴，双击则恢复适配。分类坐标轴可以平移但不能缩放。
+
+在触屏上，单指平移，双指以两指中点为中心缩放；各方向的缩放由两指在该方向上的距离变化决定（某方向上两指相距不足 16 CSS px 时，该方向不缩放）。手指按在元素上会显示其悬停状态，抬起后仍保留，除非手指进行了平移；手指对点的命中范围比鼠标多 8 CSS px。
 
 ## 图元
 

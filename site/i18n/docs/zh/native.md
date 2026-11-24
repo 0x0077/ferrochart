@@ -1,4 +1,4 @@
-<!-- source: e853ddc392 -->
+<!-- source: 824d4ea76a -->
 # C、C++ 与 C#
 
 `ferrochart-ffi` 是一个只有一个头文件 `ferrochart.h` 的 C 库。C 和 C++ 可以直接使用它，C#、Swift、Go、Qt、Flutter 或任何能调用 C 的语言也都可以使用。该库可以绘制到你自己的原生窗口中，也可以绘制到 RGBA 缓冲区中。
@@ -78,6 +78,12 @@ ferrochart_set_markers(chart, candles, m, 2); // replaces the series' markers
 
 一根 K 线上标记很多时，请在系列选项中设置 `marker_stack_limit`：超出部分由一个“+k”徽标代表。`FERROCHART_EVENT_MARKER_HOVER` 报告指针下方的标记或徽标（`target_type`、`target_index`，以及 `x`/`y` 中的中心坐标），例如用于显示提示框；点击徽标时，`target_type` 为 `FERROCHART_TARGET_MARKER_OVERFLOW`，并带有 `count`。
 
+`FerroChartMarker.id` 是自定义的 `uint64_t` 标识符（0 表示无）；标记点击和悬停事件通过 `marker_id` 返回它。请在宿主端维护自有对象的查找表。要将标记放在某个价格处，请将 `position` 设为 `FERROCHART_MARKER_AT_PRICE`，并将 `price` 设为以系列单位表示的有限值；此标记不参与堆叠或聚合。其他位置会忽略 C 的 `price` 字段。
+
+`FerroChartSeriesOptions.marker_cluster` 设置以 CSS px 表示的跨 K 线聚合距离；0 禁用聚合。徽标事件包含 `bars_from` 和 `bars_to`，表示包含两端的逻辑 K 线范围；`marker_id` 是第一个隐藏标记的 id。参见[聚合](markers.md#clustering-across-bars)。
+
+要设置质量标记，请向 `ferrochart_set_bar_flags` 传入时间戳和标记数组，使用 `FERROCHART_BAR_FILLED` 和 `FERROCHART_BAR_CLIPPED` 位。`FerroChartSeriesOptions.filled_bar_color` 以 `0xRRGGBBAA` 设置补齐 K 线的空心颜色（0 使用主色，不透明度为 40%）。参见 [K 线质量标记](data.md#bar-quality-flags)。
+
 内置字体包含 ASCII 和常用符号。要使用中文、日文、韩文或其他文字，请添加字体文件；字符按添加顺序在这些字体中查找，都没有时画成 `□`：
 
 ```c
@@ -90,7 +96,7 @@ ferrochart_add_font(chart, font_data, font_len);
 
 ## 输入与事件
 
-用 `ferrochart_handle_input` 转发鼠标、滚轮和键盘输入（`FERROCHART_INPUT_*` 事件，以 CSS 像素为单位）；图表会据此平移、缩放、移动十字光标，并用当前激活的工具绘制。然后读取发生了什么：
+用 `ferrochart_handle_input` 转发鼠标、触摸、滚轮和键盘输入（`FERROCHART_INPUT_*` 事件，以 CSS 像素为单位）；图表会据此平移、缩放、移动十字光标，并用当前激活的工具绘制。触摸输入需将 `pointer_kind` 设为 `FERROCHART_POINTER_TOUCH`，为每根手指分配独立的 `pointer_id`，并在系统接管触摸时发送 `FERROCHART_INPUT_POINTER_CANCEL`；图表随后按[触屏手势](interaction.md#touch)处理。来自旧版头文件的 `FerroChartInput`（`size` 较小）会被视为鼠标输入。然后读取发生了什么：
 
 ```c
 FerroChartEvent ev = { .size = sizeof ev };

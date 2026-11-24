@@ -1,4 +1,4 @@
-<!-- source: d69da2a7ed -->
+<!-- source: 8ace0a0ae7 -->
 # データ
 
 この章では、シリーズに足や値を渡す方法を扱います。データ形式、検証ルール、リアルタイム更新、過去データの読み込み、データの読み出しです。
@@ -102,6 +102,32 @@ line.setData([
 ### 1つの時間軸上の複数のシリーズ
 
 チャートのすべてのシリーズは1つの時間軸を共有します。論理インデックス42はどのシリーズでも同じ時刻です。シリーズごとに時刻が異なる場合、軸はそれらの時刻の和集合になります。他のシリーズにしかない時刻には、そのシリーズの点はありません。OHLCシリーズ、ヒストグラム、ポイントはそこに何も表示せず、ライン、エリア、ベースラインは隣り合う点を結びます。新しい時刻が軸の既存の足と足の間に入る場合、軸は再構築され、チャートは`warning`イベントを送ります。
+
+## 足の品質フラグ
+
+ローソク足、OHLCバー、平均足のシリーズでは、`setBarFlags`でアプリケーションが補完またはクリップしたデータを示せます。フラグ自体は価格を変更しません。まず加工済みのOHLCデータを渡してください。
+
+```ts
+const start = Date.UTC(2024, 0, 1);
+candles.setData([
+  { time: start, open: 100, high: 102, low: 99, close: 101 },
+  { time: start + 60_000, open: 101, high: 101, low: 101, close: 101 },
+  { time: start + 120_000, open: 101, high: 104, low: 100, close: 103 },
+]);
+candles.applyOptions({ filledBarColor: '#78909c' });
+candles.setBarFlags([
+  { time: start + 60_000, filled: true },
+  { time: start + 120_000, clipped: true },
+]);
+// Clear all quality flags when they are no longer needed:
+// candles.setBarFlags([]);
+```
+
+- `filled`は、実際の取引を伴わずにデータ提供元が補完した足を示します。`filledBarColor`（デフォルトはシリーズのメインカラー、不透明度40%）で中空に描画されます。実際にデータがない足は[欠損](#gaps)として表すこともできます。このフラグが欠損データを補完するわけではありません。
+- `clipped`は、外れ値となるヒゲをクリップした足を示します。ヒゲの両端に短い目盛りが表示されます。元の高値と安値は時刻をキーにアプリケーション側で保持し、ツールチップで表示してください。チャートが持つのは、渡されたクリップ後の値だけです。1本の足に両方のフラグを設定できます。
+- 呼び出しごとにすべてのフラグが置き換わり、`[]`で消去されます。時刻はUTCミリ秒（データと同様に`Date`/`bigint`も可）で、重複する時刻では最後の指定が優先されます。ズームアウトで足が集約される場合、集約後の足が`filled`になるのはすべての足が`filled`の場合だけで、いずれかが`clipped`なら`clipped`になります。
+
+Pythonでは、`times`と同じ長さの真偽値配列を使って`candles.set_bar_flags(times, filled=..., clipped=...)`を呼び、色は`candles.apply_options(filled_bar_color="#78909c")`で設定します。[Python](python.md#options-indicators-and-drawings)と[シリーズのオプション](series.md#series-options)を参照してください。
 
 ## リアルタイム更新
 

@@ -1,4 +1,4 @@
-<!-- source: 8cc76ebe6c -->
+<!-- source: 29952e0395 -->
 # JavaScript API 개요
 
 패키지 `@ferrochart/core`. 이 페이지에서는 모듈을 로드하는 방법과 API 전반에
@@ -123,8 +123,10 @@ API의 모든 객체는 WebAssembly 메모리를 차지합니다. 차트가 반�
 
 포인터(마우스, 펜, 터치), 휠, 키보드(캔버스에 `tabindex="0"`이 지정됨),
 더블클릭, 트랙패드 핀치(Chrome과 Firefox에서는 Ctrl+휠, Safari에서는 제스처
-이벤트)입니다. 캔버스 스타일에는 `touch-action: none`이 지정됩니다. 각 제스처의
-동작은 [제스처와 키보드](interaction.md)를 참고하세요.
+이벤트), 그리고 차트가 직접 인식하는 두 손가락 터치입니다. 캔버스 스타일에는
+`touch-action: none`이 지정되며, `touchScroll: 'page'`일 때는 `pan-y`가
+지정됩니다([터치스크린](web.md#touch-screens) 참고). 각 제스처의 동작은
+[제스처와 키보드](interaction.md)를 참고하세요.
 
 ## 테스트 데이터
 

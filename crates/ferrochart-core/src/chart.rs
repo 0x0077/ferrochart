@@ -3219,6 +3219,10 @@ impl Chart {
         {
             inv = inv.max(Invalidation::Light);
         }
+        // A finger held down may become a long press: frames decide it.
+        if self.long_press_pending() {
+            inv = inv.max(Invalidation::Cursor);
+        }
         inv.max(self.sync_pending())
     }
 
@@ -3453,6 +3457,7 @@ impl Chart {
     /// `Cursor` bumps only the overlay.
     pub fn build_frame(&mut self, now_ms: f64, text: &dyn TextMeasurer) {
         self.step_kinetic(now_ms);
+        self.step_long_press(now_ms);
         self.pull_sync();
         let inv = self.needs_redraw();
         if inv >= Invalidation::Light {
@@ -3697,12 +3702,23 @@ impl Chart {
 
     /// The marker of `pane` under `p` in the last frame.
     fn hit_marker(&self, pane: PaneId, p: PointPx) -> Option<ClickTarget> {
-        let tol = HIT_TOLERANCE * 0.5 * self.dpr;
+        let tol = self.marker_slop();
         self.marker_hits
             .iter()
             .rev()
             .find(|m| m.pane == pane && (p.x - m.pos.x).hypot(p.y - m.pos.y) <= m.radius + tol)
             .map(|m| m.target)
+    }
+
+    /// How far outside its circle a pointer still hits a marker (physical
+    /// px): wider for a finger.
+    fn marker_slop(&self) -> f32 {
+        let css = if self.input.touch {
+            crate::interaction::TOUCH_MARKER_SLOP_CSS
+        } else {
+            HIT_TOLERANCE * 0.5
+        };
+        css * self.dpr
     }
 
     /// Whether a pointer move can change the hovered marker: markers were
@@ -3719,7 +3735,7 @@ impl Chart {
             .filter(|_| !self.revealing())
             .and_then(|p| {
                 let pane = self.panes.get(self.pane_at(p)?)?.id;
-                let tol = HIT_TOLERANCE * 0.5 * self.dpr;
+                let tol = self.marker_slop();
                 self.marker_hits
                     .iter()
                     .rev()
@@ -3957,6 +3973,7 @@ impl Chart {
                         dpr: self.dpr,
                         labels: p.labels,
                         text,
+                        hit_css: crate::drawing::HIT_CSS,
                     });
                 (p.plot, coords)
             }
@@ -4036,6 +4053,12 @@ impl Chart {
             dpr: self.dpr,
             labels: pane.labels,
             text,
+            // Hit tests during input use a finger's wider tolerance.
+            hit_css: if self.input.touch {
+                crate::interaction::TOUCH_HIT_CSS
+            } else {
+                crate::drawing::HIT_CSS
+            },
         })
     }
 
@@ -4064,6 +4087,7 @@ impl Chart {
             dpr: self.dpr,
             labels: pane.labels,
             text,
+            hit_css: crate::drawing::HIT_CSS,
         };
         let clip = self.data_clip(plot);
         let frame = &mut self.frame;
@@ -4858,6 +4882,7 @@ impl Chart {
                 dpr: self.dpr,
                 labels: pane.labels,
                 text,
+                hit_css: crate::drawing::HIT_CSS,
             },
             store: c,
             shift,
@@ -7161,6 +7186,7 @@ mod tests {
         let mv = |chart: &mut Chart, x: f32, y: f32, t: f64| {
             chart.handle_input(InputEvent::PointerMove {
                 id: 0,
+                kind: crate::interaction::PointerKind::Mouse,
                 pos: PointCss { x, y },
                 mods: Modifiers::default(),
                 time_ms: t,
@@ -7190,6 +7216,7 @@ mod tests {
         assert_eq!(chart.needs_redraw(), Invalidation::None);
         chart.handle_input(InputEvent::PointerMove {
             id: 0,
+            kind: crate::interaction::PointerKind::Mouse,
             pos: PointCss {
                 x: icon.pos.x,
                 y: icon.pos.y,

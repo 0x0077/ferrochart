@@ -1,4 +1,4 @@
-<!-- source: 4bfbed7d9a -->
+<!-- source: 29436687cf -->
 # Python
 
 `ferrochart` 패키지는 Python에서 네이티브 창, Jupyter, PNG로 차트를 그립니다.
@@ -58,7 +58,10 @@ candles.set_markers([{"time": t, "position": "below_bar", "shape": "arrow_up", "
 whale = chart.add_icon(avatar)       # a (height, width, 4) uint8 array; RGB works too
 candles.set_markers([{"time": t, "icon": whale, "size": 24, "border": "#2fbf71"},
                      {"time": t, "label": "DB", "position": "below_bar"}])
-candles.apply_options(marker_stack_limit=4)   # 3 markers per bar side, then "+k"
+candles.apply_options(marker_stack_limit=4, marker_cluster=28)
+candles.set_markers([{"id": 101, "time": t, "position": "at_price", "price": 101.5, "text": "fill"}])
+candles.set_bar_flags([t], filled=[True], clipped=[False])
+candles.apply_options(filled_bar_color="#78909c")
 chart.apply_price_scale_options(mode="logarithmic")
 
 rsi = chart.add_indicator(candles, "rsi", n=14)
@@ -79,6 +82,16 @@ saved = json.dumps(chart.save_state())   # view, panes, price scales, drawings
 chart.load_state(json.loads(saved))      # on a chart set up the same way
 ```
 
+마커는 정수 `id`를 받습니다(0은 없음). `"at_price"`에는 유한한 `price`가
+필요하며 쌓이거나 군집화되지 않습니다. `marker_cluster`는 CSS 픽셀 단위의 양수
+거리이며, `None`이면 끕니다. `marker_stack_limit`은 한 봉의 마커 접기를 계속
+처리합니다. `set_bar_flags`는 UTC 밀리초 시간과 길이가 같은 불리언 배열로
+품질 플래그를 교체합니다. `filled`는 속이 빈 봉을 그리고, `clipped`는 꼬리 양 끝을
+표시합니다. 툴팁에 쓸 원래 가격은 직접 보관하세요.
+[마커 배치](markers.md#placement-and-snapping),
+[군집화](markers.md#clustering-across-bars),
+[봉 품질 플래그](data.md#bar-quality-flags)를 참고하세요.
+
 ## 이벤트
 
 ```python
@@ -91,9 +104,15 @@ chart.on("crosshair_move", lambda e: print(e["point"]))
 
 이벤트: `click`, `crosshair_move`, `visible_range_changed`,
 `need_more_history`, `drawing_created`, `drawing_modified`, `drawing_removed`,
-`drawing_selected`, `warning`, `marker_hover`(`series`, `index`, `overflow`,
-`x`, `y`, `size`를 담은 dict, 포인터가 마커를 벗어나면 `None`). 콜백은 차트가
+`drawing_selected`, `warning`, `marker_hover`(`series`, `index`, `id`, `overflow`,
+`bars`, `x`, `y`, `size`를 담은 dict, 포인터가 마커를 벗어나면 `None`). 콜백은 차트가
 표시되는 동안 메인 스레드에서 실행됩니다.
+
+마커 클릭 target에는 `id`가 포함되며, `marker_overflow` target에는 양 끝을
+포함한 논리 봉 범위인 `bars`도 있습니다(네이티브 창 이벤트에서는 `(from, to)`
+튜플). 배지의 `id`는 숨겨진 첫 번째 마커를 식별합니다. 네이티브 Python 이벤트는
+원래 마커 딕셔너리를 반환하지 않습니다. 애플리케이션 객체는 `id`를 키로 하는
+매핑에 보관하세요.
 
 ## 중국어, 일본어, 한국어 텍스트
 

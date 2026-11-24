@@ -126,6 +126,7 @@ fn step(chart: &mut Chart, k: usize) {
     }
     chart.handle_input(InputEvent::PointerMove {
         id: 0,
+        kind: ferrochart_core::interaction::PointerKind::Mouse,
         pos: PointCss {
             x: 100.0 + (k % 50) as f32 * 20.0,
             y: 100.0 + (k % 30) as f32 * 20.0,

@@ -205,6 +205,7 @@ fn main() {
         // Drag back and forth.
         p.handle_input(InputEvent::PointerDown {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: center,
             button: Button::Left,
             mods,
@@ -215,6 +216,7 @@ fn main() {
             let dx = if phase < 40.0 { phase } else { 80.0 - phase } * 10.0 - 200.0;
             p.handle_input(InputEvent::PointerMove {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss {
                     x: center.x + dx,
                     y: center.y + dx * 0.1,
@@ -225,6 +227,7 @@ fn main() {
         });
         p.handle_input(InputEvent::PointerUp {
             id: 0,
+            kind: ferrochart_core::interaction::PointerKind::Mouse,
             pos: center,
             button: Button::Left,
             mods,
@@ -253,6 +256,7 @@ fn main() {
             let u = (i % 400) as f32 / 400.0;
             p.handle_input(InputEvent::PointerMove {
                 id: 0,
+                kind: ferrochart_core::interaction::PointerKind::Mouse,
                 pos: PointCss {
                     x: x0 + w * u,
                     y: y0 + h * (0.5 + 0.4 * (u * 20.0).sin()),

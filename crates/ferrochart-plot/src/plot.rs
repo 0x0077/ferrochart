@@ -33,6 +33,11 @@ macro_rules! geometry {
             plot: $p.layout.plot,
             dpr: $p.dpr,
             theme: &$p.theme,
+            touch_slop: if $p.input.touch {
+                crate::interact::TOUCH_SLOP_CSS
+            } else {
+                0.0
+            },
         }
     };
 }
