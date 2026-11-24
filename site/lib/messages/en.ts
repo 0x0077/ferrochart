@@ -158,7 +158,7 @@ export const en = {
   pro: {
     title: 'FerroChart Pro — trading terminal demo',
     description:
-      'FerroChart Pro is a commercial trading-terminal interface built on the open-source FerroChart engine: drawing toolbar, indicators, multi-chart layouts, alerts and bar replay. This demo uses simulated data.',
+      'FerroChart Pro is a commercial trading-terminal interface built on the open-source FerroChart engine: drawing toolbar, indicators, multi-chart layouts, alerts and bar replay. This demo shows live OKX spot prices for twelve crypto pairs; a simulated market is in the data menu.',
     failed: 'The Pro demo could not be loaded.',
     back: 'Back to FerroChart',
   },

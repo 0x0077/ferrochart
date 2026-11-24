@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use ferrochart_site_server::live::{Candle, Trade, Upstream};
+use ferrochart_site_server::live::{Candle, Ticker, Trade, Upstream};
 use ferrochart_site_server::{Config, app};
 use futures_util::StreamExt;
 use http_body_util::BodyExt;
@@ -47,7 +47,8 @@ impl Upstream for Fake {
         limit: usize,
     ) -> Fut<Vec<Candle>> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        assert_eq!((inst, bar), ("BTC-USDT", "1m"));
+        assert_eq!(bar, "1m");
+        assert!(inst == "BTC-USDT" || inst == "XRP-USDT", "{inst}");
         let end = before.map_or(NOW, |t| t - MIN);
         let first = self.first;
         let out: Vec<Candle> = (0..limit as i64)
@@ -59,6 +60,17 @@ impl Upstream for Fake {
             })
             .collect();
         Box::pin(async move { Some(out) })
+    }
+
+    fn tickers(&self) -> Fut<Vec<Ticker>> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async {
+            Some(vec![
+                ("BTC-USDT".into(), 101.0, 100.0),
+                ("ETH-USDT".into(), 9.0, 10.0),
+                ("ACME-USDT".into(), 1.0, 1.0),
+            ])
+        })
     }
 
     fn trades(&self, _: &'static str) -> Fut<Vec<Trade>> {
@@ -200,4 +212,77 @@ async fn stream_sends_bars_and_new_trades() {
         trades == 0 || trades == 2,
         "only trades after the stream started: {trades}"
     );
+}
+
+#[tokio::test]
+async fn bars_before_page_back_through_history() {
+    let app = test_app(Fake::new(), NOW);
+    let (_, _, v) = get(&app, "/api/live/bars?symbol=BTCUSDT&interval=1m&count=500").await;
+    let first = v["time"][0].as_i64().unwrap();
+    let uri = format!("/api/live/bars?symbol=BTCUSDT&interval=1m&count=500&before={first}");
+    let (s, src, v) = get(&app, &uri).await;
+    assert_eq!((s, src.as_str()), (StatusCode::OK, "okx"));
+    let t: Vec<i64> = v["time"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_i64().unwrap())
+        .collect();
+    assert_eq!(t.len(), 500);
+    assert_eq!(*t.last().unwrap(), first - MIN);
+    // Past the oldest bar: the rest, then nothing.
+    let oldest = NOW - 1999 * MIN;
+    let uri = format!(
+        "/api/live/bars?symbol=BTCUSDT&interval=1m&count=500&before={}",
+        oldest + 10 * MIN
+    );
+    let (_, _, v) = get(&app, &uri).await;
+    assert_eq!(v["time"].as_array().unwrap().len(), 10);
+    let uri = format!("/api/live/bars?symbol=BTCUSDT&interval=1m&count=500&before={oldest}");
+    let (s, _, v) = get(&app, &uri).await;
+    assert_eq!(
+        (s, v["time"].as_array().unwrap().len()),
+        (StatusCode::OK, 0)
+    );
+}
+
+#[tokio::test]
+async fn tickers_in_the_order_asked_and_shared() {
+    let fake = Fake::new();
+    let app = test_app(fake.clone(), NOW);
+    let (s, _, v) = get(&app, "/api/live/tickers?symbols=ETHUSDT,BTCUSDT,XRPUSDT").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(
+        v,
+        serde_json::json!([
+            { "symbol": "ETHUSDT", "price": 9.0, "ref": 10.0 },
+            { "symbol": "BTCUSDT", "price": 101.0, "ref": 100.0 },
+        ])
+    );
+    let calls = fake.calls.load(Ordering::SeqCst);
+    let (_, _, v) = get(&app, "/api/live/tickers").await;
+    assert_eq!(
+        v.as_array().unwrap().len(),
+        4,
+        "BTCUSD, ETHUSD, BTCUSDT, ETHUSDT"
+    );
+    assert_eq!(
+        fake.calls.load(Ordering::SeqCst),
+        calls,
+        "same clock: cached"
+    );
+    let (s, _, _) = get(&app, "/api/live/tickers?symbols=BTCUSDT,ACME").await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn unreachable_upstream_without_a_stand_in_is_unavailable() {
+    let app = test_app(Arc::new(Down), NOW);
+    let (s, src, v) = get(&app, "/api/live/bars?symbol=BTCUSDT&interval=1h&count=50").await;
+    assert_eq!((s, src.as_str()), (StatusCode::OK, "simulated"));
+    assert_eq!(v["close"].as_array().unwrap().len(), 50);
+    let (s, _, _) = get(&app, "/api/live/bars?symbol=XRPUSDT&interval=1h&count=50").await;
+    assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
+    let (s, _, _) = get(&app, "/api/live/tickers").await;
+    assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
 }

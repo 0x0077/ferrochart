@@ -150,7 +150,7 @@ export const ko: Messages = {
   pro: {
     title: 'FerroChart Pro — 트레이딩 터미널 데모',
     description:
-      'FerroChart Pro는 오픈소스 FerroChart 엔진 위에 만든 상용 트레이딩 터미널입니다. 드로잉 툴바, 지표, 멀티 차트 레이아웃, 알림, 봉 리플레이를 제공합니다. 이 데모는 시뮬레이션 데이터를 사용합니다.',
+      'FerroChart Pro는 오픈소스 FerroChart 엔진 위에 만든 상용 트레이딩 터미널입니다. 드로잉 툴바, 지표, 멀티 차트 레이아웃, 알림, 봉 리플레이를 제공합니다. 이 데모는 12개 암호화폐 페어의 OKX 현물 실시간 가격을 보여 줍니다. 시뮬레이션 시장은 데이터 메뉴에서 고를 수 있습니다.',
     failed: 'Pro 데모를 불러오지 못했습니다.',
     back: 'FerroChart로 돌아가기',
   },

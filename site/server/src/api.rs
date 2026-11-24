@@ -47,6 +47,7 @@ pub fn router() -> Router<AppState> {
         .route("/altbars", get(get_altbars))
         .route("/stream", get(crate::stream::handler))
         .route("/live/bars", get(crate::live::get_bars))
+        .route("/live/tickers", get(crate::live::get_tickers))
         .route("/github/stars", get(crate::github::handler))
 }
 

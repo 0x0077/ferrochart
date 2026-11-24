@@ -1,9 +1,11 @@
-//! Real market data for a few examples: `/api/live/bars` and the WebSocket
+//! Real market data for the live examples and the Pro demo:
+//! `/api/live/bars`, `/api/live/tickers` and the WebSocket
 //! `/api/stream?…&live=true` (the simulated stream's path, which proxies
 //! already upgrade), from the public OKX spot market (no key).
 //!
-//! - Symbols `BTCUSD`, `ETHUSD`, `SOLUSD` (OKX `BTC-USDT` …); intervals
-//!   from one minute to one week.
+//! - Symbols in [`LIVE`]: the examples' `BTCUSD`, `ETHUSD`, `SOLUSD` and
+//!   twelve `…USDT` pairs for Pro (OKX `BTC-USDT` …); intervals from one
+//!   minute to one week. `before` pages back through history.
 //! - One store per symbol and interval, shared by every visitor: the bars
 //!   fetched so far. A request refreshes the newest bars at most once per
 //!   [`REFRESH_MS`] and fetches older ones only as far as some request
@@ -13,7 +15,9 @@
 //! - When OKX cannot be reached and nothing is stored yet, the response is
 //!   the simulated market of the same symbol (`x-data-source: simulated`
 //!   instead of `okx`) and the stream is the simulated stream, so the
-//!   examples still run.
+//!   examples still run. Symbols the simulated market lacks answer 503.
+//! - A store keeps at most [`STORE_MAX`] bars; older pages are not fetched
+//!   beyond that.
 //!
 //! The JSON is that of `/api/bars` and `/api/stream`.
 
@@ -33,7 +37,7 @@ use serde_json::json;
 use tokio::sync::Mutex;
 
 use crate::AppState;
-use crate::api::{ApiError, interval, symbol};
+use crate::api::{ApiError, interval};
 use crate::market::bars::{self, Bars, Interval};
 use crate::market::flow::Trades;
 use crate::market::symbols::Symbol;
@@ -51,11 +55,15 @@ pub const UPSTREAM_GAP_MS: u64 = 70;
 pub const TICK: Duration = Duration::from_millis(1000);
 /// Bars of history a stream's `since` may ask for.
 pub const MAX_CATCH_UP: usize = 120;
+/// Most bars one store keeps (about 1 MB).
+pub const STORE_MAX: usize = 20_000;
 
 /// One upstream bar: time (UTC ms), open, high, low, close, volume.
 pub type Candle = (i64, [f64; 5]);
 /// One upstream trade: id, time, price, size, side (1 buy, -1 sell).
 pub type Trade = (u64, i64, f64, f64, i8);
+/// One upstream ticker: OKX instrument, last price, price 24 hours ago.
+pub type Ticker = (String, f64, f64);
 
 type Fut<T> = Pin<Box<dyn Future<Output = Option<T>> + Send>>;
 
@@ -72,16 +80,46 @@ pub trait Upstream: Send + Sync {
     ) -> Fut<Vec<Candle>>;
     /// The newest trades, any order.
     fn trades(&self, inst: &'static str) -> Fut<Vec<Trade>>;
+    /// Tickers of every spot instrument.
+    fn tickers(&self) -> Fut<Vec<Ticker>> {
+        Box::pin(async { None })
+    }
 }
 
-/// OKX instrument of a symbol.
+/// Symbols with live data and their OKX instruments: the examples' `…USD`
+/// names, then the pairs of the Pro demo under the exchange's names.
+pub const LIVE: &[(&str, &str)] = &[
+    ("BTCUSD", "BTC-USDT"),
+    ("ETHUSD", "ETH-USDT"),
+    ("SOLUSD", "SOL-USDT"),
+    ("BTCUSDT", "BTC-USDT"),
+    ("ETHUSDT", "ETH-USDT"),
+    ("SOLUSDT", "SOL-USDT"),
+    ("BNBUSDT", "BNB-USDT"),
+    ("XRPUSDT", "XRP-USDT"),
+    ("DOGEUSDT", "DOGE-USDT"),
+    ("ADAUSDT", "ADA-USDT"),
+    ("AVAXUSDT", "AVAX-USDT"),
+    ("LINKUSDT", "LINK-USDT"),
+    ("LTCUSDT", "LTC-USDT"),
+    ("DOTUSDT", "DOT-USDT"),
+    ("TRXUSDT", "TRX-USDT"),
+];
+
+/// OKX instrument of a symbol (any case).
 pub fn instrument(sym: &str) -> Option<&'static str> {
-    match sym {
-        "BTCUSD" => Some("BTC-USDT"),
-        "ETHUSD" => Some("ETH-USDT"),
-        "SOLUSD" => Some("SOL-USDT"),
-        _ => None,
-    }
+    LIVE.iter()
+        .find(|(s, _)| s.eq_ignore_ascii_case(sym))
+        .map(|&(_, inst)| inst)
+}
+
+/// The simulated market standing in for a live symbol when OKX cannot be
+/// reached: the same name, or `BTCUSD` for `BTCUSDT`.
+fn stand_in(sym: &str) -> Option<&'static Symbol> {
+    crate::market::symbols::find(sym).or_else(|| {
+        let base = sym.strip_suffix('T').or_else(|| sym.strip_suffix('t'))?;
+        crate::market::symbols::find(base)
+    })
 }
 
 /// OKX bar name of an interval (UTC-aligned).
@@ -142,6 +180,9 @@ struct TradeStore {
 }
 const TRADE_KEEP: usize = 2000;
 
+/// OKX instrument → last price and price 24 hours ago.
+pub type Quotes = HashMap<String, (f64, f64)>;
+
 /// OKX instrument and bar name.
 type StoreKey = (&'static str, &'static str);
 
@@ -150,6 +191,8 @@ pub struct LiveHub {
     upstream: Arc<dyn Upstream>,
     stores: Mutex<HashMap<StoreKey, Arc<Mutex<Store>>>>,
     trades: Mutex<HashMap<&'static str, Arc<Mutex<TradeStore>>>>,
+    /// Every spot ticker (OKX instrument → last, 24 h ago) and when fetched.
+    tickers: Mutex<(i64, Quotes)>,
     /// When the next upstream call may start (tokio clock).
     pacer: Mutex<tokio::time::Instant>,
 }
@@ -160,6 +203,7 @@ impl LiveHub {
             upstream,
             stores: Mutex::default(),
             trades: Mutex::default(),
+            tickers: Mutex::new((i64::MIN, HashMap::new())),
             pacer: Mutex::new(tokio::time::Instant::now()),
         }
     }
@@ -189,6 +233,20 @@ impl LiveHub {
         count: usize,
         now: i64,
     ) -> Option<Vec<Candle>> {
+        self.bars_before(inst, bar, i64::MAX, count, now).await
+    }
+
+    /// The last `count` bars older than `before` (fewer if upstream or
+    /// [`STORE_MAX`] has fewer); the newest are refreshed if due. `None`
+    /// when nothing could be fetched.
+    pub async fn bars_before(
+        &self,
+        inst: &'static str,
+        bar: &'static str,
+        before: i64,
+        count: usize,
+        now: i64,
+    ) -> Option<Vec<Candle>> {
         let store = self.store((inst, bar)).await;
         let mut s = store.lock().await;
         if s.bars.is_empty() || now - s.refreshed >= REFRESH_MS {
@@ -200,8 +258,14 @@ impl LiveHub {
         }
         // Older bars: 300 a call within the recent ones, then 100 (OKX's
         // page for history).
+        let older = |s: &Store| s.bars.partition_point(|c| c.0 < before);
         let mut pages = 0;
-        while s.bars.len() < count && !s.exhausted && !s.bars.is_empty() && pages < 40 {
+        while older(&s) < count
+            && !s.exhausted
+            && !s.bars.is_empty()
+            && s.bars.len() < STORE_MAX
+            && pages < 40
+        {
             pages += 1;
             self.pace().await;
             let oldest = s.bars[0].0;
@@ -219,7 +283,26 @@ impl LiveHub {
         if s.bars.is_empty() {
             return None;
         }
-        Some(s.bars[s.bars.len().saturating_sub(count)..].to_vec())
+        let end = older(&s);
+        Some(s.bars[end.saturating_sub(count)..end].to_vec())
+    }
+
+    /// Last price and price 24 hours ago of OKX instruments, refreshed if
+    /// due; `None` when nothing could be fetched.
+    pub async fn tickers(&self, now: i64) -> Option<Quotes> {
+        let mut t = self.tickers.lock().await;
+        if now.saturating_sub(t.0) >= REFRESH_MS {
+            self.pace().await;
+            if let Some(rows) = self.upstream.tickers().await {
+                t.1 = rows
+                    .into_iter()
+                    .filter(|r| r.1.is_finite() && r.2.is_finite())
+                    .map(|(inst, last, open)| (inst, (last, open)))
+                    .collect();
+                t.0 = now;
+            }
+        }
+        (!t.1.is_empty()).then(|| t.1.clone())
     }
 
     /// Trades newer than `after_id`, refreshed if due.
@@ -247,7 +330,8 @@ impl LiveHub {
 }
 
 /// The stores the site's live examples use, and how many bars each needs
-/// (`catalog/*.ts`, `live: true`): filled when the server starts.
+/// (`catalog/*.ts`, `live: true`), then the Pro demo's default interval of
+/// its other pairs: filled when the server starts.
 pub const WARM: &[(&str, &str, usize)] = &[
     ("BTC-USDT", "1m", 1440),
     ("BTC-USDT", "5m", 1440),
@@ -258,6 +342,15 @@ pub const WARM: &[(&str, &str, usize)] = &[
     ("ETH-USDT", "1H", 1440),
     ("SOL-USDT", "15m", 1200),
     ("SOL-USDT", "1H", 1440),
+    ("BNB-USDT", "1H", 1000),
+    ("XRP-USDT", "1H", 1000),
+    ("DOGE-USDT", "1H", 1000),
+    ("ADA-USDT", "1H", 1000),
+    ("AVAX-USDT", "1H", 1000),
+    ("LINK-USDT", "1H", 1000),
+    ("LTC-USDT", "1H", 1000),
+    ("DOT-USDT", "1H", 1000),
+    ("TRX-USDT", "1H", 1000),
 ];
 
 /// Fills the [`WARM`] stores, one after the other.
@@ -306,19 +399,36 @@ pub struct BarsQuery {
     interval: Option<String>,
     /// Default 500.
     count: Option<usize>,
+    /// Only bars older than this time (UTC ms): a page of history.
+    before: Option<i64>,
 }
 
-/// Resolves the symbol and interval of a live request.
+/// Resolves the symbol and interval of a live request: the simulated
+/// market standing in for it, if any, and the OKX instrument and bar.
 fn live_key(
     sym: Option<&str>,
     iv: Option<&str>,
-) -> Result<(&'static Symbol, Interval, &'static str, &'static str), ApiError> {
-    let s = symbol(sym)?;
+) -> Result<
+    (
+        Option<&'static Symbol>,
+        Interval,
+        &'static str,
+        &'static str,
+    ),
+    ApiError,
+> {
+    let id = sym.unwrap_or("BTCUSD");
+    let inst = instrument(id).ok_or_else(|| ApiError::bad(format!("no live data for '{id}'")))?;
     let i = interval(iv)?;
-    let inst =
-        instrument(s.id).ok_or_else(|| ApiError::bad("live data has BTCUSD, ETHUSD and SOLUSD"))?;
     let bar = okx_bar(i).ok_or_else(|| ApiError::bad("live data has intervals 1m to 1w"))?;
-    Ok((s, i, inst, bar))
+    Ok((stand_in(id), i, inst, bar))
+}
+
+fn unavailable() -> ApiError {
+    ApiError(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "live data unavailable".into(),
+    )
 }
 
 pub async fn get_bars(
@@ -331,18 +441,65 @@ pub async fn get_bars(
         return Err(ApiError::bad(format!("count must be 1..={MAX_BARS}")));
     }
     let now = st.now();
-    if let Some(c) = st.live.bars(inst, bar, count, now).await {
+    let before = q.before.unwrap_or(i64::MAX);
+    if let Some(c) = st.live.bars_before(inst, bar, before, count, now).await {
         let mut resp = Json(columns(&c)).into_response();
         source(&mut resp, true);
         return Ok(resp);
     }
+    let Some(sym) = sym else {
+        tracing::warn!("live: {inst} {bar} unavailable");
+        return Err(unavailable());
+    };
     tracing::warn!("live: {inst} {bar} unavailable, simulated data");
-    let to = now.saturating_add(1);
+    let to = before.min(now.saturating_add(1));
     let from = to - (count as i64 + 2) * iv.ms();
     let mut b = bars::bars(sym, iv, from, to, now);
     b.keep_last(count);
     let mut resp = Json(b).into_response();
     source(&mut resp, false);
+    Ok(resp)
+}
+
+#[derive(Deserialize)]
+pub struct TickersQuery {
+    /// Comma-separated symbols of [`LIVE`]; default all of them.
+    symbols: Option<String>,
+}
+
+/// `/api/live/tickers`: `[{ symbol, price, ref }]`, `ref` being the price
+/// 24 hours ago, in the order asked; symbols OKX has no ticker for are left
+/// out.
+pub async fn get_tickers(
+    State(st): State<AppState>,
+    Query(q): Query<TickersQuery>,
+) -> Result<Response, ApiError> {
+    let asked: Vec<(String, &'static str)> = match q.symbols.as_deref() {
+        None => LIVE.iter().map(|&(s, i)| (s.to_owned(), i)).collect(),
+        Some(list) => list
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .take(LIVE.len())
+            .map(|s| {
+                instrument(s)
+                    .map(|i| (s.to_owned(), i))
+                    .ok_or_else(|| ApiError::bad(format!("no live data for '{s}'")))
+            })
+            .collect::<Result<_, _>>()?,
+    };
+    let Some(all) = st.live.tickers(st.now()).await else {
+        tracing::warn!("live: tickers unavailable");
+        return Err(unavailable());
+    };
+    let rows: Vec<_> = asked
+        .iter()
+        .filter_map(|(sym, inst)| {
+            let &(price, r) = all.get(*inst)?;
+            Some(json!({ "symbol": sym, "price": price, "ref": r }))
+        })
+        .collect();
+    let mut resp = Json(rows).into_response();
+    source(&mut resp, true);
     Ok(resp)
 }
 
@@ -363,9 +520,12 @@ pub(crate) async fn stream(
     Ok(ws
         .max_message_size(4096)
         .on_upgrade(move |socket| async move {
-            // Nothing from OKX: the simulated stream, like the history.
+            // Nothing from OKX: the simulated stream, like the history (or
+            // a closed socket for a symbol the simulated market lacks).
             if st.live.bars(inst, bar, 2, st.now()).await.is_none() {
-                crate::stream::run(socket, st, sym, iv, with_trades, q.since).await;
+                if let Some(sym) = sym {
+                    crate::stream::run(socket, st, sym, iv, with_trades, q.since).await;
+                }
             } else {
                 run(socket, st, inst, bar, with_trades, q.since).await;
             }
@@ -454,6 +614,26 @@ struct Okx {
 
 impl Okx {
     fn get(&self, url: String) -> Fut<Vec<Vec<serde_json::Value>>> {
+        let data = self.data(url);
+        Box::pin(async move {
+            Some(
+                data.await?
+                    .iter()
+                    .map(|row| match row {
+                        serde_json::Value::Array(a) => a.clone(),
+                        serde_json::Value::Object(o) => ["tradeId", "ts", "px", "sz", "side"]
+                            .iter()
+                            .map(|k| o.get(*k).cloned().unwrap_or_default())
+                            .collect(),
+                        _ => Vec::new(),
+                    })
+                    .collect(),
+            )
+        })
+    }
+
+    /// The `data` array of an OKX response.
+    fn data(&self, url: String) -> Fut<Vec<serde_json::Value>> {
         let client = self.client.clone();
         Box::pin(async move {
             let resp = client?.get(&url).send().await.ok()?;
@@ -469,19 +649,7 @@ impl Okx {
                 );
                 return None;
             }
-            let data = body.get("data")?.as_array()?;
-            Some(
-                data.iter()
-                    .map(|row| match row {
-                        serde_json::Value::Array(a) => a.clone(),
-                        serde_json::Value::Object(o) => ["tradeId", "ts", "px", "sz", "side"]
-                            .iter()
-                            .map(|k| o.get(*k).cloned().unwrap_or_default())
-                            .collect(),
-                        _ => Vec::new(),
-                    })
-                    .collect(),
-            )
+            body.get("data")?.as_array().cloned()
         })
     }
 }
@@ -534,6 +702,24 @@ impl Upstream for Okx {
         })
     }
 
+    fn tickers(&self) -> Fut<Vec<Ticker>> {
+        let rows = self.data("https://www.okx.com/api/v5/market/tickers?instType=SPOT".into());
+        Box::pin(async move {
+            Some(
+                rows.await?
+                    .iter()
+                    .filter_map(|r| {
+                        Some((
+                            r.get("instId")?.as_str()?.to_owned(),
+                            num(r.get("last"))?,
+                            num(r.get("open24h"))?,
+                        ))
+                    })
+                    .collect(),
+            )
+        })
+    }
+
     fn trades(&self, inst: &'static str) -> Fut<Vec<Trade>> {
         let rows = self.get(format!(
             "https://www.okx.com/api/v5/market/trades?instId={inst}&limit=100"
@@ -575,7 +761,10 @@ mod tests {
     #[test]
     fn instruments_and_bars() {
         assert_eq!(instrument("ETHUSD"), Some("ETH-USDT"));
+        assert_eq!(instrument("dogeusdt"), Some("DOGE-USDT"));
         assert_eq!(instrument("ACME"), None);
+        assert_eq!(stand_in("BTCUSDT").map(|s| s.id), Some("BTCUSD"));
+        assert!(stand_in("XRPUSDT").is_none());
         assert_eq!(okx_bar(Interval::parse("4h").unwrap()), Some("4H"));
         assert_eq!(okx_bar(Interval::parse("1d").unwrap()), Some("1Dutc"));
         assert_eq!(okx_bar(Interval::parse("5s").unwrap()), None);

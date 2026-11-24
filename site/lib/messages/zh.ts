@@ -150,7 +150,7 @@ export const zh: Messages = {
   pro: {
     title: 'FerroChart Pro — 交易终端演示',
     description:
-      'FerroChart Pro 是基于开源 FerroChart 引擎构建的商业交易终端界面：画线工具栏、指标、多图布局、提醒和 K 线回放。本演示使用模拟数据。',
+      'FerroChart Pro 是基于开源 FerroChart 引擎构建的商业交易终端界面：画线工具栏、指标、多图布局、提醒和 K 线回放。本演示显示 12 个加密货币交易对的 OKX 现货实时价格；模拟行情可在数据菜单中切换。',
     failed: 'Pro 演示加载失败。',
     back: '返回 FerroChart',
   },

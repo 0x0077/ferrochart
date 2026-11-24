@@ -150,7 +150,7 @@ export const zhTw: Messages = {
   pro: {
     title: 'FerroChart Pro — 交易終端展示',
     description:
-      'FerroChart Pro 是以開源 FerroChart 引擎打造的商業交易終端介面：繪圖工具列、指標、多圖版面、警示與 K 線回放。本展示使用模擬資料。',
+      'FerroChart Pro 是以開源 FerroChart 引擎打造的商業交易終端介面：繪圖工具列、指標、多圖版面、警示與 K 線回放。本展示顯示 12 個加密貨幣交易對的 OKX 現貨即時價格；模擬市場可在資料選單中切換。',
     failed: 'Pro 展示載入失敗。',
     back: '返回 FerroChart',
   },
