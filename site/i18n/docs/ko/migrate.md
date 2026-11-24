@@ -1,4 +1,4 @@
-<!-- source: 5a2a4a05ee -->
+<!-- source: 2b4219641f -->
 # lightweight-charts에서 마이그레이션
 
 lightweight-charts용으로 작성한 코드를 FerroChart로 옮기는 방법은 두 가지입니다.
@@ -45,7 +45,7 @@ chart.timeScale().fitContent();
 | 시간 축 | `fitContent`, `scrollToRealTime`, `scrollToPosition`, `scrollPosition`, `getVisibleLogicalRange`, `setVisibleLogicalRange`, `getVisibleRange`, `setVisibleRange`, `logicalToCoordinate`, `coordinateToLogical`, `timeToCoordinate`, `coordinateToTime`, 보이는 논리 범위·시간 범위 구독, `applyOptions` / `options`(`barSpacing`, `rightOffset`), `width` |
 | 가격 축 | `chart.priceScale('right', paneIndex)`와 `series.priceScale()`: `scaleMargins`, `mode`, `invertScale`, `autoScale`를 지정하는 `applyOptions` / `options` |
 | 크로스헤어 | `time`, `logical`, `point`, `paneIndex`, `seriesData`를 제공하는 `subscribeCrosshairMove` / `unsubscribeCrosshairMove` |
-| 차트 | `applyOptions` / `options`(`width`, `height`, `layout.background.color`, `crosshair.mode`, `timeScale.barSpacing`, `timeScale.rightOffset`), `resize`, `remove`, `timeScale`, `priceScale` |
+| 차트 | `applyOptions` / `options`(`width`, `height`, `layout`, `grid`, `crosshair`, `rightPriceScale.visible`, `handleScroll`, `handleScale`, `timeScale.barSpacing`, `timeScale.rightOffset`, `timeScale.visible`), `resize`, `remove`, `timeScale`, `priceScale` |
 | 상수 | `ColorType`, `CrosshairMode`, `LineStyle`, `LineType`, `PriceScaleMode`, `isUTCTimestamp`, `isBusinessDay` |
 
 TypeScript 선언(`ISeriesApi`, `IChartApi`, `Time`, `UTCTimestamp`,
@@ -96,15 +96,22 @@ console.log(chart.timeScale().getVisibleLogicalRange());
 
 **테마와 색상**
 
-- `layout.background.color`로 테마가 결정됩니다. `#rrggbb`(또는
+- `layout.background.color`는 배경색을 정하고 기본 테마를 결정합니다. `#rrggbb`(또는
   `#rrggbbaa`)로 쓴 어두운 색이면 다크 테마, 그 밖에는 라이트 테마가 됩니다.
-  그 밖의 `layout` 옵션(`textColor`, `fontSize`, `fontFamily`, 그라디언트)은
-  무시됩니다. `layout`은 GPU 설정이 끝날 때 한 번만 읽으며, 그 뒤에 바꾸면
-  경고가 기록되고 아무 효과가 없습니다.
+  `layout.textColor`와 `layout.fontSize`는 글자를 설정하고, 그라디언트 배경은
+  `topColor`로 그리며, `fontFamily`는 무시됩니다. 모두 `applyOptions`로 바꿀 수 있습니다.
+- `grid.vertLines` / `grid.horzLines`: `visible`로 세로선과 가로선을 각각 숨깁니다.
+  격자 색은 하나뿐입니다(둘 다 주면 가로선의 색).
+- `rightPriceScale.visible`(또는 `priceScale('right').applyOptions({ visible })`)과
+  `timeScale.visible`로 축을 숨깁니다. 가격 축은 모든 창에서 함께 숨겨집니다.
+- `handleScroll`과 `handleScale`: `false`이거나 하위 옵션이 모두 `false`인 객체이면
+  이동 또는 확대/축소가 꺼지고, 하위 옵션 중 하나라도 `true`이면 켜진 채로 둡니다
+  (FerroChart에는 각각 스위치가 하나입니다).
 - `crosshair.mode`: `Normal`, `Magnet`, `Hidden`이 동작하며, `MagnetOHLC`는
-  `Magnet`처럼 동작합니다.
-- `grid`, `watermark`, `handleScroll`, `handleScale`, `localization`,
-  `kineticScroll` 등 대응하는 기능이 없는 차트 옵션은 받기만 하고 무시합니다.
+  `Magnet`처럼 동작합니다. `vertLine.visible`과 `horzLine.visible`로 각 선을 숨기고,
+  두 선의 `labelVisible`이 모두 `false`가 아니면 레이블을 표시합니다.
+- `watermark`, `localization`, `kineticScroll` 등 대응하는 기능이 없는 차트 옵션은
+  받기만 하고 무시합니다.
 - 색상은 FerroChart가 받아들이는 형식이어야 합니다. `#rgb`, `#rrggbb`, `#rrggbbaa`,
   `rgb()`, `rgba()`, `transparent` 중 하나입니다. `'red'` 같은 색상 이름은
   오류가 됩니다. [색상](styling.md#colors)을 참고하십시오.

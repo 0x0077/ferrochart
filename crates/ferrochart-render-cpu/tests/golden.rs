@@ -9,16 +9,18 @@
 
 use std::path::PathBuf;
 
+use ferrochart_core::appearance::{Appearance, CrosshairStyle, DotStyle, GridLines, Padding};
 use ferrochart_core::chart::{SeriesData, SeriesOptions};
 use ferrochart_core::data::ValueColumns;
 use ferrochart_core::frame::{Reveal, SeriesKind};
-use ferrochart_core::geom::{Rgba, SizeCss};
+use ferrochart_core::geom::{Css, PointCss, Rgba, SizeCss};
+use ferrochart_core::interaction::{InputEvent, Modifiers, PointerKind};
 use ferrochart_core::pane::PaneOptions;
 use ferrochart_core::render::Renderer;
 use ferrochart_core::testing::{
     at_price_markers_scene, band_scene, bar_flags_scene, cjk_text_scene, clustered_markers_scene,
     drawings_scene, drawings2_scene, image_markers_scene, merged_axis_scene, percentage_scene,
-    points_scene, random_walk, series_kinds_scene, synced_scene, transform_scene,
+    points_scene, quote_card_scene, random_walk, series_kinds_scene, synced_scene, transform_scene,
 };
 use ferrochart_core::theme::Theme;
 use ferrochart_core::{Chart, ChartOptions};
@@ -81,6 +83,11 @@ enum Density {
     Clustered(u8),
     /// `bar_flags_scene`, dense or not (r22).
     BarFlags(bool),
+    /// `quote_card_scene` with `appearance_case(k)`: both axes hidden,
+    /// the price axis hidden, or no axes, no grid and padding (r25).
+    Appearance(u8),
+    /// `crosshair_dot_case(k)` (r25).
+    CrosshairDot(u8),
     /// Bands under candles and between crossing lines.
     Bands,
     /// As `Drawings`, revealed to 55 % with a pen line.
@@ -261,6 +268,25 @@ fn render(theme: Theme, density: Density) -> Pixmap {
         clustered_markers_scene(&mut chart, START, f64::from(spacing)).unwrap();
         return finish(chart);
     }
+    if let Density::CrosshairDot(k) = density {
+        let mut chart = Chart::new(ChartOptions {
+            theme,
+            ..ChartOptions::default()
+        });
+        chart.resize(SizeCss { w: W, h: H }, 1.0);
+        crosshair_dot_case(&mut chart, k);
+        return finish(chart);
+    }
+    if let Density::Appearance(k) = density {
+        let mut chart = Chart::new(ChartOptions {
+            theme,
+            appearance: appearance_case(k),
+            ..ChartOptions::default()
+        });
+        chart.resize(SizeCss { w: W, h: H }, 1.0);
+        quote_card_scene(&mut chart, START, SeriesKind::Baseline).unwrap();
+        return finish(chart);
+    }
     if let Density::BarFlags(dense) = density {
         let mut chart = Chart::new(ChartOptions {
             theme,
@@ -353,6 +379,8 @@ fn render(theme: Theme, density: Density) -> Pixmap {
         | Density::AtPriceMarkers
         | Density::Clustered(_)
         | Density::BarFlags(_)
+        | Density::Appearance(_)
+        | Density::CrosshairDot(_)
         | Density::Cjk
         | Density::ColorGlyphs
         | Density::Bands
@@ -378,6 +406,8 @@ fn render(theme: Theme, density: Density) -> Pixmap {
         | Density::AtPriceMarkers
         | Density::Clustered(_)
         | Density::BarFlags(_)
+        | Density::Appearance(_)
+        | Density::CrosshairDot(_)
         | Density::Cjk
         | Density::ColorGlyphs
         | Density::Bands
@@ -699,4 +729,185 @@ fn golden_light_revealed() {
 #[test]
 fn golden_dark_revealed() {
     check("dark_revealed", Theme::dark(), Density::Revealed);
+}
+
+/// The appearance of `Density::Appearance(k)` (r25). Must match the copy in
+/// the other backend's golden tests.
+fn appearance_case(k: u8) -> Appearance {
+    match k {
+        0 => Appearance {
+            price_axis: false,
+            time_axis: false,
+            ..Appearance::default()
+        },
+        1 => Appearance {
+            price_axis: false,
+            ..Appearance::default()
+        },
+        _ => Appearance {
+            padding: Padding::all(Css(12.0)),
+            ..Appearance::sparkline()
+        },
+    }
+}
+
+#[test]
+fn golden_light_hidden_axes() {
+    check("light_hidden_axes", Theme::light(), Density::Appearance(0));
+}
+
+#[test]
+fn golden_dark_hidden_axes() {
+    check("dark_hidden_axes", Theme::dark(), Density::Appearance(0));
+}
+
+#[test]
+fn golden_light_no_price_axis() {
+    check(
+        "light_no_price_axis",
+        Theme::light(),
+        Density::Appearance(1),
+    );
+}
+
+#[test]
+fn golden_dark_no_price_axis() {
+    check("dark_no_price_axis", Theme::dark(), Density::Appearance(1));
+}
+
+#[test]
+fn golden_light_padded_sparkline() {
+    check(
+        "light_padded_sparkline",
+        Theme::light(),
+        Density::Appearance(2),
+    );
+}
+
+#[test]
+fn golden_dark_padded_sparkline() {
+    check(
+        "dark_padded_sparkline",
+        Theme::dark(),
+        Density::Appearance(2),
+    );
+}
+
+/// A custom theme on `base` (r25): every color and the font size changed,
+/// as a host's own palette would. Must match the copy in the other
+/// backend's golden tests.
+fn custom_theme(base: Theme) -> Theme {
+    let dark = base.background.r < 128;
+    Theme {
+        background: Rgba::hex(if dark { 0x0010_1820 } else { 0x00fb_f7ef }),
+        text: Rgba::hex(if dark { 0x00c8_d0e0 } else { 0x0040_3830 }),
+        grid: Rgba::hex(if dark { 0x0020_2c3c } else { 0x00ec_e4d4 }),
+        axis_line: Rgba::hex(if dark { 0x0040_5060 } else { 0x00c0_b090 }),
+        up: Rgba::hex(0x0030_a0f0),
+        down: Rgba::hex(0x00f0_9030),
+        up_wick: Rgba::hex(0x0020_80c0),
+        down_wick: Rgba::hex(0x00c0_7020),
+        volume_up: Rgba::from_u32(0x30a0_f060),
+        volume_down: Rgba::from_u32(0xf090_3060),
+        crosshair: Rgba::hex(0x0090_40c0),
+        crosshair_label_bg: Rgba::hex(0x0090_40c0),
+        crosshair_label_text: Rgba::hex(0x00ff_ffff),
+        line: Rgba::hex(0x0090_40c0),
+        font_size: Css(13.0),
+        ..base
+    }
+}
+
+#[test]
+fn golden_light_custom_theme() {
+    check(
+        "light_custom_theme",
+        custom_theme(Theme::light()),
+        Density::Normal,
+    );
+}
+
+#[test]
+fn golden_dark_custom_theme() {
+    check(
+        "dark_custom_theme",
+        custom_theme(Theme::dark()),
+        Density::Normal,
+    );
+}
+
+/// `Density::CrosshairDot(k)` (r25): a quote card with the crosshair over
+/// it. 0: a baseline, vertical line and dot only, no grid; 1: an area, the
+/// full crosshair and labels plus a dot. Must match the copy in the other
+/// backend's golden tests.
+fn crosshair_dot_case(chart: &mut Chart, k: u8) {
+    let (kind, style, pos) = if k == 0 {
+        chart.set_appearance(Appearance {
+            grid: GridLines::NONE,
+            ..Appearance::default()
+        });
+        let style = CrosshairStyle {
+            horizontal: false,
+            labels: false,
+            dot: Some(DotStyle::default()),
+            ..CrosshairStyle::default()
+        };
+        (SeriesKind::Baseline, style, PointCss { x: 250.0, y: 200.0 })
+    } else {
+        let style = CrosshairStyle {
+            dot: Some(DotStyle {
+                radius: Css(5.0),
+                color: None,
+            }),
+            ..CrosshairStyle::default()
+        };
+        (SeriesKind::Area, style, PointCss { x: 600.0, y: 150.0 })
+    };
+    chart.set_crosshair_style(style);
+    quote_card_scene(chart, START, kind).unwrap();
+    // A first layout, so the pointer lands in the plot.
+    chart.build_frame(0.0, &ferrochart_core::testing::MonoMeasurer);
+    chart.handle_input(InputEvent::PointerMove {
+        id: 0,
+        kind: PointerKind::Mouse,
+        pos,
+        mods: Modifiers::default(),
+        time_ms: 0.0,
+    });
+}
+
+#[test]
+fn golden_light_crosshair_dot_baseline() {
+    check(
+        "light_crosshair_dot_baseline",
+        Theme::light(),
+        Density::CrosshairDot(0),
+    );
+}
+
+#[test]
+fn golden_dark_crosshair_dot_baseline() {
+    check(
+        "dark_crosshair_dot_baseline",
+        Theme::dark(),
+        Density::CrosshairDot(0),
+    );
+}
+
+#[test]
+fn golden_light_crosshair_dot_area() {
+    check(
+        "light_crosshair_dot_area",
+        Theme::light(),
+        Density::CrosshairDot(1),
+    );
+}
+
+#[test]
+fn golden_dark_crosshair_dot_area() {
+    check(
+        "dark_crosshair_dot_area",
+        Theme::dark(),
+        Density::CrosshairDot(1),
+    );
 }

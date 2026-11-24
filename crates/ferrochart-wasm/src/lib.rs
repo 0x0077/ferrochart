@@ -46,6 +46,8 @@ mod js;
 #[cfg(target_arch = "wasm32")]
 mod logo;
 #[cfg(target_arch = "wasm32")]
+mod look;
+#[cfg(target_arch = "wasm32")]
 mod of_api;
 mod orderflow;
 // Shared with the Python binding and the C ABI; lives in ferrochart-ffi, the
@@ -57,6 +59,8 @@ mod plot_api;
 mod plot_params;
 #[cfg(target_arch = "wasm32")]
 mod plugins;
+#[cfg(target_arch = "wasm32")]
+mod pool;
 #[cfg(target_arch = "wasm32")]
 mod web;
 

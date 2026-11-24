@@ -5,6 +5,81 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.6.0] - 2026-11-24
+
+Charts in app style: hidden axes and grid, padding, interaction switches,
+a crosshair with a dot, themes as objects that change at run time, pools of
+many small charts sharing one GPU device, and image export.
+
+### Added
+
+- **Appearance.** The price axis, the time axis and the grid lines can be
+  hidden, and the plot area can have padding: `ChartOptions.appearance`,
+  `Chart::set_appearance`, `Appearance::sparkline()` (no axes, no grid,
+  2 CSS px of padding).
+- **Interaction switches.** `ChartOptions.interaction` /
+  `Chart::set_interaction` turn panning, zooming and the crosshair off one
+  by one (`InteractionOptions::none()` for all three). Input a switched-off
+  gesture would take is reported as not consumed, so the page can scroll;
+  clicks are still reported.
+- **Crosshair style.** `ChartOptions.crosshair_style` /
+  `Chart::set_crosshair_style`: the vertical line, the horizontal line and
+  the axis labels each on or off, and an optional dot on the first series'
+  value (`DotStyle`, colored like the series at that value).
+- **Changing the theme.** `Chart::set_theme` replaces the theme of a chart
+  that already exists; `Chart::theme` reads it.
+- **Shared GPU resources.** `ferrochart_render_wgpu::SharedResources`:
+  renderers on one device share pipelines and glyph atlases
+  (`WgpuRenderer::offscreen_shared`, `with_surface_shared`,
+  `shared_resources`), so many small charts do not each compile the shaders
+  and hold their own 8 MB of glyph textures.
+- **JavaScript look options.** `FerroChart.create` and the new
+  `chart.applyOptions` take `priceAxis`, `timeAxis`, `grid`, `padding`,
+  `interaction`, `crosshairStyle` and `preset: 'sparkline'`; `theme` also
+  takes an object of colors on a `base` theme and can change after
+  creation. `chart.options()` reads them back.
+
+- **lightweight-charts compatibility: look options.** `layout` colors and
+  font size, grid visibility and color, `rightPriceScale.visible`,
+  `timeScale.visible`, `handleScroll`, `handleScale` and the crosshair
+  lines' `visible`/`labelVisible` now map to FerroChart, in `createChart` and
+  in `applyOptions` (`layout` no longer has to be set at creation).
+
+- **Python look options.** `Chart(theme=..., appearance=..., interaction=...,
+  crosshair_style=..., preset="sparkline")`, `Chart.apply_options(**options)`
+  and `Chart.options()`: the JavaScript look options with snake_case keys;
+  `theme` also takes a dict of colors. They draw in `to_png` and windows and
+  reach the Jupyter widget.
+
+- **C look structs.** `FerroChartTheme`, `FerroChartAppearance`,
+  `FerroChartInteraction` and `FerroChartCrosshairStyle`, each with a setter
+  (`ferrochart_set_theme`, …) and a getter (`ferrochart_theme`, …);
+  `ferrochart_theme_default(dark, out)` fills a built-in theme to edit.
+
+- **Chart pools.** `FerroChart.createPool({ renderer })` returns a
+  `ChartPool` whose `create(canvas, options)` makes charts sharing one GPU
+  device: dozens of sparklines on a page no longer run into the browser's
+  WebGL context limit. Charts out of the viewport are not drawn.
+  Rust: `ferrochart_render_wgpu::SharedSurface` and
+  `WgpuRenderer::for_shared_surface`; `GpuContext` is `Clone`.
+- **Snapshots.** `chart.toImageBitmap()` and `chart.toBlob(type?, quality?)`
+  (PNG, WebP or JPEG), also on `FerroPlot`.
+
+### Changed
+
+- Python: `Chart(attribution_logo=...)` defaults to `None`: the Jupyter
+  logo follows the small-canvas rule of the JavaScript binding unless set.
+- The attribution logo is no longer shown by default on canvases smaller
+  than 320×160 CSS px (it follows the size); `attributionLogo: true` or
+  `setAttributionLogo(true)` still shows it anywhere.
+- With panning or zooming switched off, the canvas' `touch-action` lets the
+  page take those gestures.
+- Breaking for Rust struct literals: new fields `appearance`,
+  `interaction` and `crosshair_style` in `ChartOptions`.
+  `testing::quote_card_scene` is new.
+
 ## [0.5.0] - 2026-11-24
 
 Markers that carry your data, clustering across bars, bar quality flags

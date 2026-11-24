@@ -32,6 +32,7 @@
 mod convert;
 pub mod input;
 mod json;
+pub mod look;
 mod params;
 pub mod render;
 
@@ -162,7 +163,7 @@ impl From<&str> for Error {
     }
 }
 
-type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 fn set_error(message: &str) {
     // Interior NULs cannot occur in our messages, but be safe.
@@ -171,7 +172,7 @@ fn set_error(message: &str) {
 }
 
 /// Runs `f`, turning errors and panics into status codes.
-fn call(f: impl FnOnce() -> Result<i32>) -> i32 {
+pub(crate) fn call(f: impl FnOnce() -> Result<i32>) -> i32 {
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(Ok(v)) => v,
         Ok(Err(e)) => {
@@ -186,7 +187,10 @@ fn call(f: impl FnOnce() -> Result<i32>) -> i32 {
 }
 
 /// Runs `f` on the chart behind `chart`; a panic poisons the chart.
-fn with_chart(chart: *mut FerroChart, f: impl FnOnce(&mut FerroChart) -> Result<i32>) -> i32 {
+pub(crate) fn with_chart(
+    chart: *mut FerroChart,
+    f: impl FnOnce(&mut FerroChart) -> Result<i32>,
+) -> i32 {
     if chart.is_null() {
         set_error("'chart' is null");
         return FERROCHART_ERR_NULL;

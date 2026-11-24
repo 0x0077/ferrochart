@@ -18,6 +18,7 @@
 mod chart;
 mod drawings;
 mod events;
+mod look;
 mod opts;
 // Option names and indicator/transform builders shared with the JS binding
 // and the C ABI.

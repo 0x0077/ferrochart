@@ -1,5 +1,5 @@
 // Compile-only check of the published TypeScript types (`npx tsc -p .`).
-import init, { FerroChart, FerroPlot, Mark, Axis, Rule, Label, randomWalk, type MarkOptions, type MarkData, type MarkKind, type AxisOptions, type PlotHit, type Bar, type OhlcData, type TransformName, type TransformParams, type BandOptions, type Placement, type ClickEvent, type ClickTarget, type DrawingSyncOp } from '../../crates/ferrochart-wasm/pkg/ferrochart_wasm.js';
+import init, { FerroChart, FerroPlot, Mark, Axis, Rule, Label, randomWalk, type MarkOptions, type MarkData, type MarkKind, type AxisOptions, type PlotHit, type Bar, type OhlcData, type TransformName, type TransformParams, type BandOptions, type Placement, type ClickEvent, type ClickTarget, type DrawingSyncOp, type ThemeObject, type ChartLook } from '../../crates/ferrochart-wasm/pkg/ferrochart_wasm.js';
 
 export async function example(canvas: HTMLCanvasElement): Promise<void> {
   await init();
@@ -211,4 +211,31 @@ export async function plotExample(canvas: HTMLCanvasElement, chart: FerroChart):
   chart.detachSidePlot(plot);
   bars.remove();
   plot.destroy();
+}
+
+// The chart look (r25).
+export async function look(canvas: HTMLCanvasElement) {
+  const theme: ThemeObject = { base: 'dark', up: '#0f0', fontSize: 12 };
+  const chart = await FerroChart.create(canvas, { preset: 'sparkline', theme, interaction: { crosshair: true } });
+  chart.applyOptions({
+    priceAxis: false,
+    grid: { vertical: false },
+    padding: { left: 4 },
+    crosshairStyle: { horizontal: false, dot: { radius: 5, color: null } },
+  });
+  const o: ChartLook = chart.options();
+  const dot = o.crosshairStyle.dot;
+  console.log(o.theme.background, o.padding.top, dot?.radius, o.interaction.pan);
+  chart.destroy();
+}
+
+// Pools and snapshots (r25).
+export async function pools(canvas: HTMLCanvasElement) {
+  const pool = await FerroChart.createPool({ renderer: 'auto' });
+  const chart = await pool.create(canvas, { preset: 'sparkline' });
+  const r: 'webgpu' | 'webgl2' = pool.renderer;
+  const bitmap: ImageBitmap = await chart.toImageBitmap();
+  const blob: Blob = await chart.toBlob('image/webp', 0.9);
+  console.log(r, pool.size, bitmap.width, blob.size);
+  pool.destroy();
 }

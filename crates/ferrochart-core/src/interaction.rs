@@ -530,12 +530,35 @@ impl Chart {
         }
     }
 
+    /// Whether a crosshair is drawn: its mode is not `Hidden` and the
+    /// `crosshair` gesture is on (r25).
+    pub(crate) fn crosshair_shown(&self) -> bool {
+        self.input.crosshair != CrosshairMode::Hidden && self.gestures.crosshair
+    }
+
+    /// Ends the gestures whose switch is off (`set_interaction`).
+    pub(crate) fn end_disabled_gestures(&mut self) {
+        let g = self.gestures;
+        let stop = match self.input.drag {
+            Drag::Panning { .. } => !g.pan,
+            Drag::Pinching { .. } | Drag::ScalingPrice { .. } | Drag::ScalingTime { .. } => !g.zoom,
+            Drag::TouchCrosshair { .. } => !g.crosshair,
+            _ => false,
+        };
+        if stop {
+            self.input.drag = Drag::Idle;
+        }
+        if !g.pan {
+            self.input.kinetic = None;
+        }
+    }
+
     fn set_pointer(&mut self, p: Option<PointPx>) {
         if self.input.pointer != p {
             self.input.pointer = p;
             // A frame decides the hovered marker (`MarkerHover`), so one is
             // needed when markers were drawn, even without a crosshair.
-            if self.input.crosshair != CrosshairMode::Hidden || self.tracks_marker_hover() {
+            if self.crosshair_shown() || self.tracks_marker_hover() {
                 self.invalidation = self.invalidation.max(Invalidation::Cursor);
             }
         }
@@ -826,7 +849,7 @@ impl Chart {
             ..
         } = self.input.drag
             && now_ms - t0 >= LONG_PRESS_MS
-            && self.input.crosshair != CrosshairMode::Hidden
+            && self.crosshair_shown()
         {
             self.input.drag = Drag::TouchCrosshair { id };
             self.set_pointer(Some(at));
@@ -853,6 +876,10 @@ impl Chart {
             Drag::Pinching { .. } | Drag::TouchCrosshair { .. } => None,
             _ => return None,
         };
+        if !self.gestures.zoom {
+            // No pinch: the second finger is not ours (r25).
+            return Some(InputResult::default());
+        }
         if let Some((d, at, pane)) = first {
             self.input.drag = Drag::Pinching {
                 a: (d, at),
@@ -1071,6 +1098,10 @@ impl Chart {
                 if touch && let Some(result) = self.second_finger(id, p) {
                     return result;
                 }
+                let not_mine = |me: &Self| InputResult {
+                    consumed: false,
+                    cursor: me.hover_cursor(p),
+                };
                 self.input.kinetic = None;
                 if button != Button::Left || !matches!(self.input.drag, Drag::Idle) {
                     return InputResult {
@@ -1101,6 +1132,9 @@ impl Chart {
                             self.set_pointer(Some(p));
                         }
                         consumed(CursorIcon::Crosshair)
+                    }
+                    Region::PriceAxis(_) | Region::TimeAxis if !self.gestures.zoom => {
+                        not_mine(self)
                     }
                     Region::PriceAxis(pane) => {
                         self.input.drag = Drag::ScalingPrice {
@@ -1181,6 +1215,15 @@ impl Chart {
                         ..
                     } if d == id => {
                         let moved = (p.x - start.x).hypot(p.y - start.y);
+                        if moved > self.drag_threshold() && !self.gestures.pan {
+                            // Not a click any more, and not ours to pan.
+                            self.input.drag = Drag::Idle;
+                            self.set_pointer(in_plot.then_some(p).filter(|_| touch.is_none()));
+                            return InputResult {
+                                consumed: false,
+                                cursor: self.hover_cursor(p),
+                            };
+                        }
                         if moved > self.drag_threshold() {
                             self.input.drag = Drag::Panning {
                                 id,
@@ -1347,10 +1390,16 @@ impl Chart {
                 if matches!(self.input.drag, Drag::Pinching { .. }) {
                     return consumed(CursorIcon::Grabbing);
                 }
+                let p = center.to_px(dpr);
+                if !self.gestures.zoom {
+                    return InputResult {
+                        consumed: false,
+                        cursor: self.hover_cursor(p),
+                    };
+                }
                 if phase == GesturePhase::Start {
                     self.input.kinetic = None;
                 }
-                let p = center.to_px(dpr);
                 if scale.is_finite() && scale > 0.0 {
                     let x = self.plot_x(p);
                     self.zoom_time(x, f64::from(scale));
@@ -1372,6 +1421,9 @@ impl Chart {
                     return consumed(self.hover_cursor(p));
                 }
                 match self.region(p) {
+                    Region::PriceAxis(_) | Region::TimeAxis if !self.gestures.zoom => {
+                        InputResult::default()
+                    }
                     Region::PriceAxis(pane) => {
                         if let Some(pane) = self.pane_mut(pane) {
                             pane.price_scale.set_auto_scale(true);
@@ -1435,6 +1487,14 @@ impl Chart {
         let region = self.region(p);
         if region == Region::Outside {
             return InputResult::default();
+        }
+        let g = self.gestures;
+        let pans = mods.shift || dx.abs() > dy.abs();
+        if (pans && !g.pan) || (!pans && !g.zoom) {
+            return InputResult {
+                consumed: false,
+                cursor: self.hover_cursor(p),
+            };
         }
         self.input.kinetic = None;
         let dpr = self.dpr;
@@ -1509,6 +1569,10 @@ impl Chart {
                 }
                 return done(self.drawings.remove(sel).is_ok());
             }
+            Key::ArrowLeft | Key::ArrowRight | Key::Home | Key::End if !self.gestures.pan => {
+                return done(false);
+            }
+            Key::ArrowUp | Key::ArrowDown if !self.gestures.zoom => return done(false),
             Key::ArrowLeft => self.time_scale.scroll_by(Px(w * 0.1)),
             Key::ArrowRight => self.time_scale.scroll_by(Px(-w * 0.1)),
             Key::ArrowUp => self.zoom_time(w, 1.25),

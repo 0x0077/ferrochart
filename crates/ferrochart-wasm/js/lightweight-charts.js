@@ -154,6 +154,86 @@ function markers(list) {
   }));
 }
 
+/** `a` with `b` merged in, objects key by key (lightweight-charts' applyOptions). */
+function merge(a, b) {
+  const out = { ...a };
+  for (const [k, v] of Object.entries(b ?? {})) {
+    out[k] = v && typeof v === 'object' && !Array.isArray(v) && a?.[k] && typeof a[k] === 'object'
+      ? merge(a[k], v) : v;
+  }
+  return out;
+}
+
+/** `handleScroll` / `handleScale`: a boolean, or an object of booleans (any true → on). */
+function anyOn(v) {
+  if (v === undefined) return undefined;
+  if (typeof v === 'boolean') return v;
+  return Object.values(v ?? {}).some((x) => x !== false);
+}
+
+function background(layout) {
+  const b = layout?.background;
+  if (!b) return undefined;
+  if (b.type === ColorType.VerticalGradient) {
+    warnOnce('gradient backgrounds are drawn in their top color');
+    return b.topColor;
+  }
+  return b.color;
+}
+
+/**
+ * The FerroChart look options (`FerroChart.applyOptions`) for the
+ * lightweight-charts options `delta`; `all` is every option given so far,
+ * for keys that depend on each other.
+ */
+function lookOptions(delta, all) {
+  const out = {};
+  if (delta.rightPriceScale?.visible !== undefined) out.priceAxis = !!delta.rightPriceScale.visible;
+  if (delta.timeScale?.visible !== undefined) out.timeAxis = !!delta.timeScale.visible;
+  const grid = {};
+  if (delta.grid?.vertLines?.visible !== undefined) grid.vertical = !!delta.grid.vertLines.visible;
+  if (delta.grid?.horzLines?.visible !== undefined) grid.horizontal = !!delta.grid.horzLines.visible;
+  if (Object.keys(grid).length) out.grid = grid;
+  const pan = anyOn(delta.handleScroll);
+  const zoom = anyOn(delta.handleScale);
+  if (pan !== undefined || zoom !== undefined) {
+    out.interaction = {};
+    if (pan !== undefined) out.interaction.pan = pan;
+    if (zoom !== undefined) out.interaction.zoom = zoom;
+  }
+  const v = delta.crosshair?.vertLine;
+  const h = delta.crosshair?.horzLine;
+  if (v || h) {
+    const c = {};
+    if (v?.visible !== undefined) c.vertical = !!v.visible;
+    if (h?.visible !== undefined) c.horizontal = !!h.visible;
+    if (v?.labelVisible !== undefined || h?.labelVisible !== undefined) {
+      // One switch for both labels: shown if either is.
+      const cv = all.crosshair?.vertLine?.labelVisible;
+      const ch = all.crosshair?.horzLine?.labelVisible;
+      c.labels = cv !== false || ch !== false;
+    }
+    if (Object.keys(c).length) out.crosshairStyle = c;
+  }
+  const colorChanged = background(delta.layout) !== undefined || delta.layout?.textColor !== undefined
+    || delta.layout?.fontSize !== undefined
+    || delta.grid?.vertLines?.color !== undefined || delta.grid?.horzLines?.color !== undefined;
+  if (colorChanged) out.theme = themeOf(all);
+  return out;
+}
+
+/** A FerroChart theme object from lightweight-charts' layout and grid colors. */
+function themeOf(o) {
+  const bg = background(o.layout);
+  const t = { base: luminance(bg) < 0.5 ? 'dark' : 'light' };
+  if (bg !== undefined) t.background = bg;
+  if (o.layout?.textColor !== undefined) t.text = o.layout.textColor;
+  if (typeof o.layout?.fontSize === 'number') t.fontSize = o.layout.fontSize;
+  const grid = o.grid?.horzLines?.color ?? o.grid?.vertLines?.color;
+  if (grid !== undefined) t.grid = grid;
+  return t;
+}
+
 function luminance(color) {
   const m = /^#([0-9a-f]{6})/i.exec(color ?? '');
   if (!m) return 1;
@@ -187,9 +267,17 @@ class ChartApi {
   async _start() {
     initialized ??= init();
     await initialized;
-    const bg = this._options.layout?.background?.color;
-    const theme = luminance(bg) < 0.5 ? 'dark' : 'light';
-    const fc = await FerroChart.create(this._canvas, { theme });
+    const o = this._options;
+    let look = { theme: themeOf(o), ...lookOptions(o, o) };
+    let fc;
+    try {
+      fc = await FerroChart.create(this._canvas, look);
+    } catch (e) {
+      // A color FerroChart cannot parse: fall back to the named theme.
+      console.error('FerroChart:', e);
+      look = { ...look, theme: look.theme.base };
+      fc = await FerroChart.create(this._canvas, look);
+    }
     if (this._removed) {
       fc.destroy();
       return;
@@ -197,13 +285,15 @@ class ChartApi {
     this._fc = fc;
     fc.on('crosshairMove', (e) => this._emitCrosshair(e.point));
     fc.on('visibleRangeChanged', (e) => this._emitRange(e));
-    this._run((f) => this._apply(f, this._options));
+    this._run((f) => this._apply(f, { crosshair: this._options.crosshair, timeScale: this._options.timeScale }));
     const queue = this._queue;
     this._queue = [];
     for (const op of queue) this._run(op);
   }
 
   _apply(fc, o) {
+    const look = lookOptions(o, this._options);
+    if (Object.keys(look).length) fc.applyOptions(look);
     if (o.crosshair?.mode !== undefined) fc.setCrosshairMode(CROSSHAIR[o.crosshair.mode] ?? 'normal');
     if (o.timeScale) this.timeScale().applyOptions(o.timeScale);
   }
@@ -323,8 +413,7 @@ class ChartApi {
 
   applyOptions(options) {
     const o = options ?? {};
-    if (o.layout && this._fc) warnOnce('layout options take effect only in createChart');
-    this._options = { ...this._options, ...o };
+    this._options = merge(this._options, o);
     if (o.width || o.height) this.resize(o.width ?? this._canvas.clientWidth, o.height ?? this._canvas.clientHeight);
     if (this._fc) this._apply(this._fc, o);
   }
@@ -418,12 +507,13 @@ class TimeScaleApi {
     this._c._do((fc) => {
       if (o.barSpacing !== undefined) fc.setBarSpacing(o.barSpacing);
       if (o.rightOffset !== undefined) fc.setRightOffset(o.rightOffset);
+      if (o.visible !== undefined) fc.applyOptions({ timeAxis: !!o.visible });
     });
   }
 
   options() {
     const fc = this._c._fc;
-    return { barSpacing: fc?.barSpacing ?? 6, rightOffset: fc?.rightOffset ?? 0 };
+    return { barSpacing: fc?.barSpacing ?? 6, rightOffset: fc?.rightOffset ?? 0, visible: fc ? fc.options().timeAxis : this._c._options.timeScale?.visible !== false };
   }
 
   width() {
@@ -439,6 +529,8 @@ class PriceScaleApi {
 
   applyOptions(o) {
     this._c._do((fc) => {
+      // The price axis is chart-wide in FerroChart.
+      if (o.visible !== undefined) fc.applyOptions({ priceAxis: !!o.visible });
       const opts = {};
       if (o.scaleMargins) opts.margins = { top: o.scaleMargins.top, bottom: o.scaleMargins.bottom };
       if (o.mode !== undefined) opts.mode = SCALE_MODES[o.mode] ?? 'normal';
@@ -457,6 +549,7 @@ class PriceScaleApi {
       autoScale: s.autoScale,
       invertScale: s.inverted,
       scaleMargins: { top: s.margins.top, bottom: s.margins.bottom },
+      visible: fc.options().priceAxis,
     };
   }
 }

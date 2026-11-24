@@ -47,6 +47,9 @@ int main(void) {
     uint64_t icon = 0;
     FerroChartMarker marks[2];
     FerroChartSeriesOptions so;
+    FerroChartTheme theme;
+    FerroChartAppearance look;
+    FerroChartCrosshairStyle cross;
     const uint8_t junk[3] = {1, 2, 3};
 
     printf("FerroChart %s\n", ferrochart_version());
@@ -150,6 +153,30 @@ int main(void) {
     EXPECT(ferrochart_add_font(chart, junk, sizeof junk) == FERROCHART_ERR_INVALID_ARGUMENT);
     CHECK(ferrochart_render_rgba(chart, 8, pixels, stride, len));
     CHECK(ferrochart_remove_icon(chart, icon));
+
+    /* Look (r25): a sparkline on a custom dark theme. */
+    memset(&theme, 0, sizeof theme);
+    theme.size = sizeof theme;
+    CHECK(ferrochart_theme_default(1, &theme));
+    theme.background = 0x000000ffu;
+    CHECK(ferrochart_set_theme(chart, &theme));
+    memset(&look, 0, sizeof look);
+    look.size = sizeof look;
+    CHECK(ferrochart_appearance(chart, &look));
+    look.price_axis = look.time_axis = look.grid_horizontal = look.grid_vertical = 0;
+    look.padding_top = look.padding_right = look.padding_bottom = look.padding_left = 2;
+    CHECK(ferrochart_set_appearance(chart, &look));
+    memset(&cross, 0, sizeof cross);
+    cross.size = sizeof cross;
+    CHECK(ferrochart_crosshair_style(chart, &cross));
+    cross.horizontal = cross.labels = 0;
+    cross.dot = 1;
+    cross.dot_radius = 4;
+    CHECK(ferrochart_set_crosshair_style(chart, &cross));
+    look.price_axis = 7;
+    EXPECT(ferrochart_set_appearance(chart, &look) == FERROCHART_ERR_INVALID_ARGUMENT);
+    CHECK(ferrochart_render_rgba(chart, 12, pixels, stride, len));
+    EXPECT(pixels[0] == 0 && pixels[1] == 0 && pixels[2] == 0 && pixels[3] == 255);
 
     if (ferrochart_needs_redraw(chart) == 1) {
         CHECK(ferrochart_render_rgba(chart, 16, pixels, stride, len));

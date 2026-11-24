@@ -380,3 +380,75 @@ def test_bar_flags():
     _, line = chart_with({"time": d["time"], "value": d["close"]}, "line")
     with pytest.raises(ValueError, match="OHLC"):
         line.set_bar_flags(t, filled=[True, True, True])
+
+
+# Look options (r25) ------------------------------------------------------
+
+
+def test_sparkline_preset_and_options_roundtrip():
+    c = fc.Chart(width=200, height=60, preset="sparkline")
+    o = c.options()
+    assert (o["price_axis"], o["time_axis"]) == (False, False)
+    assert o["grid"] == {"horizontal": False, "vertical": False}
+    assert o["padding"] == {"top": 2, "right": 2, "bottom": 2, "left": 2}
+    assert o["interaction"] == {"pan": False, "zoom": False, "crosshair": False}
+    assert o["crosshair_style"]["horizontal"] is False and o["crosshair_style"]["dot"]["radius"] == 4
+    # Explicit keys after the preset.
+    c.apply_options(preset="sparkline", interaction={"crosshair": True}, padding={"left": 8})
+    o = c.options()
+    assert o["interaction"]["crosshair"] is True and o["padding"]["left"] == 8 and o["padding"]["top"] == 2
+    # Round trip: options() can be given back.
+    again = fc.Chart()
+    again.apply_options(**c.options())
+    assert again.options() == c.options()
+
+
+def test_appearance_changes_the_image():
+    d = bars()
+    plain, s = chart_with(d)
+    full = plain.to_png(backend="cpu")
+    plain.apply_options(price_axis=False, time_axis=False, grid=False)
+    bare = plain.to_png(backend="cpu")
+    assert bare != full
+    other, _ = chart_with(d)
+    other.apply_options(**plain.options())
+    assert other.to_png(backend="cpu") == bare
+
+
+def test_theme_dicts():
+    c = fc.Chart(theme={"base": "dark", "background": "#102030", "font_size": 13})
+    t = c.options()["theme"]
+    assert t["background"] == "#102030" and t["font_size"] == 13
+    assert t["text"] == fc.Chart(theme="dark").options()["theme"]["text"]
+    c.apply_options(theme="light")
+    assert c.options()["theme"]["background"] != "#102030"
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"theme": {"bg": "#000"}},
+        {"theme": "blue"},
+        {"theme": {"background": "nope"}},
+        {"preset": "tiny"},
+        {"grid": "yes"},
+        {"padding": -1},
+        {"padding": {"middle": 1}},
+        {"interaction": {"scroll": False}},
+        {"crosshair_style": {"dot": {"radius": 0}}},
+        {"legend": True},
+    ],
+)
+def test_bad_look_options_change_nothing(kw):
+    c = fc.Chart()
+    before = c.options()
+    with pytest.raises(ValueError):
+        c.apply_options(price_axis=False, **kw)
+    assert c.options() == before
+
+
+def test_appearance_dict_keys_are_checked():
+    with pytest.raises(ValueError, match="unknown appearance option"):
+        fc.Chart(appearance={"axis": False})
+    c = fc.Chart(appearance={"price_axis": False, "padding": 4}, interaction=False)
+    assert c.options()["price_axis"] is False and c.options()["interaction"]["pan"] is False

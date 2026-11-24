@@ -1,7 +1,7 @@
-<!-- source: 0c15830930 -->
+<!-- source: 7f51672705 -->
 # テーマとスタイル
 
-この章では、チャートの見た目と、ページへの組み込み方を扱います。テーマ、色、帰属表示ロゴ、イントロアニメーション、GPUレンダラー、サイズ設定、後片付けです。特に記載がない限り、ここでの内容はすべて`FerroPlot`にも当てはまります。
+この章では、チャートの見た目と、ページへの組み込み方を扱います。テーマ、色、軸と余白、操作、クロスヘア、多数の小さなチャート、画像出力、帰属表示ロゴ、イントロアニメーション、GPUレンダラー、サイズ設定、後片付けです。特に記載がない限り、ここでの内容はすべて`FerroPlot`にも当てはまります。
 
 ## テーマ
 
@@ -15,7 +15,22 @@ declare const canvas: HTMLCanvasElement;
 const chart = await FerroChart.create(canvas, { theme: 'dark' }); // 'light' (default) or 'dark'
 ```
 
-テーマは、背景、グリッド、テキスト、軸、クロスヘアの色、ローソク足の陽線・陰線のデフォルト色、シリーズ、インジケーター、描画のデフォルト色を決めます。既存のチャートでは変更できません。テーマを切り替えるには、状態を保存し（[保存と復元](state.md)を参照）、チャートを破棄して新しいチャートを作成してください。
+テーマは、背景、グリッド、テキスト、軸、クロスヘアの色、ローソク足の陽線・陰線のデフォルト色、シリーズ、インジケーター、描画のデフォルト色を決めます。
+
+テーマはオブジェクトでも指定できます。`base`テーマ（デフォルトは`'light'`）の上に重ねるCSSカラーで、指定しなかったキーは`base`から取られます。既存のチャートのテーマは`applyOptions`で変更でき、表示範囲とデータはそのまま保たれます。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  theme: { base: 'dark', background: '#0b0d12', up: '#30a0f0', down: '#f09030', fontSize: 13 },
+});
+chart.applyOptions({ theme: 'light' });
+```
+
+キーは`background`、`text`、`grid`、`axisLine`、`up`、`down`、`upWick`、`downWick`、`volumeUp`、`volumeDown`、`crosshair`、`crosshairLabelBg`、`crosshairLabelText`、`line`、`fontSize`、`axisPadding`です。不明なキーはエラーになります。`chart.options().theme`で現在のテーマを読み出せます。
 
 設定しなかった色や`null`に設定した色はテーマに従います。必要な箇所にだけ色を明示的に設定すれば、残りはどちらのテーマでも一貫した見た目に保たれます。
 
@@ -70,11 +85,88 @@ line.applyOptions({ color: null }); // back to the theme's color
 
 ポイントごとの色のカラム（ヒストグラムのデータ、プロットのマーク）は、`0xRRGGBBAA`値の`Uint32Array`も受け付けます。大きなデータで文字列の生成を避けられます。
 
+## 軸、グリッド、余白
+
+アプリや表の中のチャートには軸がまったくないことがよくあります。`priceAxis`と`timeAxis`で軸の表示・非表示を、`grid`でグリッド線（`true`、`false`、または`{ horizontal, vertical }`）を切り替え、`padding`でプロット領域の周りに余白を取ります（CSS px、数値または`{ top, right, bottom, left }`）。非表示にした軸の領域はプロットに使われます。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  priceAxis: false,
+  grid: { vertical: false },
+  padding: { top: 72, bottom: 40 },
+});
+chart.applyOptions({ timeAxis: false });
+```
+
+これらと次の2つの節のオプションは、`create`でも`applyOptions`でも使え、`chart.options()`で読み出せます。Pythonではsnake_caseのキーワード引数（`Chart(preset="sparkline")`、`chart.apply_options(price_axis=False)`）、Cでは`FerroChartAppearance`、`FerroChartInteraction`、`FerroChartCrosshairStyle`、`FerroChartTheme`構造体です。
+
+## 操作
+
+`interaction`はパン、ズーム、クロスヘアのオン・オフを切り替えます。`{ pan, zoom, crosshair }`、または`false`ですべてオフです。オフにした入力はチャートが使わないため、タッチスクリーンではページが通常どおりスクロール・ズームします。クリックは引き続き通知されます。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, { interaction: { pan: false, zoom: false } });
+```
+
+## クロスヘアのスタイル
+
+`crosshairStyle`はクロスヘアのどの部分を描くかを決めます。`vertical`と`horizontal`の線、軸上の`labels`、最初のシリーズの値の位置の`dot`（`{ radius, color }`、描かない場合は`null`。色のデフォルトはそのシリーズの色）です。縦線と点の組み合わせは、相場カードでよく使われるクロスヘアです。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  crosshairStyle: { horizontal: false, labels: false, dot: { radius: 5 } },
+});
+```
+
+## 多数の小さなチャート
+
+`preset: 'sparkline'`は表のセルに置くチャートです。軸なし、グリッドなし、余白2、操作なしで、クロスヘアは縦線と点です。一緒に指定したオプションはその上に適用されます。
+
+ブラウザが1ページで保持するWebGLコンテキストは16個程度で、チャートはそれぞれ自分のGPUデバイスを持ちます。小さなチャートを多数並べるページでは、プールから作成してください。1つのデバイス（WebGL2では1つのコンテキスト）を共有します。ビューポートの外にあるチャートは描画されず、スクロールして戻ったときに描かれます。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvases: HTMLCanvasElement[];
+
+const pool = await FerroChart.createPool();
+const charts = await Promise.all(canvases.map((c) => pool.create(c, { preset: 'sparkline' })));
+// …
+pool.destroy(); // destroys every chart of the pool
+```
+
+WebGL2では、プールのチャートは2Dコンテキストで自分のキャンバスに描くため、キャンバスにほかのコンテキストがあってはいけません。
+
+## 画像出力
+
+`chart.toBlob(type?, quality?)`は1フレームを描き、PNG（デフォルト）、WebP、JPEGの`Blob`として返します。`chart.toImageBitmap()`は`ImageBitmap`を返します。画像のピクセルサイズはキャンバスと同じで、キャンバスの外にある帰属表示ロゴは含まれません。`FerroPlot`にも同じメソッドがあります。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const chart: FerroChart;
+
+const png = await chart.toBlob();
+const jpeg = await chart.toBlob('image/jpeg', 0.9);
+```
+
 ## 帰属表示ロゴ
 
 デフォルトでは、最下段のペインの左下隅、時間軸のすぐ上に小さなFerroChartのロゴが表示されます。ロゴはferrochart.comへのリンクで、ポインターを重ねると名前が表示されます。
 
-このロゴは好意によるもので、ライセンス上の要件ではありません。オフにしても構いません。
+このロゴは好意によるもので、ライセンス上の要件ではありません。オフにしても構いません。`attributionLogo`を指定しない場合、ロゴは320 × 160 CSS px以上のキャンバスにだけ表示され、キャンバスのサイズがこの境界をまたぐと表示・非表示が切り替わります。`true`または`false`を指定する（または`setAttributionLogo`を呼ぶ）と固定されます。
 
 ```ts
 import { FerroChart } from '@ferrochart/core';

@@ -3,8 +3,9 @@
 //! `/api/stream?…&live=true` (the simulated stream's path, which proxies
 //! already upgrade), from the public OKX spot market (no key).
 //!
-//! - Symbols in [`LIVE`]: the examples' `BTCUSD`, `ETHUSD`, `SOLUSD` and
-//!   twelve `…USDT` pairs for Pro (OKX `BTC-USDT` …); intervals from one
+//! - Symbols in [`LIVE`]: the examples' `BTCUSD`, `ETHUSD`, `SOLUSD`, twelve
+//!   `…USDT` pairs for Pro (OKX `BTC-USDT` …) and eighteen more for the
+//!   watchlist example (30 pairs); intervals from one
 //!   minute to one week. `before` pages back through history.
 //! - One store per symbol and interval, shared by every visitor: the bars
 //!   fetched so far. A request refreshes the newest bars at most once per
@@ -104,6 +105,25 @@ pub const LIVE: &[(&str, &str)] = &[
     ("LTCUSDT", "LTC-USDT"),
     ("DOTUSDT", "DOT-USDT"),
     ("TRXUSDT", "TRX-USDT"),
+    // The watchlist example (r25): 30 pairs in all.
+    ("SHIBUSDT", "SHIB-USDT"),
+    ("BCHUSDT", "BCH-USDT"),
+    ("NEARUSDT", "NEAR-USDT"),
+    ("UNIUSDT", "UNI-USDT"),
+    ("APTUSDT", "APT-USDT"),
+    ("ATOMUSDT", "ATOM-USDT"),
+    ("ETCUSDT", "ETC-USDT"),
+    ("FILUSDT", "FIL-USDT"),
+    ("ARBUSDT", "ARB-USDT"),
+    ("OPUSDT", "OP-USDT"),
+    ("SUIUSDT", "SUI-USDT"),
+    ("PEPEUSDT", "PEPE-USDT"),
+    ("ICPUSDT", "ICP-USDT"),
+    ("XLMUSDT", "XLM-USDT"),
+    ("HBARUSDT", "HBAR-USDT"),
+    ("AAVEUSDT", "AAVE-USDT"),
+    ("INJUSDT", "INJ-USDT"),
+    ("WLDUSDT", "WLD-USDT"),
 ];
 
 /// OKX instrument of a symbol (any case).

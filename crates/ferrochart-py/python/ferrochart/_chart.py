@@ -70,6 +70,15 @@ class Chart:
 
     `attribution_logo` shows a small FerroChart logo at the bottom-left of
     the chart in Jupyter only; native windows and `to_png` never draw it.
+    By default it is shown on charts of at least 320×160 CSS px.
+
+    The look (see `apply_options`): `theme` is 'light', 'dark' or a dict of
+    colors on a `base` theme; `appearance` is a dict of `price_axis`,
+    `time_axis`, `grid` and `padding`; `interaction` (`{pan, zoom,
+    crosshair}` or False), `crosshair_style` and `preset='sparkline'` as
+    in `apply_options`:
+
+    >>> spark = fc.Chart(width=200, height=60, preset="sparkline")
 
     `fonts`: fallback fonts (paths or bytes of TTF/OTF/TTC files) for
     characters the bundled font lacks, such as Chinese, in windows and
@@ -81,18 +90,25 @@ class Chart:
 
     def __init__(
         self,
-        theme: str = "light",
+        theme: str | Mapping[str, Any] = "light",
         width: float = 1200,
         height: float = 720,
         *,
-        attribution_logo: bool = True,
+        appearance: Mapping[str, Any] | None = None,
+        interaction: bool | Mapping[str, bool] | None = None,
+        crosshair_style: Mapping[str, Any] | None = None,
+        preset: str | None = None,
+        attribution_logo: bool | None = None,
         fonts: Iterable[str | os.PathLike[str] | bytes] = (),
     ) -> None:
         data = [bytes(f) if isinstance(f, (bytes, bytearray, memoryview)) else Path(f).read_bytes() for f in fonts]
-        self._native = _native.Chart(theme, float(width), float(height), data)
-        self._theme = theme
+        base = theme if isinstance(theme, str) else str(theme.get("base", "light"))
+        self._native = _native.Chart(base, float(width), float(height), data)
+        self._theme = base
         # Creation options of the Jupyter front end.
-        self._options = {"attributionLogo": bool(attribution_logo)}
+        self._options: dict[str, Any] = {}
+        if attribution_logo is not None:
+            self._options["attributionLogo"] = bool(attribution_logo)
         # Operations for the Jupyter front end (in a kernel only).
         self._rec = _jupyter.Recorder() if _jupyter.recording() else None
         self._next_line = 0
@@ -100,6 +116,25 @@ class Chart:
         self._handlers: dict[str, list[Callable[[dict[str, Any]], Any]]] = {}
         ref = weakref.ref(self)
         self._native.set_event_handler(lambda name, payload: _dispatch(ref, name, payload))
+        look: dict[str, Any] = {}
+        if preset is not None:
+            look["preset"] = preset
+        if appearance is not None:
+            unknown = set(appearance) - {"price_axis", "time_axis", "grid", "padding"}
+            if unknown:
+                raise ValueError(
+                    f"unknown appearance option '{sorted(unknown)[0]}' "
+                    "(expected one of: price_axis, time_axis, grid, padding)"
+                )
+            look.update(appearance)
+        if interaction is not None:
+            look["interaction"] = interaction
+        if crosshair_style is not None:
+            look["crosshair_style"] = crosshair_style
+        if not isinstance(theme, str):
+            look["theme"] = theme
+        if look:
+            self.apply_options(**look)
 
     def __repr__(self) -> str:
         w, h = self.size
@@ -265,6 +300,35 @@ class Chart:
     def crosshair_mode(self, mode: str) -> None:
         self._native.set_crosshair_mode(mode)
         self._record({"op": "setCrosshairMode", "value": mode})
+
+    def apply_options(self, **options: Any) -> None:
+        """Changes the chart's look; keys not given keep their value.
+
+        - `theme`: 'light', 'dark' or a dict `{base, background, text, grid,
+          axis_line, up, down, up_wick, down_wick, volume_up, volume_down,
+          crosshair, crosshair_label_bg, crosshair_label_text, line,
+          font_size, axis_padding}` (CSS colors; keys not given come from
+          `base`, default 'light');
+        - `price_axis`, `time_axis`: show or hide the axes;
+        - `grid`: a bool, or `{horizontal, vertical}`;
+        - `padding`: CSS px around the plot, a number or `{top, right,
+          bottom, left}`;
+        - `interaction`: `{pan, zoom, crosshair}`, or False for none;
+        - `crosshair_style`: `{vertical, horizontal, labels, dot}`, `dot`
+          being `{radius, color}` or None;
+        - `preset`: 'sparkline' (no axes, grid or interaction, padding 2, a
+          vertical crosshair line with a dot), applied first, then the other
+          keys.
+
+        >>> chart.apply_options(price_axis=False, grid={"vertical": False})
+        >>> chart.apply_options(theme={"base": "dark", "background": "#000"})
+        """
+        self._native.apply_options(options)
+        self._record({"op": "chartOptions", "options": _jupyter.look_options(options)})
+
+    def options(self) -> dict[str, Any]:
+        """The look options with their values (`theme` as a dict)."""
+        return self._native.chart_options()
 
     def data_range(self) -> tuple[int, int] | None:
         """Logical indices of the first and last bar, None without data."""

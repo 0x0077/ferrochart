@@ -45,7 +45,7 @@ chart.timeScale().fitContent();
 | Time scale | `fitContent`, `scrollToRealTime`, `scrollToPosition`, `scrollPosition`, `getVisibleLogicalRange`, `setVisibleLogicalRange`, `getVisibleRange`, `setVisibleRange`, `logicalToCoordinate`, `coordinateToLogical`, `timeToCoordinate`, `coordinateToTime`, the visible logical and time range subscriptions, `applyOptions` / `options` (`barSpacing`, `rightOffset`), `width` |
 | Price scale | `chart.priceScale('right', paneIndex)` and `series.priceScale()`: `applyOptions` / `options` with `scaleMargins`, `mode`, `invertScale`, `autoScale` |
 | Crosshair | `subscribeCrosshairMove` / `unsubscribeCrosshairMove`, with `time`, `logical`, `point`, `paneIndex` and `seriesData` |
-| Chart | `applyOptions` / `options` (`width`, `height`, `layout.background.color`, `crosshair.mode`, `timeScale.barSpacing`, `timeScale.rightOffset`), `resize`, `remove`, `timeScale`, `priceScale` |
+| Chart | `applyOptions` / `options` (`width`, `height`, `layout`, `grid`, `crosshair`, `rightPriceScale.visible`, `handleScroll`, `handleScale`, `timeScale.barSpacing`, `timeScale.rightOffset`, `timeScale.visible`), `resize`, `remove`, `timeScale`, `priceScale` |
 | Constants | `ColorType`, `CrosshairMode`, `LineStyle`, `LineType`, `PriceScaleMode`, `isUTCTimestamp`, `isBusinessDay` |
 
 TypeScript declarations are included (`ISeriesApi`, `IChartApi`, `Time`,
@@ -96,16 +96,24 @@ After the chart is ready, errors are thrown as usual.
 
 **Theme and colors**
 
-- `layout.background.color` picks the theme: a dark color written as
-  `#rrggbb` (or `#rrggbbaa`) gives the dark theme, anything else the light
-  theme. Other `layout` options (`textColor`, `fontSize`, `fontFamily`,
-  gradients) are ignored. `layout` is read once, when the GPU setup finishes;
-  changing it after that logs a warning and has no effect.
+- `layout.background.color` sets the background and picks the base theme:
+  a dark color written as `#rrggbb` (or `#rrggbbaa`) gives the dark theme,
+  anything else the light theme. `layout.textColor` and `layout.fontSize`
+  set the text; a gradient background is drawn in its `topColor`;
+  `fontFamily` is ignored. All of these can change with `applyOptions`.
+- `grid.vertLines` / `grid.horzLines`: `visible` hides each set of lines;
+  there is one grid color (the horizontal lines' if both are given).
+- `rightPriceScale.visible` (or `priceScale('right').applyOptions({ visible })`)
+  and `timeScale.visible` hide the axes; the price axis is hidden in every
+  pane.
+- `handleScroll` and `handleScale`: `false`, or an object whose options are
+  all `false`, switches panning or zooming off; any `true` sub-option leaves
+  it on (FerroChart has one switch each).
 - `crosshair.mode`: `Normal`, `Magnet` and `Hidden` work; `MagnetOHLC` acts
-  as `Magnet`.
-- `grid`, `watermark`, `handleScroll`, `handleScale`, `localization`,
-  `kineticScroll` and other chart options without an equivalent are accepted
-  and ignored.
+  as `Magnet`. `vertLine.visible` and `horzLine.visible` hide each line;
+  the labels are shown unless both lines' `labelVisible` are `false`.
+- `watermark`, `localization`, `kineticScroll` and other chart options
+  without an equivalent are accepted and ignored.
 - Colors must be in a form FerroChart accepts: `#rgb`, `#rrggbb`, `#rrggbbaa`,
   `rgb()`, `rgba()` or `transparent`. Named colors such as `'red'` are an
   error. See [Colors](styling.md#colors).

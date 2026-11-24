@@ -37,7 +37,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 # MSRV: latest stable minus 2.
 rust-version = "1.93"
@@ -49,14 +49,14 @@ keywords = ["chart", "candlestick", "finance", "trading", "wgpu"]
 categories = ["visualization", "rendering", "finance", "wasm"]
 
 [workspace.dependencies]
-ferrochart-core = { path = "crates/ferrochart-core", version = "0.5.0" }
-ferrochart-indicators = { path = "crates/ferrochart-indicators", version = "0.5.0" }
-ferrochart-text = { path = "crates/ferrochart-text", version = "0.5.0" }
-ferrochart-render-cpu = { path = "crates/ferrochart-render-cpu", version = "0.5.0" }
-ferrochart-render-wgpu = { path = "crates/ferrochart-render-wgpu", version = "0.5.0" }
-ferrochart-winit = { path = "crates/ferrochart-winit", version = "0.5.0" }
-ferrochart-orderflow = { path = "crates/ferrochart-orderflow", version = "0.5.0", default-features = false }
-ferrochart-plot = { path = "crates/ferrochart-plot", version = "0.5.0" }
+ferrochart-core = { path = "crates/ferrochart-core", version = "0.6.0" }
+ferrochart-indicators = { path = "crates/ferrochart-indicators", version = "0.6.0" }
+ferrochart-text = { path = "crates/ferrochart-text", version = "0.6.0" }
+ferrochart-render-cpu = { path = "crates/ferrochart-render-cpu", version = "0.6.0" }
+ferrochart-render-wgpu = { path = "crates/ferrochart-render-wgpu", version = "0.6.0" }
+ferrochart-winit = { path = "crates/ferrochart-winit", version = "0.6.0" }
+ferrochart-orderflow = { path = "crates/ferrochart-orderflow", version = "0.6.0", default-features = false }
+ferrochart-plot = { path = "crates/ferrochart-plot", version = "0.6.0" }
 
 # core
 smallvec = "1"

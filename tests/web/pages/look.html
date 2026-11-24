@@ -1,0 +1,111 @@
+<!doctype html>
+<!-- Browser test page for the chart look (r25): theme objects, axes, grid,
+     padding, interaction switches, crosshair style, the 'sparkline' preset
+     and the attribution logo on small canvases;
+     driven by tests/web/look.mjs. -->
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<style>
+  body { margin: 0; }
+  .box { position: relative; }
+  #big { width: 600px; height: 300px; display: block; }
+  #small { width: 200px; height: 60px; display: block; }
+</style>
+<div class="box"><canvas id="big"></canvas></div>
+<div class="box"><canvas id="small"></canvas></div>
+<script type="module">
+import { FerroChart, randomWalk } from '/crates/ferrochart-wasm/pkg/index.js';
+
+const q = new URLSearchParams(location.search);
+const renderer = q.get('renderer') ?? 'auto';
+const results = [];
+const check = (name, ok, detail = '') => results.push({ name, ok: !!ok, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) });
+const throws = (name, f, part) => {
+  try { f(); check(name, false, 'no error'); } catch (e) { check(name, String(e).includes(part), String(e)); }
+};
+const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+const logoOf = (canvas) => canvas.parentElement.querySelector('a[aria-label="FerroChart"]');
+
+try {
+  // Defaults.
+  const big = await FerroChart.create(document.getElementById('big'), { renderer });
+  big.addCandlestickSeries().setData(randomWalk(3, 300, 0, 60_000));
+  let o = big.options();
+  check('defaults', o.priceAxis && o.timeAxis && o.grid.horizontal && o.grid.vertical
+    && o.interaction.pan && o.interaction.zoom && o.interaction.crosshair
+    && o.crosshairStyle.dot === null && o.padding.top === 0, o);
+  check('default theme is light', o.theme.background === '#ffffff', o.theme.background);
+  check('big canvas has the logo', !!logoOf(document.getElementById('big')));
+  check('touch-action default', document.getElementById('big').style.touchAction === 'none',
+    document.getElementById('big').style.touchAction);
+
+  // applyOptions: theme object, axes, grid, padding, crosshair.
+  big.applyOptions({ theme: { base: 'dark', up: '#00ff00', fontSize: 13 }, priceAxis: false,
+    grid: { vertical: false }, padding: { left: 6 }, crosshairStyle: { dot: { radius: 5 } } });
+  o = big.options();
+  check('theme object', o.theme.up === '#00ff00' && o.theme.fontSize === 13
+    && o.theme.background !== '#ffffff', o.theme);
+  check('applyOptions keys', !o.priceAxis && o.timeAxis && o.grid.horizontal && !o.grid.vertical
+    && o.padding.left === 6 && o.padding.top === 0 && o.crosshairStyle.dot?.radius === 5
+    && o.crosshairStyle.dot?.color === null, o);
+  await frame();
+
+  // Errors leave everything unchanged.
+  throws('unknown theme key', () => big.applyOptions({ theme: { bakground: '#000' } }), 'bakground');
+  throws('bad color', () => big.applyOptions({ theme: { up: 'nope' } }), 'invalid color');
+  throws('bad grid', () => big.applyOptions({ grid: 3 }), 'grid');
+  throws('bad preset', () => big.applyOptions({ preset: 'tiny' }), 'sparkline');
+  throws('bad padding', () => big.applyOptions({ padding: -1 }), 'padding');
+  check('unchanged after errors', JSON.stringify(big.options()) === JSON.stringify(o));
+
+  // Interaction off: touch-action follows.
+  big.applyOptions({ interaction: { pan: false } });
+  check('touch-action without pan', document.getElementById('big').style.touchAction === 'pan-x pan-y',
+    document.getElementById('big').style.touchAction);
+  big.applyOptions({ interaction: false });
+  check('touch-action without pan and zoom', document.getElementById('big').style.touchAction === 'manipulation',
+    document.getElementById('big').style.touchAction);
+  big.applyOptions({ interaction: true });
+  check('touch-action back', document.getElementById('big').style.touchAction === 'none');
+
+  // A sparkline: preset, then a key on top.
+  const smallCanvas = document.getElementById('small');
+  const small = await FerroChart.create(smallCanvas, { renderer, preset: 'sparkline', theme: 'dark',
+    interaction: { crosshair: true } });
+  const s = small.addSeries('baseline', { baseValue: 100 });
+  const w = randomWalk(9, 200, 0, 60_000);
+  s.setData({ time: w.time, value: w.close });
+  o = small.options();
+  check('sparkline preset', !o.priceAxis && !o.timeAxis && !o.grid.horizontal && !o.grid.vertical
+    && o.padding.left === 2 && !o.interaction.pan && !o.interaction.zoom && o.interaction.crosshair
+    && !o.crosshairStyle.horizontal && !o.crosshairStyle.labels && o.crosshairStyle.dot?.radius === 4, o);
+  await frame();
+  check('small canvas has no logo', !logoOf(smallCanvas));
+  check('sparkline touch-action', smallCanvas.style.touchAction === 'manipulation', smallCanvas.style.touchAction);
+
+  // The logo follows the size until set explicitly.
+  smallCanvas.style.width = '400px';
+  smallCanvas.style.height = '200px';
+  await new Promise((r) => setTimeout(r, 300));
+  check('logo appears when the canvas grows', !!logoOf(smallCanvas));
+  smallCanvas.style.width = '200px';
+  smallCanvas.style.height = '60px';
+  await new Promise((r) => setTimeout(r, 300));
+  check('logo goes when it shrinks', !logoOf(smallCanvas));
+  small.setAttributionLogo(true);
+  smallCanvas.style.width = '210px';
+  await new Promise((r) => setTimeout(r, 300));
+  check('explicit logo stays', !!logoOf(smallCanvas));
+
+  // Clicks still fire with interaction off; the page gets the wheel.
+  const clicks = [];
+  small.on('click', (e) => clicks.push(e));
+  window.__clickTarget = smallCanvas.getBoundingClientRect();
+  window.__small = small;
+  window.__clicks = clicks;
+  window.__big = big;
+} catch (e) {
+  check('no exception', false, String(e && e.stack || e));
+}
+window.__results = results;
+</script>

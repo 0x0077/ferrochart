@@ -20,7 +20,7 @@ header = """/*
  */"""
 
 [export]
-include = ["FerroChartOptions", "FerroChartSeriesOptions", "FerroChartInput", "FerroChartInputResult", "FerroChartEvent", "FerroChartWindow", "FerroChartMarker"]
+include = ["FerroChartOptions", "FerroChartSeriesOptions", "FerroChartInput", "FerroChartInputResult", "FerroChartEvent", "FerroChartWindow", "FerroChartMarker", "FerroChartTheme", "FerroChartAppearance", "FerroChartInteraction", "FerroChartCrosshairStyle"]
 
 [export.rename]
 

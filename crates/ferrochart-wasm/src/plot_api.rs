@@ -1216,6 +1216,34 @@ impl FerroPlot {
         Ok(())
     }
 
+    /// The plot's pixels now (r25); see `FerroChart.toImageBitmap`.
+    ///
+    /// @returns {Promise<ImageBitmap>}
+    #[wasm_bindgen(js_name = toImageBitmap, unchecked_return_type = "Promise<ImageBitmap>")]
+    pub fn to_image_bitmap(&self) -> Result<js_sys::Promise, JsError> {
+        crate::host::snapshot(&self.host)
+    }
+
+    /// The plot's pixels now as an image file (r25); see `FerroChart.toBlob`.
+    ///
+    /// @param {'image/png' | 'image/webp' | 'image/jpeg'} [type]
+    /// @param {number} [quality]
+    /// @returns {Promise<Blob>}
+    #[wasm_bindgen(js_name = toBlob, unchecked_return_type = "Promise<Blob>")]
+    pub fn to_blob(
+        &self,
+        #[wasm_bindgen(js_name = type, unchecked_optional_param_type = "'image/png' | 'image/webp' | 'image/jpeg'")]
+        kind: Option<String>,
+        #[wasm_bindgen(unchecked_optional_param_type = "number")] quality: Option<f64>,
+    ) -> Result<js_sys::Promise, JsError> {
+        let bitmap = crate::host::snapshot(&self.host)?;
+        Ok(wasm_bindgen_futures::future_to_promise(async move {
+            crate::pool::blob_of(bitmap, kind, quality)
+                .await
+                .map_err(JsValue::from)
+        }))
+    }
+
     /// Removes all listeners and releases the GPU resources. The object can
     /// no longer be used. (The same as `FerroChart.destroy`.)
     pub fn destroy(self) {

@@ -91,9 +91,12 @@ Differences:
   `getVisibleLogicalRange()` return `null` until then.
 - There are no overlay or left price scales: a series with a `priceScaleId`
   other than `'right'` gets a pane of its own.
-- The theme (dark or light, from `layout.background.color`) is chosen in
-  `createChart`; other layout options, wick and border colors, and options
-  without an equivalent are ignored.
+- `layout.background`, `layout.textColor`, `layout.fontSize`, the grid
+  colors and visibility, `rightPriceScale.visible`, `timeScale.visible`,
+  `handleScroll`, `handleScale` and the crosshair lines' `visible` and
+  `labelVisible` map to FerroChart's theme and look options, in `createChart`
+  and in `applyOptions`. Wick and border colors and options without an
+  equivalent are ignored.
 - `subscribeClick`, `priceToCoordinate` and `coordinateToPrice` are not
   supported yet. Whitespace items of candlestick and bar series are dropped.
 - Logical indices count from the first bar of all series, as in

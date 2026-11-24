@@ -1348,4 +1348,78 @@ mod chart_hot_paths {
             }
         }
     }
+
+    /// A sparkline (r25): hidden axes, no grid, padding, and the crosshair's
+    /// vertical line and dot following the pointer, with real-time updates
+    /// of the last value.
+    #[test]
+    fn sparkline_does_not_allocate() {
+        use ferrochart_core::appearance::{
+            Appearance, CrosshairStyle, DotStyle, InteractionOptions,
+        };
+        use ferrochart_core::geom::PointCss;
+        use ferrochart_core::interaction::{InputEvent, Modifiers, PointerKind};
+        let mut chart = Chart::new(ChartOptions {
+            appearance: Appearance::sparkline(),
+            interaction: InteractionOptions {
+                crosshair: true,
+                ..InteractionOptions::none()
+            },
+            crosshair_style: CrosshairStyle {
+                horizontal: false,
+                labels: false,
+                dot: Some(DotStyle::default()),
+                ..CrosshairStyle::default()
+            },
+            ..ChartOptions::default()
+        });
+        chart.resize(SizeCss { w: 200.0, h: 60.0 }, 2.0);
+        let id =
+            ferrochart_core::testing::quote_card_scene(&mut chart, START, SeriesKind::Baseline)
+                .unwrap();
+        let last = START + 390 * 60_000;
+        let step = |chart: &mut Chart, k: u32| {
+            chart.handle_input(InputEvent::PointerMove {
+                id: 0,
+                kind: PointerKind::Mouse,
+                pos: PointCss {
+                    x: 4.0 + (k % 190) as f32,
+                    y: 30.0,
+                },
+                mods: Modifiers::default(),
+                time_ms: f64::from(k),
+            });
+            let v = 100.0 + f64::from(k % 9) * 0.3;
+            chart
+                .update_last(
+                    id,
+                    BarUpdate {
+                        time: last,
+                        open: v,
+                        high: v,
+                        low: v,
+                        close: v,
+                        volume: None,
+                    },
+                )
+                .unwrap();
+            chart.build_frame(f64::from(k), &MonoMeasurer);
+            chart.drain_events().for_each(drop);
+        };
+        for k in 0..200 {
+            step(&mut chart, k);
+        }
+        let ((), n) = count_allocations(|| {
+            for k in 200..600 {
+                step(&mut chart, k);
+            }
+        });
+        assert_eq!(n, 0, "{n} allocations");
+        let icons = chart.frame().layers[2]
+            .cmds
+            .iter()
+            .filter(|c| matches!(c, ferrochart_core::frame::DrawCmd::Icon(_)))
+            .count();
+        assert!(icons > 0, "the dot was drawn");
+    }
 }

@@ -86,6 +86,7 @@
     "Candle styles": "Candle styles",
     "Lines & columns": "Lines & columns",
     "Overlays & context": "Overlays & context",
+    "App style": "App style",
     "Price-driven": "Price-driven",
     "Activity-driven": "Activity-driven",
     "Derived series": "Derived series",
@@ -254,6 +255,14 @@
     "drawings": {
       "title": "Drawing tools",
       "about": "29 built-in tools: lines, channels, Fibonacci, pitchforks, Gann, patterns and positions. Undo/redo, save and load, sync across charts, and custom tools in JavaScript."
+    },
+    "quote-card": {
+      "title": "Quote card",
+      "about": "A phone-style quote: price and change over the chart, the range's line coloured above and below the price it started from (dashed), and 1D to All tabs. No axes, no grid, no panning; the crosshair is a vertical line with a dot, and the header follows it."
+    },
+    "watchlist": {
+      "title": "Watchlist",
+      "about": "Thirty pairs with a 24-hour sparkline each and prices that refresh every 2 seconds. The sparklines are charts from one pool sharing a GPU device, so a page of many small charts stays within the browser's limit of WebGL contexts."
     },
     "renko": {
       "title": "Renko",

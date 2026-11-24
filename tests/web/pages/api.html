@@ -282,6 +282,47 @@ async function compat() {
   window.__lwcChart = chart;
 }
 
+// Look options through the compatibility layer.
+async function compatLook() {
+  const el = document.createElement('div');
+  el.className = 'c';
+  document.body.append(el);
+  const chart = createChart(el, {
+    layout: { background: { color: '#ffffff' }, textColor: '#123456' },
+    rightPriceScale: { visible: false },
+    grid: { vertLines: { visible: false } },
+    handleScroll: false,
+    crosshair: { horzLine: { visible: false, labelVisible: false }, vertLine: { labelVisible: false } },
+  });
+  chart.addSeries(LineSeries).setData([{ time: 1700000000, value: 1 }, { time: 1700000060, value: 2 }]);
+  await chart.whenReady();
+  let o = chart.ferrochart.options();
+  check('lwc look at creation',
+    o.priceAxis === false && o.timeAxis === true && o.grid.vertical === false && o.grid.horizontal === true
+      && o.interaction.pan === false && o.interaction.zoom === true
+      && o.crosshairStyle.horizontal === false && o.crosshairStyle.vertical === true && o.crosshairStyle.labels === false,
+    JSON.stringify(o));
+  check('lwc theme colors', o.theme.text === '#123456' && o.theme.background === '#ffffff', JSON.stringify(o.theme));
+  chart.applyOptions({
+    layout: { background: { color: '#101010' } },
+    timeScale: { visible: false },
+    handleScale: { mouseWheel: false, pinch: false, axisPressedMouseMove: false },
+    grid: { horzLines: { visible: false } },
+    crosshair: { vertLine: { labelVisible: true } },
+  });
+  o = chart.ferrochart.options();
+  check('lwc applyOptions look',
+    o.timeAxis === false && o.priceAxis === false && o.interaction.zoom === false && o.interaction.pan === false
+      && o.grid.horizontal === false && o.grid.vertical === false && o.crosshairStyle.labels === true,
+    JSON.stringify(o));
+  check('lwc applyOptions theme keeps textColor', o.theme.background === '#101010' && o.theme.text === '#123456', JSON.stringify(o.theme));
+  chart.priceScale('right').applyOptions({ visible: true });
+  check('lwc priceScale visible', chart.ferrochart.options().priceAxis === true && chart.priceScale().options().visible === true);
+  check('lwc timeScale options visible', chart.timeScale().options().visible === false);
+  chart.remove();
+  el.remove();
+}
+
 // JS layer plugins and drawing tools.
 async function plugins() {
   const el = document.getElementById('b');
@@ -1096,6 +1137,7 @@ try {
   await hiddenCanvas();
   // Last: api.mjs moves the mouse to the compat chart afterwards.
   await compat();
+  await compatLook();
 } catch (e) {
   check('no exception', false, e?.stack ?? e);
 }

@@ -98,6 +98,8 @@ export interface PriceScaleOptions {
   mode?: number;
   invertScale?: boolean;
   autoScale?: boolean;
+  /** Shows or hides the price axis (of every pane: FerroChart has one switch). */
+  visible?: boolean;
 }
 
 export interface IPriceScaleApi {
@@ -145,7 +147,7 @@ export interface ITimeScaleApi {
   subscribeVisibleTimeRangeChange(handler: (range: TimeRange | null) => void): void;
   unsubscribeVisibleTimeRangeChange(handler: (range: TimeRange | null) => void): void;
   applyOptions(options: { barSpacing?: number; rightOffset?: number; [option: string]: unknown }): void;
-  options(): { barSpacing: number; rightOffset: number };
+  options(): { barSpacing: number; rightOffset: number; visible: boolean };
   width(): number;
 }
 
@@ -161,10 +163,26 @@ export interface ChartOptions {
   width?: number;
   height?: number;
   autoSize?: boolean;
-  /** `background.color` picks the dark or the light theme. */
-  layout?: { background?: { type?: string; color?: string }; textColor?: string; [option: string]: unknown };
-  crosshair?: { mode?: number; [option: string]: unknown };
-  timeScale?: { barSpacing?: number; rightOffset?: number; [option: string]: unknown };
+  /** The background's lightness picks the dark or the light theme; the colors override it. */
+  layout?: { background?: { type?: string; color?: string; topColor?: string; bottomColor?: string }; textColor?: string; fontSize?: number; [option: string]: unknown };
+  /** `labelVisible` of either line shows both labels (FerroChart has one switch). */
+  crosshair?: {
+    mode?: number;
+    vertLine?: { visible?: boolean; labelVisible?: boolean; [option: string]: unknown };
+    horzLine?: { visible?: boolean; labelVisible?: boolean; [option: string]: unknown };
+    [option: string]: unknown;
+  };
+  /** Line colors: one grid color (horizontal lines' wins). */
+  grid?: {
+    vertLines?: { visible?: boolean; color?: string; [option: string]: unknown };
+    horzLines?: { visible?: boolean; color?: string; [option: string]: unknown };
+  };
+  rightPriceScale?: { visible?: boolean; [option: string]: unknown };
+  timeScale?: { barSpacing?: number; rightOffset?: number; visible?: boolean; [option: string]: unknown };
+  /** Any true sub-option switches panning on. */
+  handleScroll?: boolean | { [option: string]: boolean | undefined };
+  /** Any true sub-option switches zooming on. */
+  handleScale?: boolean | { [option: string]: boolean | undefined };
   [option: string]: unknown;
 }
 

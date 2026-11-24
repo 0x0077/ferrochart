@@ -92,8 +92,8 @@ fn block_on<F: std::future::Future>(future: F) -> F::Output {
     }
 }
 
-/// A wgpu instance, adapter, device and queue.
-#[derive(Debug)]
+/// A wgpu instance, adapter, device and queue. Cloning shares them.
+#[derive(Clone, Debug)]
 pub struct GpuContext {
     /// The instance.
     pub instance: wgpu::Instance,
@@ -373,6 +373,8 @@ enum Op {
 enum Target {
     /// Not yet sized.
     None,
+    /// Frames go through a [`SharedSurface`] (r25).
+    External,
     Offscreen {
         texture: wgpu::Texture,
         view: wgpu::TextureView,
@@ -450,8 +452,8 @@ pub struct WgpuRenderer {
     queue: wgpu::Queue,
     format: wgpu::TextureFormat,
     target: Target,
-    pipelines: Pipelines,
-    atlas: Atlas,
+    pipelines: Arc<Pipelines>,
+    atlas: Arc<Mutex<Atlas>>,
     atlas_bind: wgpu::BindGroup,
     color_atlas_bind: wgpu::BindGroup,
     icon_atlas: IconAtlas,
@@ -503,9 +505,84 @@ impl std::fmt::Debug for WgpuRenderer {
 const OFFSCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const MAX_SIZE: f32 = 16_384.0;
 
+/// Pipelines and glyph atlases that several renderers on one device share
+/// (r25): a page of many small charts then compiles the shaders once
+/// and keeps one set of glyph textures instead of one per chart. Cheap to
+/// clone (reference counted).
+///
+/// Renderers sharing them must use the same fonts (glyphs are cached by
+/// font and glyph number) and the same target format.
+///
+/// # Examples
+///
+/// ```no_run
+/// use ferrochart_render_wgpu::{GpuContext, SharedResources, WgpuRenderer};
+///
+/// let ctx = GpuContext::headless()?;
+/// let shared = SharedResources::offscreen(&ctx);
+/// let a = WgpuRenderer::offscreen_shared(&ctx, &shared);
+/// let b = WgpuRenderer::offscreen_shared(&ctx, &shared);
+/// # let _ = (a, b);
+/// # Ok::<(), ferrochart_core::render::RenderError>(())
+/// ```
+#[derive(Clone)]
+pub struct SharedResources {
+    format: wgpu::TextureFormat,
+    pipelines: Arc<Pipelines>,
+    atlas: Arc<Mutex<Atlas>>,
+    atlas_bind: wgpu::BindGroup,
+    color_atlas_bind: wgpu::BindGroup,
+}
+
+impl std::fmt::Debug for SharedResources {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharedResources")
+            .field("format", &self.format)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SharedResources {
+    /// Resources for renderers drawing into `format` (a surface's view
+    /// format). Usually taken from the first renderer instead
+    /// ([`WgpuRenderer::shared_resources`]).
+    pub fn new(ctx: &GpuContext, format: wgpu::TextureFormat) -> Self {
+        let device = &ctx.device;
+        let pipelines = Pipelines::new(device, format);
+        let atlas = Atlas::new(device);
+        let atlas_bind = WgpuRenderer::texture_bind(device, &pipelines, &atlas.mono.view);
+        let color_atlas_bind = WgpuRenderer::texture_bind(device, &pipelines, &atlas.color.view);
+        // Arc (not Rc) keeps native renderers `Send`; on the web wgpu's types
+        // are not `Send`, which is fine there (one thread).
+        #[allow(clippy::arc_with_non_send_sync)]
+        Self {
+            format,
+            pipelines: Arc::new(pipelines),
+            atlas: Arc::new(Mutex::new(atlas)),
+            atlas_bind,
+            color_atlas_bind,
+        }
+    }
+
+    /// Resources for offscreen renderers ([`WgpuRenderer::offscreen_shared`]).
+    pub fn offscreen(ctx: &GpuContext) -> Self {
+        Self::new(ctx, OFFSCREEN_FORMAT)
+    }
+
+    /// The target format the pipelines were built for.
+    pub fn format(&self) -> wgpu::TextureFormat {
+        self.format
+    }
+}
+
 impl WgpuRenderer {
     fn with_format(ctx: &GpuContext, format: wgpu::TextureFormat, target: Target) -> Self {
+        Self::with_shared(ctx, &SharedResources::new(ctx, format), target)
+    }
+
+    fn with_shared(ctx: &GpuContext, shared: &SharedResources, target: Target) -> Self {
         let device = ctx.device.clone();
+        let format = shared.format;
         // wgpu's default handler panics; keep the error and fail the next
         // `render` instead (public API must not panic).
         let gpu_error = Arc::new(Mutex::new(None::<String>));
@@ -515,10 +592,10 @@ impl WgpuRenderer {
                 slot.get_or_insert_with(|| e.to_string());
             }
         }));
-        let pipelines = Pipelines::new(&device, format);
-        let atlas = Atlas::new(&device);
-        let atlas_bind = Self::texture_bind(&device, &pipelines, &atlas.mono.view);
-        let color_atlas_bind = Self::texture_bind(&device, &pipelines, &atlas.color.view);
+        let pipelines = Arc::clone(&shared.pipelines);
+        let atlas = Arc::clone(&shared.atlas);
+        let atlas_bind = shared.atlas_bind.clone();
+        let color_atlas_bind = shared.color_atlas_bind.clone();
         let icon_atlas = IconAtlas::new(&device);
         let icon_atlas_bind = Self::texture_bind(&device, &pipelines, &icon_atlas.view);
         let uniform_buf =
@@ -582,6 +659,39 @@ impl WgpuRenderer {
         Self::with_format(ctx, OFFSCREEN_FORMAT, Target::None)
     }
 
+    /// As [`offscreen`](Self::offscreen), with pipelines and glyph atlases
+    /// shared with other renderers (r25). `shared` must be for
+    /// [`SharedResources::offscreen`]'s format; with another one this is a
+    /// renderer with its own resources.
+    pub fn offscreen_shared(ctx: &GpuContext, shared: &SharedResources) -> Self {
+        if shared.format == OFFSCREEN_FORMAT {
+            Self::with_shared(ctx, shared, Target::None)
+        } else {
+            Self::offscreen(ctx)
+        }
+    }
+
+    /// A renderer that draws only through [`SharedSurface::render`] (r25):
+    /// many charts taking turns on one surface, such as the web pool's one
+    /// WebGL2 canvas. `shared` must be [`SharedSurface::resources`] of that
+    /// surface (same format).
+    pub fn for_shared_surface(ctx: &GpuContext, shared: &SharedResources) -> Self {
+        Self::with_shared(ctx, shared, Target::External)
+    }
+
+    /// The resources this renderer uses, to share with renderers made later
+    /// ([`offscreen_shared`](Self::offscreen_shared),
+    /// [`with_surface_shared`](Self::with_surface_shared)).
+    pub fn shared_resources(&self) -> SharedResources {
+        SharedResources {
+            format: self.format,
+            pipelines: Arc::clone(&self.pipelines),
+            atlas: Arc::clone(&self.atlas),
+            atlas_bind: self.atlas_bind.clone(),
+            color_atlas_bind: self.color_atlas_bind.clone(),
+        }
+    }
+
     /// A renderer that presents to `surface` (created from `ctx.instance`).
     ///
     /// # Errors
@@ -593,6 +703,16 @@ impl WgpuRenderer {
         surface: wgpu::Surface<'static>,
         size: SizePx,
     ) -> Result<Self, RenderError> {
+        let (view_format, target) = Self::surface_target(ctx, surface, size)?;
+        Ok(Self::with_format(ctx, view_format, target))
+    }
+
+    /// Configures `surface`; the format the renderer draws in and the target.
+    fn surface_target(
+        ctx: &GpuContext,
+        surface: wgpu::Surface<'static>,
+        size: SizePx,
+    ) -> Result<(wgpu::TextureFormat, Target), RenderError> {
         let (w, h) = target_size(size)?;
         let caps = surface.get_capabilities(&ctx.adapter);
         let format = caps
@@ -614,8 +734,7 @@ impl WgpuRenderer {
             config.view_formats = vec![view_format];
         }
         surface.configure(&ctx.device, &config);
-        Ok(Self::with_format(
-            ctx,
+        Ok((
             view_format,
             Target::Surface {
                 surface,
@@ -623,6 +742,29 @@ impl WgpuRenderer {
                 view_format,
             },
         ))
+    }
+
+    /// As [`with_surface`](Self::with_surface), with pipelines and glyph
+    /// atlases shared with other renderers (r25): get them from the
+    /// first renderer with [`shared_resources`](Self::shared_resources).
+    /// When this surface draws in another format than `shared`, the renderer
+    /// gets its own resources (still correct, just not shared).
+    ///
+    /// # Errors
+    ///
+    /// As [`with_surface`](Self::with_surface).
+    pub fn with_surface_shared(
+        ctx: &GpuContext,
+        surface: wgpu::Surface<'static>,
+        size: SizePx,
+        shared: &SharedResources,
+    ) -> Result<Self, RenderError> {
+        let (view_format, target) = Self::surface_target(ctx, surface, size)?;
+        Ok(if view_format == shared.format {
+            Self::with_shared(ctx, shared, target)
+        } else {
+            Self::with_format(ctx, view_format, target)
+        })
     }
 
     /// The first GPU error (validation, out of memory) reported since the
@@ -748,7 +890,7 @@ impl WgpuRenderer {
         if matches!(self.target, Target::Offscreen { size: s, .. } if s == size) {
             return;
         }
-        if matches!(self.target, Target::Surface { .. }) {
+        if matches!(self.target, Target::Surface { .. } | Target::External) {
             return;
         }
         let texture = self.color_texture(
@@ -1042,10 +1184,14 @@ impl WgpuRenderer {
         for glyph in self.text.glyphs(font, text, size) {
             let gx = (x0 + pen).round() as i32;
             pen += glyph.advance;
-            let Some(slot) = glyph
-                .key
-                .and_then(|key| self.atlas.get(&self.queue, &self.text, key, size))
-            else {
+            let Some(slot) = glyph.key.and_then(|key| {
+                // A poisoned lock (a panic elsewhere) still holds a usable atlas.
+                let mut atlas = self
+                    .atlas
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                atlas.get(&self.queue, &self.text, key, size)
+            }) else {
                 continue;
             };
             let start = u32::try_from(self.glyphs.len()).unwrap_or(u32::MAX);
@@ -1792,9 +1938,116 @@ fn target_size(size: SizePx) -> Result<(u32, u32), RenderError> {
     Ok((w as u32, h as u32))
 }
 
+/// A surface that several renderers take turns drawing into (r25):
+/// on the web, one WebGL2 canvas for a whole pool of charts, each frame then
+/// copied to the chart's own 2D canvas by the caller. Each `render` resizes
+/// the surface to the frame and presents it.
+pub struct SharedSurface {
+    device: wgpu::Device,
+    surface: wgpu::Surface<'static>,
+    config: wgpu::SurfaceConfiguration,
+    view_format: wgpu::TextureFormat,
+    resources: SharedResources,
+}
+
+impl std::fmt::Debug for SharedSurface {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharedSurface")
+            .field("format", &self.view_format)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SharedSurface {
+    /// Configures `surface` (created from `ctx.instance`) at `size`.
+    ///
+    /// # Errors
+    ///
+    /// As [`WgpuRenderer::with_surface`].
+    pub fn new(
+        ctx: &GpuContext,
+        surface: wgpu::Surface<'static>,
+        size: SizePx,
+    ) -> Result<Self, RenderError> {
+        let (view_format, target) = WgpuRenderer::surface_target(ctx, surface, size)?;
+        let Target::Surface {
+            surface, config, ..
+        } = target
+        else {
+            return Err(RenderError::Backend("surface not supported by the adapter"));
+        };
+        Ok(Self {
+            device: ctx.device.clone(),
+            surface,
+            config,
+            view_format,
+            resources: SharedResources::new(ctx, view_format),
+        })
+    }
+
+    /// The resources renderers drawing here must use
+    /// ([`WgpuRenderer::for_shared_surface`]).
+    pub fn resources(&self) -> &SharedResources {
+        &self.resources
+    }
+
+    /// Draws `frame` with `renderer` (made by
+    /// [`WgpuRenderer::for_shared_surface`] with this surface's resources)
+    /// and presents it.
+    ///
+    /// # Errors
+    ///
+    /// As [`Renderer::render`]; [`RenderError::Backend`] for a renderer of
+    /// another format.
+    pub fn render(
+        &mut self,
+        renderer: &mut WgpuRenderer,
+        frame: &Frame,
+        data: &ChartDataView<'_>,
+    ) -> Result<(), RenderError> {
+        if renderer.format != self.view_format {
+            return Err(RenderError::Backend(
+                "the renderer was made for another surface format",
+            ));
+        }
+        let size = target_size(frame.size_px)?;
+        if (self.config.width, self.config.height) != size {
+            self.config.width = size.0;
+            self.config.height = size.1;
+            self.surface.configure(&self.device, &self.config);
+        }
+        let texture = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                self.surface.configure(&self.device, &self.config);
+                return Err(RenderError::Backend("surface outdated; reconfigured"));
+            }
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Err(RenderError::Backend("surface not available"));
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err(RenderError::Backend("surface validation error"));
+            }
+        };
+        let view = texture.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(self.view_format),
+            ..wgpu::TextureViewDescriptor::default()
+        });
+        renderer.render_into(frame, *data, &view, size);
+        renderer.queue.present(texture);
+        renderer.result()
+    }
+}
+
 impl Renderer for WgpuRenderer {
     fn render(&mut self, frame: &Frame, data: &ChartDataView<'_>) -> Result<(), RenderError> {
         let size = target_size(frame.size_px)?;
+        if let Target::External = self.target {
+            return Err(RenderError::Backend(
+                "this renderer draws through SharedSurface::render",
+            ));
+        }
         if let Target::Surface { .. } = self.target {
             self.reconfigure(size);
             let Target::Surface {

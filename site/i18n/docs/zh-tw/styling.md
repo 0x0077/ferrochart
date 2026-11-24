@@ -1,7 +1,7 @@
-<!-- source: 0c15830930 -->
+<!-- source: 7f51672705 -->
 # 主題與樣式
 
-本章說明圖表的外觀以及它如何融入頁面：主題、顏色、署名標誌、開場動畫、GPU 渲染器、尺寸與清理。除非另有說明，這裡的內容同樣適用於 `FerroPlot`。
+本章說明圖表的外觀以及它如何融入頁面：主題、顏色、座標軸與留白、互動、十字游標、大量小圖、匯出圖片、署名標誌、開場動畫、GPU 渲染器、尺寸與清理。除非另有說明，這裡的內容同樣適用於 `FerroPlot`。
 
 ## 主題
 
@@ -15,7 +15,22 @@ declare const canvas: HTMLCanvasElement;
 const chart = await FerroChart.create(canvas, { theme: 'dark' }); // 'light' (default) or 'dark'
 ```
 
-主題決定背景、格線、文字、座標軸與十字游標的顏色、K 線預設的漲跌顏色，以及系列、指標與繪圖的預設顏色。既有圖表無法變更主題；要切換主題，請儲存狀態（參見[儲存與還原](state.md)），銷毀圖表後再建立新的。
+主題決定背景、格線、文字、座標軸與十字游標的顏色、K 線預設的漲跌顏色，以及系列、指標與繪圖的預設顏色。
+
+主題也可以是一個物件：在 `base` 主題（預設 `'light'`）之上覆寫的 CSS 顏色，未給出的鍵取自 `base`。用 `applyOptions` 可以變更既有圖表的主題，檢視與資料保持不變。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  theme: { base: 'dark', background: '#0b0d12', up: '#30a0f0', down: '#f09030', fontSize: 13 },
+});
+chart.applyOptions({ theme: 'light' });
+```
+
+可用的鍵有 `background`、`text`、`grid`、`axisLine`、`up`、`down`、`upWick`、`downWick`、`volumeUp`、`volumeDown`、`crosshair`、`crosshairLabelBg`、`crosshairLabelText`、`line`、`fontSize` 與 `axisPadding`；未知的鍵會產生錯誤。`chart.options().theme` 會讀回目前的主題。
 
 任何未設定或設為 `null` 的顏色都會跟隨主題。只在需要的地方明確設定顏色；其餘部分在兩種主題下都能保持一致。
 
@@ -70,11 +85,88 @@ line.applyOptions({ color: null }); // back to the theme's color
 
 逐點顏色欄（直方圖資料、plot 標記）也接受 `0xRRGGBBAA` 值的 `Uint32Array`，處理大量資料時可避免建立字串。
 
+## 座標軸、格線與留白
+
+App 與表格中的圖表常常完全沒有座標軸。`priceAxis` 與 `timeAxis` 顯示或隱藏座標軸，`grid` 控制格線（`true`、`false` 或 `{ horizontal, vertical }`），`padding` 在繪圖區周圍留出空白（CSS px，一個數字或 `{ top, right, bottom, left }`）。隱藏的座標軸會把空間讓給繪圖區。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  priceAxis: false,
+  grid: { vertical: false },
+  padding: { top: 72, bottom: 40 },
+});
+chart.applyOptions({ timeAxis: false });
+```
+
+這些選項以及接下來兩節的選項都能用在 `create` 與 `applyOptions` 中，`chart.options()` 會讀回它們。在 Python 中它們是 snake_case 的關鍵字引數（`Chart(preset="sparkline")`、`chart.apply_options(price_axis=False)`）；在 C 中是 `FerroChartAppearance`、`FerroChartInteraction`、`FerroChartCrosshairStyle` 與 `FerroChartTheme` 結構。
+
+## 互動
+
+`interaction` 開關平移、縮放與十字游標：`{ pan, zoom, crosshair }`，或用 `false` 全部關閉。被關閉的輸入圖表不會使用，因此在觸控螢幕上頁面會照常捲動與縮放。點擊仍會回報。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, { interaction: { pan: false, zoom: false } });
+```
+
+## 十字游標樣式
+
+`crosshairStyle` 決定十字游標要畫哪些部分：`vertical` 與 `horizontal` 兩條線、座標軸上的 `labels`，以及第一個系列數值處的 `dot`（`{ radius, color }`，`null` 表示不畫；顏色預設為該系列的顏色）。一條垂直線加一個圓點是行情卡片常見的十字游標。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  crosshairStyle: { horizontal: false, labels: false, dot: { radius: 5 } },
+});
+```
+
+## 大量小圖
+
+`preset: 'sparkline'` 是放在表格儲存格中的圖表：沒有座標軸、沒有格線、留白 2、不能互動，十字游標是一條垂直線加一個圓點。與它一起給出的選項會疊加在上面。
+
+瀏覽器每個頁面只保留約 16 個 WebGL 情境，而每個圖表都有自己的 GPU 裝置。頁面上有大量小圖時，請從池中建立它們：它們共用一個裝置（在 WebGL2 上共用一個情境）。視埠之外的圖表不會繪製，捲動回來時再畫。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvases: HTMLCanvasElement[];
+
+const pool = await FerroChart.createPool();
+const charts = await Promise.all(canvases.map((c) => pool.create(c, { preset: 'sparkline' })));
+// …
+pool.destroy(); // destroys every chart of the pool
+```
+
+在 WebGL2 上，池中的圖表以 2D 情境繪製自己的畫布，因此畫布不能已有其他情境。
+
+## 匯出圖片
+
+`chart.toBlob(type?, quality?)` 繪製一幀，回傳 PNG（預設）、WebP 或 JPEG 的 `Blob`；`chart.toImageBitmap()` 回傳 `ImageBitmap`。圖片的像素尺寸與畫布相同，不含署名標誌（它不在畫布中）。`FerroPlot` 有相同的方法。
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const chart: FerroChart;
+
+const png = await chart.toBlob();
+const jpeg = await chart.toBlob('image/jpeg', 0.9);
+```
+
 ## 署名標誌
 
 預設情況下，最下方窗格的左下角、時間軸正上方會顯示一個小小的 FerroChart 標誌。它連結到 ferrochart.com，指標移到上方時會顯示名稱。
 
-此標誌只是一種禮貌性的署名，並非授權要求：你可以把它關閉。
+此標誌只是一種禮貌性的署名，並非授權要求：你可以把它關閉。未設定 `attributionLogo` 時，只有畫布不小於 320 × 160 CSS px 才會顯示標誌，畫布尺寸跨過這個界線時會隨之出現或消失；設為 `true` 或 `false`（或呼叫 `setAttributionLogo`）後就固定不變。
 
 ```ts
 import { FerroChart } from '@ferrochart/core';

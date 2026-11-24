@@ -123,6 +123,12 @@ def camel_keys(d: Mapping[str, Any]) -> dict[str, Any]:
     return {camel(k): v for k, v in d.items()}
 
 
+def look_options(options: Mapping[str, Any]) -> dict[str, Any]:
+    """`Chart.apply_options` keys for `FerroChart.applyOptions` (nested
+    dicts, such as a theme, camelCased too)."""
+    return {camel(k): look_options(v) if isinstance(v, Mapping) else v for k, v in options.items()}
+
+
 def series_options(options: Mapping[str, Any]) -> dict[str, Any]:
     return camel_keys(options)
 
@@ -401,7 +407,7 @@ def widget_class() -> type:
         width = traitlets.Float(1200).tag(sync=True)
         height = traitlets.Float(720).tag(sync=True)
         theme = traitlets.Unicode("light").tag(sync=True)
-        #: Creation options (`attributionLogo`; a plot's `crosshair`, `hoverHighlight`).
+        #: Creation options (`attributionLogo` if given; a plot's `crosshair`, `hoverHighlight`).
         options = traitlets.Dict().tag(sync=True)
         #: Events with Python callbacks, forwarded by the front end.
         events = traitlets.List(traitlets.Unicode()).tag(sync=True)

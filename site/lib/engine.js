@@ -137,6 +137,15 @@ export async function run(demo, canvas, { onCreate } = {}) {
       onCreate?.(obj);
       return obj;
     }),
+    // Pools (FerroChart.createPool): one device for many small charts. The
+    // pool is freed with the example (destroying it destroys its charts).
+    ...(Engine.createPool && {
+      createPool: (o) => gpuSlot(async () => {
+        const pool = await Engine.createPool(forced ? { ...o, renderer: forced } : o);
+        made.push(pool);
+        return pool;
+      }),
+    }),
   });
   let side = null;
   if (demo.side) {

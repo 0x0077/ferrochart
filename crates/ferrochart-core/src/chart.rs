@@ -8,6 +8,7 @@
 //! warmed up, panning, zooming and real-time updates do not allocate.
 //!
 
+use crate::appearance::{Appearance, CrosshairStyle, InteractionOptions};
 use crate::data::lod::{bucket_of, bucket_start};
 use core::any::Any;
 
@@ -68,6 +69,12 @@ pub struct ChartOptions {
     pub max_bar_spacing: Css,
     /// Initial empty space right of the last bar, in bars.
     pub right_offset: f64,
+    /// Axes, grid and padding (r25).
+    pub appearance: Appearance,
+    /// Which gestures the chart answers (r25).
+    pub interaction: InteractionOptions,
+    /// What the crosshair draws (r25).
+    pub crosshair_style: CrosshairStyle,
 }
 
 impl Default for ChartOptions {
@@ -80,6 +87,9 @@ impl Default for ChartOptions {
             min_bar_spacing: Css(0.5),
             max_bar_spacing: Css(50.0),
             right_offset: 3.0,
+            appearance: Appearance::default(),
+            interaction: InteractionOptions::default(),
+            crosshair_style: CrosshairStyle::default(),
         }
     }
 }
@@ -1032,6 +1042,9 @@ struct PlacedTick {
 /// ```
 pub struct Chart {
     theme: Theme,
+    appearance: Appearance,
+    pub(crate) gestures: InteractionOptions,
+    crosshair_style: CrosshairStyle,
     tz: Box<dyn TimeZoneProvider>,
     validation: ValidationMode,
     default_right_offset: f64,
@@ -1220,6 +1233,9 @@ impl Chart {
         frame.reserve();
         Self {
             theme: options.theme,
+            appearance: options.appearance,
+            gestures: options.interaction,
+            crosshair_style: options.crosshair_style,
             tz: options.time_zone,
             validation: options.ohlc_validation,
             default_right_offset: options.right_offset,
@@ -1287,6 +1303,90 @@ impl Chart {
         }
         self.size = size;
         self.invalidation = Invalidation::Full;
+    }
+
+    /// Axes, grid and padding (r25).
+    pub fn appearance(&self) -> Appearance {
+        self.appearance
+    }
+
+    /// Shows or hides the axes and grid and sets the padding; the next frame
+    /// lays out again. Data, view and drawings are unchanged.
+    ///
+    /// ```
+    /// use ferrochart_core::{Chart, ChartOptions};
+    /// use ferrochart_core::appearance::Appearance;
+    ///
+    /// let mut chart = Chart::new(ChartOptions::default());
+    /// chart.set_appearance(Appearance { time_axis: false, ..Appearance::default() });
+    /// assert!(!chart.appearance().time_axis);
+    /// ```
+    pub fn set_appearance(&mut self, appearance: Appearance) {
+        if appearance != self.appearance {
+            self.appearance = appearance;
+            self.invalidation = Invalidation::Full;
+        }
+    }
+
+    /// Which gestures the chart answers (r25).
+    pub fn interaction(&self) -> InteractionOptions {
+        self.gestures
+    }
+
+    /// Switches panning, zooming and the crosshair on or off. A gesture
+    /// under way when its switch goes off ends; switching the crosshair off
+    /// hides it.
+    ///
+    /// ```
+    /// use ferrochart_core::{Chart, ChartOptions};
+    /// use ferrochart_core::appearance::InteractionOptions;
+    ///
+    /// let mut chart = Chart::new(ChartOptions::default());
+    /// chart.set_interaction(InteractionOptions { zoom: false, ..InteractionOptions::default() });
+    /// assert!(chart.interaction().pan && !chart.interaction().zoom);
+    /// ```
+    pub fn set_interaction(&mut self, options: InteractionOptions) {
+        if options == self.gestures {
+            return;
+        }
+        self.gestures = options;
+        self.end_disabled_gestures();
+        self.invalidation = self.invalidation.max(Invalidation::Cursor);
+    }
+
+    /// What the crosshair draws (r25).
+    pub fn crosshair_style(&self) -> CrosshairStyle {
+        self.crosshair_style
+    }
+
+    /// Sets which crosshair lines and labels are drawn, and the dot.
+    pub fn set_crosshair_style(&mut self, style: CrosshairStyle) {
+        if style != self.crosshair_style {
+            self.crosshair_style = style;
+            self.invalidation = self.invalidation.max(Invalidation::Cursor);
+        }
+    }
+
+    /// The theme.
+    pub fn theme(&self) -> &Theme {
+        &self.theme
+    }
+
+    /// Replaces the theme (r25); every style is rebuilt on the next frame.
+    ///
+    /// ```
+    /// use ferrochart_core::{Chart, ChartOptions};
+    /// use ferrochart_core::theme::Theme;
+    ///
+    /// let mut chart = Chart::new(ChartOptions::default());
+    /// chart.set_theme(Theme::dark());
+    /// assert_eq!(*chart.theme(), Theme::dark());
+    /// ```
+    pub fn set_theme(&mut self, theme: Theme) {
+        if theme != self.theme {
+            self.theme = theme;
+            self.invalidation = Invalidation::Full;
+        }
     }
 
     /// The top pane (the pane every chart starts with, unless it was removed).
@@ -3497,16 +3597,33 @@ impl Chart {
             };
         }
         let pad = self.theme.axis_padding.to_px(self.dpr).0.round();
-        let time_h = (line_h + 2.0 * pad).ceil().min(h);
-        let panes_h = (h - time_h).max(0.0);
+        let look = self.appearance;
+        let time_h = if look.time_axis {
+            (line_h + 2.0 * pad).ceil().min(h)
+        } else {
+            0.0
+        };
+        let edge = |c: Css| c.to_px(self.dpr).0.max(0.0).round();
+        let (pad_t, pad_r, pad_b, pad_l) = (
+            edge(look.padding.top),
+            edge(look.padding.right),
+            edge(look.padding.bottom),
+            edge(look.padding.left),
+        );
+        let panes_bottom = (h - time_h).max(0.0);
+        let panes_top = pad_t.min(panes_bottom);
+        let panes_h = (panes_bottom - pad_b - panes_top).max(0.0);
+        if !look.price_axis {
+            self.axis_width = 0.0;
+        }
 
         // The price axis width (shared by all panes) depends on the labels,
         // which depend on the visible range, which depends on the plot width:
         // iterate (at most twice).
         for _ in 0..2 {
-            let plot_w = (w - self.axis_width).max(0.0);
+            let plot_w = (w - self.axis_width - pad_l - pad_r).max(0.0);
             self.time_scale.set_width(f64::from(plot_w));
-            stack(&mut self.panes, 0.0, panes_h, plot_w);
+            stack(&mut self.panes, pad_l, panes_top, panes_h, plot_w);
             self.autoscale();
             let mut widest: f32 = 0.0;
             for i in 0..self.panes.len() {
@@ -3528,6 +3645,9 @@ impl Chart {
                     widest = widest.max(text_width(text, s.as_str(), font));
                 }
             }
+            if !look.price_axis {
+                break;
+            }
             let required = (widest + 2.0 * pad).ceil().min(w);
             if required > self.axis_width || required < self.axis_width * 0.75 {
                 self.axis_width = required;
@@ -3535,23 +3655,24 @@ impl Chart {
                 break;
             }
         }
-        let plot_w = (w - self.axis_width).max(0.0);
+        let plot_w = (w - self.axis_width - pad_l - pad_r).max(0.0);
         self.time_scale.set_width(f64::from(plot_w));
         self.time_scale.settle();
-        stack(&mut self.panes, 0.0, panes_h, plot_w);
+        stack(&mut self.panes, pad_l, panes_top, panes_h, plot_w);
+        let axis_x = (w - self.axis_width).max(0.0);
         self.layout = Layout {
             plot: self.panes.first().map_or(RectPx::default(), |p| p.plot),
             price_axis: RectPx {
-                x: plot_w,
+                x: axis_x,
                 y: 0.0,
-                w: w - plot_w,
-                h: panes_h,
+                w: w - axis_x,
+                h: panes_bottom,
             },
             time_axis: RectPx {
                 x: 0.0,
-                y: panes_h,
+                y: panes_bottom,
                 w,
-                h: h - panes_h,
+                h: h - panes_bottom,
             },
         };
 
@@ -4224,7 +4345,7 @@ impl Chart {
         let hovered = self
             .input
             .pointer
-            .filter(|_| self.input.crosshair != CrosshairMode::Hidden && !self.revealing())
+            .filter(|_| self.crosshair_shown() && !self.revealing())
             .and_then(|p| Some((p, self.pane_at(p)?)));
         let local = hovered.and_then(|(p, i)| {
             let pane = self.panes.get(i)?;
@@ -4268,7 +4389,7 @@ impl Chart {
         });
         let local_index = local.map(|(_, _, c)| c.logical_index);
         let point = local.or_else(|| {
-            if self.input.crosshair == CrosshairMode::Hidden {
+            if !self.crosshair_shown() {
                 return None;
             }
             let idx = self.remote_crosshair_index()?;
@@ -4301,8 +4422,10 @@ impl Chart {
             color: self.theme.crosshair,
             dash: LineDash::Dashed,
         };
+        let style = self.crosshair_style;
         let cx = x.floor() + 0.5;
-        for k in 0..self.panes.len() {
+        let vertical = if style.vertical { self.panes.len() } else { 0 };
+        for k in 0..vertical {
             let plot = self.panes[k].plot;
             let (from, to) = (
                 PointPx { x: cx, y: plot.y },
@@ -4319,10 +4442,10 @@ impl Chart {
             padding: Px((pad * 0.5).round()),
         });
         let color = self.theme.crosshair_label_text;
-        if let Some((i, y)) = row
+        if let Some((i, y)) = row.filter(|_| style.horizontal)
             && let Some(pane) = self.panes.get(i)
         {
-            let (plot, labels) = (pane.plot, pane.labels);
+            let plot = pane.plot;
             let cy = y.floor() + 0.5;
             let (from, to) = (
                 PointPx { x: plot.x, y: cy },
@@ -4333,6 +4456,14 @@ impl Chart {
             );
             self.frame
                 .push_line(LayerId::Overlay, LineInst { from, to, stroke });
+        }
+        if let Some(dot) = style.dot {
+            self.push_crosshair_dot(row.map_or(0, |(i, _)| i), info.logical_index, x, dot);
+        }
+        if let Some((i, y)) = row.filter(|_| style.labels && self.appearance.price_axis)
+            && let Some(pane) = self.panes.get(i)
+        {
+            let labels = pane.labels;
             let start = self.frame.pools.text.len();
             write_label(&mut self.frame.pools.text, info.price, labels);
             let span = Span {
@@ -4343,7 +4474,7 @@ impl Chart {
                 LayerId::Overlay,
                 TextRun {
                     pos: PointPx {
-                        x: plot.right() + pad,
+                        x: self.layout.price_axis.x + pad,
                         y: y.round(),
                     },
                     text: span,
@@ -4354,7 +4485,10 @@ impl Chart {
                 },
             );
         }
-        if let Some(t) = info.time {
+        if let Some(t) = info
+            .time
+            .filter(|_| style.labels && self.appearance.time_axis)
+        {
             let mut s = StackStr::<32>::new();
             if format_crosshair_time(t + self.tz.offset_ms(t), &mut s).is_ok() {
                 let span = self.frame.push_str(s.as_str());
@@ -4375,6 +4509,56 @@ impl Chart {
             }
         }
         local_index
+    }
+
+    /// The crosshair's dot on the value of pane `i`'s first series at bar
+    /// `idx`, centered at `x` (r25).
+    fn push_crosshair_dot(&mut self, i: usize, idx: i64, x: f32, dot: crate::appearance::DotStyle) {
+        let Some(pane) = self.panes.get(i) else {
+            return;
+        };
+        let Some((e, bar, norm)) = self
+            .series
+            .iter()
+            .filter(|e| e.pane == pane.id && !volume_like(e))
+            .find_map(|e| Some((e, e.store.bar_at(idx - i64::from(e.opts.shift))?, e.norm?)))
+        else {
+            return;
+        };
+        let (plot, value) = (pane.plot, bar[3]);
+        let y = pane
+            .price_scale
+            .price_to_y(norm.apply(value), f64::from(plot.y), f64::from(plot.h))
+            as f32;
+        if !(y >= plot.y && y <= plot.bottom() && x >= plot.x && x <= plot.right()) {
+            return;
+        }
+        let color = dot.color.unwrap_or_else(|| {
+            let st = self.style_of(e);
+            let up = match e.kind {
+                SeriesKind::Baseline => value >= e.opts.base_value,
+                _ => bar[3] >= bar[0],
+            };
+            if up { st.up } else { st.down }
+        });
+        let d = (2.0 * dot.radius.to_px(self.dpr).0).round().max(2.0);
+        let ring = self.dpr.round().max(1.0);
+        let pos = PointPx {
+            x: x.round(),
+            y: y.round(),
+        };
+        for (size, c) in [(d + 2.0 * ring, self.theme.background), (d, color)] {
+            self.frame.push_icon(
+                LayerId::Overlay,
+                crate::frame::IconInst {
+                    pos,
+                    size: Px(size),
+                    icon: crate::transform_helpers::ICON_CIRCLE,
+                    color: c,
+                    ..Default::default()
+                },
+            );
+        }
     }
 
     /// Chooses time labels: candidates by calendar weight, highest weight first,
@@ -4441,10 +4625,17 @@ impl Chart {
 
     fn emit_grid(&mut self, i: usize) {
         let grid = self.theme.grid;
+        let lines = self.appearance.grid;
         let Some(plot) = self.panes.get(i).map(|p| p.plot) else {
             return;
         };
-        for k in 0..self.panes[i].ticks.len() {
+        let horizontal = if lines.horizontal {
+            self.panes[i].ticks.len()
+        } else {
+            0
+        };
+        let vertical = if lines.vertical { self.placed.len() } else { 0 };
+        for k in 0..horizontal {
             let pane = &self.panes[i];
             let y = pane
                 .price_scale
@@ -4460,7 +4651,7 @@ impl Chart {
                 self.frame.push_line(LayerId::Background, l);
             }
         }
-        for k in 0..self.placed.len() {
+        for k in 0..vertical {
             let x = self.placed[k].x.floor() + 0.5 + plot.x;
             let l = Self::line(
                 PointPx { x, y: plot.y },
@@ -5176,6 +5367,9 @@ impl Chart {
 
     /// Price labels of pane `i` on the right axis.
     fn emit_price_labels(&mut self, i: usize, line_h: f32, pad: f32, font: FontStyleRef) {
+        if !self.appearance.price_axis {
+            return;
+        }
         let Some(pane) = self.panes.get(i) else {
             return;
         };
@@ -5569,7 +5763,7 @@ impl Chart {
             };
             let (show_line, show_label, fmt) = (
                 e.opts.price_line_visible,
-                e.opts.last_value_visible,
+                e.opts.last_value_visible && self.appearance.price_axis,
                 format(e),
             );
             let d = norm.apply(value);
@@ -5636,7 +5830,7 @@ impl Chart {
                     },
                 },
             );
-            let show_label = line.opts.axis_label_visible;
+            let show_label = line.opts.axis_label_visible && self.appearance.price_axis;
             if !line.opts.title.is_empty() {
                 let span = self.frame.push_str(&self.price_lines[n].opts.title);
                 self.frame.push_text(
@@ -5710,21 +5904,27 @@ impl Chart {
         let axis = self.theme.axis_line;
         let (w, h) = (self.frame.size_px.w, self.frame.size_px.h);
         let layout = self.layout;
-        let x = layout.price_axis.x + 0.5;
-        let l = Self::line(
-            PointPx { x, y: 0.0 },
-            PointPx {
-                x,
-                y: layout.price_axis.bottom(),
-            },
-            axis,
-        );
-        self.frame.push_line(LayerId::Main, l);
+        let look = self.appearance;
+        if look.price_axis {
+            let x = layout.price_axis.x + 0.5;
+            let l = Self::line(
+                PointPx { x, y: 0.0 },
+                PointPx {
+                    x,
+                    y: layout.price_axis.bottom(),
+                },
+                axis,
+            );
+            self.frame.push_line(LayerId::Main, l);
+        }
         // Separators: the 1-px rows between panes, across the price axis too.
         for k in 1..self.panes.len() {
             let y = self.panes[k].plot.y - SEPARATOR_PX + 0.5;
             let l = Self::line(PointPx { x: 0.0, y }, PointPx { x: w, y }, axis);
             self.frame.push_line(LayerId::Main, l);
+        }
+        if !look.time_axis {
+            return;
         }
         let y = layout.time_axis.y + 0.5;
         if y < h {

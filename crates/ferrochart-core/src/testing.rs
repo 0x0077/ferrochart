@@ -1463,3 +1463,64 @@ pub fn bar_flags_scene(chart: &mut Chart, start_time: Timestamp, dense: bool) ->
     }
     Ok(())
 }
+
+/// Fills an empty, sized chart like a mobile quote card (r25): one trading
+/// day of one-minute closes as a `kind` series (`Baseline` around the
+/// previous close, or `Area`/`Line`), with a dashed price line at the
+/// previous close. The test sets the chart's appearance (axes, grid,
+/// padding) itself.
+///
+/// Returns the baseline series.
+///
+/// # Errors
+///
+/// Errors of the chart calls (none for an empty chart).
+///
+/// # Examples
+///
+/// ```
+/// use ferrochart_core::appearance::Appearance;
+/// use ferrochart_core::geom::SizeCss;
+/// use ferrochart_core::frame::SeriesKind;
+/// use ferrochart_core::testing::quote_card_scene;
+/// use ferrochart_core::{Chart, ChartOptions};
+///
+/// let mut chart = Chart::new(ChartOptions { appearance: Appearance::sparkline(), ..ChartOptions::default() });
+/// chart.resize(SizeCss { w: 400.0, h: 200.0 }, 1.0);
+/// quote_card_scene(&mut chart, 0, SeriesKind::Baseline)?;
+/// # Ok::<(), ferrochart_core::Error>(())
+/// ```
+pub fn quote_card_scene(
+    chart: &mut Chart,
+    start_time: Timestamp,
+    kind: SeriesKind,
+) -> Result<crate::data::SeriesId> {
+    use crate::chart::PriceLineOptions;
+    let data = random_walk(23, 391, start_time, 60_000)?;
+    // The previous close: the first open, so the day crosses it.
+    let prev = data.open[0];
+    let series = chart.add_series(
+        chart.main_pane(),
+        kind,
+        SeriesOptions {
+            base_value: prev,
+            line_width: Css(2.0),
+            price_line_visible: false,
+            ..SeriesOptions::default()
+        },
+    )?;
+    chart.set_data(series, on_times(&data, data.close.clone(), None))?;
+    chart.create_price_line(
+        series,
+        PriceLineOptions {
+            price: prev,
+            color: Some(Rgba::hex(0x0095_98A1)),
+            line_width: Css(1.0),
+            line_style: LineDash::Dashed,
+            axis_label_visible: true,
+            title: String::new(),
+        },
+    )?;
+    chart.fit_content();
+    Ok(series)
+}

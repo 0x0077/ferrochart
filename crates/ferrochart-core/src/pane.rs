@@ -100,9 +100,9 @@ impl Pane {
 }
 
 /// Stacks `panes` from `top` down over `total` px (separators included) with
-/// plot width `width`. Edges are rounded to whole pixels cumulatively, so the
-/// panes tile the area exactly.
-pub(crate) fn stack(panes: &mut [Pane], top: f32, total: f32, width: f32) {
+/// plot width `width` starting at `left`. Edges are rounded to whole pixels
+/// cumulatively, so the panes tile the area exactly.
+pub(crate) fn stack(panes: &mut [Pane], left: f32, top: f32, total: f32, width: f32) {
     let n = panes.len();
     if n == 0 {
         return;
@@ -117,7 +117,7 @@ pub(crate) fn stack(panes: &mut [Pane], top: f32, total: f32, width: f32) {
         acc += f64::from(pane.stretch);
         let y1 = top + (avail * acc / sum).round() as f32 + gap;
         pane.plot = RectPx {
-            x: 0.0,
+            x: left,
             y: y0,
             w: width,
             h: (y1 - y0).max(0.0),
@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn panes_tile_the_area() {
         let mut p = panes(&[3.0, 1.0, 1.0]);
-        stack(&mut p, 0.0, 502.0, 700.0);
+        stack(&mut p, 0.0, 0.0, 502.0, 700.0);
         assert_eq!(p[0].plot.y, 0.0);
         assert_eq!(p[0].plot.h, 300.0);
         assert_eq!(p[1].plot.y, 301.0);

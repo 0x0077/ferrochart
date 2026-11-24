@@ -415,6 +415,9 @@ class View {
         case 'setCrosshairMode':
           c.setCrosshairMode(op.value);
           break;
+        case 'chartOptions':
+          c.applyOptions(op.options);
+          break;
         case 'setVisibleRange':
           c.setVisibleLogicalRange(op.from, op.to);
           break;

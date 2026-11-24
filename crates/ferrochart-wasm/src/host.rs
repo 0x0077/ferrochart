@@ -131,6 +131,9 @@ pub(crate) struct State<S> {
     pub(crate) scene: S,
     pub(crate) renderer: WgpuRenderer,
     _ctx: GpuContext,
+    /// In a WebGL2 pool: frames are drawn on the pool's canvas and copied
+    /// here (r25).
+    pub(crate) blit: Option<crate::pool::Blit>,
     /// The theme the object was created with.
     pub(crate) theme: Theme,
     pub(crate) canvas: HtmlCanvasElement,
@@ -173,7 +176,28 @@ pub(crate) struct Host<S> {
     pub(crate) intro: RefCell<Option<Intro>>,
     /// The attribution logo, when shown.
     pub(crate) logo: RefCell<Option<Logo>>,
+    /// `attributionLogo` was not given: shown only on canvases of at least
+    /// `LOGO_MIN_CSS` (r25).
+    logo_auto: Cell<bool>,
+    /// What decides the canvas' `touch-action`: `touchScroll: 'page'`, and
+    /// whether the chart pans and zooms (r25).
+    touch: Cell<TouchPolicy>,
+    /// Whether the canvas is in the viewport (pools watch it; others are
+    /// always visible). Hidden: changes wait for it to come back (r25).
+    pub(crate) visible: Cell<bool>,
 }
+
+/// Inputs of the canvas' `touch-action` (r25).
+#[derive(Clone, Copy)]
+pub(crate) struct TouchPolicy {
+    pub(crate) page_scroll: bool,
+    pub(crate) pan: bool,
+    pub(crate) zoom: bool,
+}
+
+/// Canvases smaller than this (CSS px, either side) show no attribution
+/// logo unless `attributionLogo` is given (r25).
+const LOGO_MIN_CSS: (f64, f64) = (320.0, 160.0);
 
 impl<S> Drop for Host<S> {
     fn drop(&mut self) {
@@ -197,10 +221,12 @@ pub(crate) struct Surface {
     pub(crate) theme: Theme,
     pub(crate) css: (f64, f64),
     pub(crate) dpr: f64,
-    /// `attributionLogo` (default `true`).
-    logo: bool,
+    /// `attributionLogo`; `None`: by canvas size (r25).
+    logo: Option<bool>,
     /// `touchScroll: 'page'` (default `'chart'`).
     page_scroll: bool,
+    /// Drawn through a WebGL2 pool's canvas (r25).
+    pub(crate) blit: Option<crate::pool::Blit>,
 }
 
 /// Reads `theme`, `renderer` and `attributionLogo` of `options`, sizes the canvas backing
@@ -209,14 +235,23 @@ pub(crate) async fn open(
     canvas: &HtmlCanvasElement,
     options: &JsValue,
 ) -> Result<Surface, JsError> {
+    open_in(canvas, options, None).await
+}
+
+/// As [`open`]; in `pool` (r25) the GPU objects come from the pool and the
+/// `renderer` option is ignored.
+pub(crate) async fn open_in(
+    canvas: &HtmlCanvasElement,
+    options: &JsValue,
+    pool: Option<&crate::pool::Pool>,
+) -> Result<Surface, JsError> {
     console_error_panic_hook::set_once();
-    let theme = match string_option(options, "theme").as_deref() {
-        None | Some("light") => Theme::light(),
-        Some("dark") => Theme::dark(),
-        Some(other) => return Err(js_err(format!("unknown theme '{other}'"))),
+    let theme = match crate::js::get(options, "theme") {
+        v if v.is_undefined() || v.is_null() => Theme::light(),
+        v => crate::look::theme(&v)?,
     };
     let mode = string_option(options, "renderer").unwrap_or_else(|| "auto".to_owned());
-    let logo = crate::js::opt_bool(options, "attributionLogo")?.unwrap_or(true);
+    let logo = crate::js::opt_bool(options, "attributionLogo")?;
     let page_scroll = touch_scroll(string_option(options, "touchScroll").as_deref())?;
     let dpr = window()?.device_pixel_ratio();
     let rect = canvas.get_bounding_client_rect();
@@ -228,7 +263,17 @@ pub(crate) async fn open(
     canvas.set_width(size.w as u32);
     canvas.set_height(size.h as u32);
     #[allow(unused_mut)] // without `text-browser`
-    let (ctx, mut renderer, backend) = gpu(canvas, &mode, size).await?;
+    let (ctx, mut renderer, backend, blit) = if let Some(p) = pool {
+        if string_option(options, "renderer").is_some() {
+            web_sys::console::warn_1(&JsValue::from_str(
+                "FerroChart: 'renderer' is ignored in a pool (the pool chose it)",
+            ));
+        }
+        p.renderer(canvas, size)?
+    } else {
+        let (ctx, renderer, backend) = gpu(canvas, &mode, size).await?;
+        (ctx, renderer, backend, None)
+    };
     #[cfg(feature = "text-browser")]
     if let Some(glyphs) = crate::browser_text::BrowserGlyphs::new() {
         renderer
@@ -244,6 +289,7 @@ pub(crate) async fn open(
         dpr,
         logo,
         page_scroll,
+        blit,
     })
 }
 
@@ -258,9 +304,16 @@ pub(crate) fn touch_scroll(mode: Option<&str>) -> Result<bool, JsError> {
     }
 }
 
-/// The canvas' `touch-action` for a `touchScroll` mode.
-fn touch_action(page_scroll: bool) -> &'static str {
-    if page_scroll { "pan-y" } else { "none" }
+/// The canvas' `touch-action`: the page takes what the chart does not.
+fn touch_action(t: TouchPolicy) -> &'static str {
+    match (t.pan, t.zoom) {
+        // Nothing to drag: page scrolling and zooming as usual (no double-tap zoom).
+        (false, false) => "manipulation",
+        // One finger is the page's, two are the chart's pinch.
+        (false, true) => "pan-x pan-y",
+        _ if t.page_scroll => "pan-y",
+        _ => "none",
+    }
 }
 
 impl<S: Scene> Host<S> {
@@ -280,6 +333,7 @@ impl<S: Scene> Host<S> {
             dpr,
             logo,
             page_scroll,
+            blit,
         } = surface;
         scene.resize(
             SizeCss {
@@ -291,14 +345,20 @@ impl<S: Scene> Host<S> {
         if canvas.tab_index() < 0 {
             canvas.set_tab_index(0);
         }
+        let touch = TouchPolicy {
+            page_scroll,
+            pan: true,
+            zoom: true,
+        };
         let style = canvas.style();
-        let _ = style.set_property("touch-action", touch_action(page_scroll));
+        let _ = style.set_property("touch-action", touch_action(touch));
         let _ = style.set_property("outline", "none");
         let host = Rc::new(Self {
             state: RefCell::new(State {
                 scene,
                 renderer,
                 _ctx: ctx,
+                blit,
                 theme,
                 canvas: canvas.clone(),
                 failures: 0,
@@ -321,6 +381,9 @@ impl<S: Scene> Host<S> {
             sync_peers: RefCell::new(None),
             intro: RefCell::new(None),
             logo: RefCell::new(None),
+            logo_auto: Cell::new(logo.is_none()),
+            touch: Cell::new(touch),
+            visible: Cell::new(true),
         });
         let weak = Rc::downgrade(&host);
         *host.raf_callback.borrow_mut() = Some(Closure::new(move |now: f64| {
@@ -330,9 +393,7 @@ impl<S: Scene> Host<S> {
         }));
         install_input(&host, canvas)?;
         install_resize(&host, canvas)?;
-        if logo {
-            host.set_logo(true);
-        }
+        host.set_logo_by_size(logo.unwrap_or_else(|| fits_logo(css)));
         schedule(&host);
         Ok(host)
     }
@@ -389,18 +450,52 @@ impl<S: Scene> Host<S> {
         }
     }
 
-    /// Shows or removes the attribution logo (`setAttributionLogo`).
     /// Switches `touchScroll`.
     pub(crate) fn set_touch_scroll(&self, page_scroll: bool) {
+        self.set_touch(TouchPolicy {
+            page_scroll,
+            ..self.touch.get()
+        });
+    }
+
+    /// Updates the canvas' `touch-action` (`touchScroll`, the interaction
+    /// switches).
+    pub(crate) fn set_touch(&self, t: TouchPolicy) {
+        self.touch.set(t);
         if let Ok(state) = self.state.try_borrow() {
             let _ = state
                 .canvas
                 .style()
-                .set_property("touch-action", touch_action(page_scroll));
+                .set_property("touch-action", touch_action(t));
         }
     }
 
+    /// The current `touch-action` inputs.
+    pub(crate) fn touch(&self) -> TouchPolicy {
+        self.touch.get()
+    }
+
+    /// Shows or removes the attribution logo (`setAttributionLogo`): from
+    /// now on it no longer follows the canvas size.
     pub(crate) fn set_logo(self: &Rc<Self>, on: bool) {
+        self.logo_auto.set(false);
+        self.set_logo_by_size(on);
+    }
+
+    /// Recreates the logo (colors follow the theme) if it is shown.
+    pub(crate) fn refresh_logo(self: &Rc<Self>) {
+        let shown = self.logo.try_borrow().is_ok_and(|l| l.is_some());
+        if shown {
+            if let Ok(mut slot) = self.logo.try_borrow_mut()
+                && let Some(l) = slot.take()
+            {
+                l.remove();
+            }
+            self.set_logo_by_size(true);
+        }
+    }
+
+    fn set_logo_by_size(self: &Rc<Self>, on: bool) {
         let Ok(mut slot) = self.logo.try_borrow_mut() else {
             return;
         };
@@ -473,6 +568,38 @@ pub(crate) fn frame_now<S: Scene>(host: &Rc<Host<S>>, now: f64) {
     frame(host, now);
 }
 
+/// Builds and draws a frame now, whatever changed, and resolves to the
+/// canvas' pixels as an `ImageBitmap` (r25, `toImageBitmap`). The bitmap is
+/// requested in the same task as the drawing, while a WebGPU or WebGL
+/// canvas still holds the frame. Hidden or zero-size canvases are errors.
+pub(crate) fn snapshot<S: Scene>(host: &Rc<Host<S>>) -> Result<js_sys::Promise, JsError> {
+    let w = window()?;
+    let mut state = host
+        .state
+        .try_borrow_mut()
+        .map_err(|_| js_err(format!("{} is busy (re-entrant call)", S::NAME)))?;
+    let state = &mut *state;
+    if !drawable(state.css, state.dpr) {
+        return Err(js_err("the canvas has no size (display: none?)"));
+    }
+    let now = w.performance().map_or(0.0, |p| p.now());
+    S::prepare(state);
+    state.scene.build_frame(now, &state.renderer);
+    let drawn = match state.blit.as_ref() {
+        Some(b) => b.render(
+            &mut state.renderer,
+            state.scene.frame(),
+            &state.scene.data_view(),
+        ),
+        None => state
+            .renderer
+            .render(state.scene.frame(), &state.scene.data_view()),
+    };
+    drawn.map_err(|e| js_err(format!("{}: {e}", S::NAME)))?;
+    w.create_image_bitmap_with_html_canvas_element(&state.canvas)
+        .map_err(|_| js_err("the browser could not read the canvas"))
+}
+
 /// One animation frame: build and render if needed, then dispatch events.
 fn frame<S: Scene>(host: &Rc<Host<S>>, now: f64) {
     let mut events = Vec::new();
@@ -490,7 +617,7 @@ fn frame<S: Scene>(host: &Rc<Host<S>>, now: f64) {
         // container) has nothing to draw into: skip the frame, keeping the
         // changes pending, instead of failing with "invalid render target
         // size". `apply_size` schedules a frame when it gets a size again.
-        let drawable = drawable(state.css, state.dpr);
+        let drawable = drawable(state.css, state.dpr) && host.visible.get();
         if drawable && state.scene.needs_redraw() != Invalidation::None {
             state.scene.build_frame(now, &state.renderer);
             if let Ok(l) = host.logo.try_borrow()
@@ -498,10 +625,17 @@ fn frame<S: Scene>(host: &Rc<Host<S>>, now: f64) {
             {
                 l.place(&state.canvas, state.scene.logo_anchor(), state.dpr);
             }
-            match state
-                .renderer
-                .render(state.scene.frame(), &state.scene.data_view())
-            {
+            let drawn = match state.blit.as_ref() {
+                Some(b) => b.render(
+                    &mut state.renderer,
+                    state.scene.frame(),
+                    &state.scene.data_view(),
+                ),
+                None => state
+                    .renderer
+                    .render(state.scene.frame(), &state.scene.data_view()),
+            };
+            match drawn {
                 Ok(()) => state.failures = 0,
                 Err(e) => {
                     state.failures += 1;
@@ -619,7 +753,19 @@ fn apply_size<S: Scene>(host: &Rc<Host<S>>, css: Option<(f64, f64)>) {
         });
         state.failures = 0;
     }
+    if host.logo_auto.get()
+        && let Ok(state) = host.state.try_borrow()
+    {
+        let fits = fits_logo(state.css);
+        drop(state);
+        host.set_logo_by_size(fits);
+    }
     schedule(host);
+}
+
+/// Whether a canvas of `css` size is large enough for the logo by default.
+fn fits_logo(css: (f64, f64)) -> bool {
+    css.0 >= LOGO_MIN_CSS.0 && css.1 >= LOGO_MIN_CSS.1
 }
 
 /// Re-applies the size when `devicePixelRatio` changes (zoom, moving the

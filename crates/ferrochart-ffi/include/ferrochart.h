@@ -530,6 +530,102 @@ typedef struct FerroChartEvent {
   int64_t bars_to;
 } FerroChartEvent;
 
+// A theme: every color `0xRRGGBBAA`. Fill with
+// [`ferrochart_theme_default`] or read with [`ferrochart_theme`], change
+// what you need, then [`ferrochart_set_theme`].
+typedef struct FerroChartTheme {
+  // `sizeof(FerroChartTheme)`.
+  uint32_t size;
+  // Background.
+  uint32_t background;
+  // Axis labels and other text.
+  uint32_t text;
+  // Grid lines.
+  uint32_t grid;
+  // Axis lines.
+  uint32_t axis_line;
+  // Rising candles and bars.
+  uint32_t up;
+  // Falling candles and bars.
+  uint32_t down;
+  // Wicks of rising candles.
+  uint32_t up_wick;
+  // Wicks of falling candles.
+  uint32_t down_wick;
+  // Volume bars of rising bars.
+  uint32_t volume_up;
+  // Volume bars of falling bars.
+  uint32_t volume_down;
+  // Crosshair lines.
+  uint32_t crosshair;
+  // Background of the crosshair's axis labels.
+  uint32_t crosshair_label_bg;
+  // Text of the crosshair's axis labels.
+  uint32_t crosshair_label_text;
+  // Default line color of line series.
+  uint32_t line;
+  // Font size, CSS px (0–100).
+  float font_size;
+  // Padding of axis labels, CSS px (0–100).
+  float axis_padding;
+} FerroChartTheme;
+
+// Axes, grid and padding (r25). Fill with [`ferrochart_appearance`].
+typedef struct FerroChartAppearance {
+  // `sizeof(FerroChartAppearance)`.
+  uint32_t size;
+  // Price axis shown (0 or 1).
+  uint8_t price_axis;
+  // Time axis shown (0 or 1).
+  uint8_t time_axis;
+  // Horizontal grid lines (0 or 1).
+  uint8_t grid_horizontal;
+  // Vertical grid lines (0 or 1).
+  uint8_t grid_vertical;
+  // Space above the plot, CSS px (0–1000).
+  float padding_top;
+  // Space right of the plot (left of the price axis), CSS px.
+  float padding_right;
+  // Space below the plot (above the time axis), CSS px.
+  float padding_bottom;
+  // Space left of the plot, CSS px.
+  float padding_left;
+} FerroChartAppearance;
+
+// Which gestures the chart handles (r25). Fill with
+// [`ferrochart_interaction`].
+typedef struct FerroChartInteraction {
+  // `sizeof(FerroChartInteraction)`.
+  uint32_t size;
+  // Panning by drag, wheel and keys (0 or 1).
+  uint8_t pan;
+  // Zooming by wheel, pinch and axis drags (0 or 1).
+  uint8_t zoom;
+  // Crosshair under the pointer (0 or 1).
+  uint8_t crosshair;
+  // Reserved, 0.
+  uint8_t reserved;
+} FerroChartInteraction;
+
+// How the crosshair is drawn (r25). Fill with
+// [`ferrochart_crosshair_style`].
+typedef struct FerroChartCrosshairStyle {
+  // `sizeof(FerroChartCrosshairStyle)`.
+  uint32_t size;
+  // Vertical line (0 or 1).
+  uint8_t vertical;
+  // Horizontal line (0 or 1).
+  uint8_t horizontal;
+  // Axis labels (0 or 1).
+  uint8_t labels;
+  // A dot on the first series' value (0 or 1).
+  uint8_t dot;
+  // Dot radius, CSS px (0 < r ≤ 64).
+  float dot_radius;
+  // Dot color `0xRRGGBBAA`; 0: the series' color.
+  uint32_t dot_color;
+} FerroChartCrosshairStyle;
+
 // A native window to draw into (see `FERROCHART_PLATFORM_*`).
 typedef struct FerroChartWindow {
   // `sizeof(FerroChartWindow)`.
@@ -1006,6 +1102,81 @@ int32_t ferrochart_handle_input(struct FerroChart *chart,
 // `chart` is a valid chart; `out` is a `FerroChartEvent` with `size` set,
 // valid for writes.
 int32_t ferrochart_poll_event(struct FerroChart *chart, struct FerroChartEvent *out);
+
+// Fills `out` with a built-in theme: light (`dark` 0) or dark (1). Set
+// `out->size = sizeof(FerroChartTheme)` first.
+//
+// # Safety
+//
+// `out` is null or a struct with `size` set, valid for writes.
+int32_t ferrochart_theme_default(uint32_t dark, struct FerroChartTheme *out);
+
+// The chart's theme (set `out->size` first).
+//
+// # Safety
+//
+// `chart` is a valid chart; `out` is a struct with `size` set, valid for
+// writes.
+int32_t ferrochart_theme(struct FerroChart *chart, struct FerroChartTheme *out);
+
+// Replaces the chart's theme; the next frame uses it, the view is kept.
+// Fields beyond `theme->size` keep their current value.
+//
+// # Safety
+//
+// `chart` is a valid chart; `theme` is a valid `FerroChartTheme`.
+int32_t ferrochart_set_theme(struct FerroChart *chart, const struct FerroChartTheme *theme);
+
+// The chart's appearance (set `out->size` first).
+//
+// # Safety
+//
+// `chart` is a valid chart; `out` is a struct with `size` set, valid for
+// writes.
+int32_t ferrochart_appearance(struct FerroChart *chart, struct FerroChartAppearance *out);
+
+// Sets the axes, grid and padding; fields beyond `appearance->size` keep
+// their current value.
+//
+// # Safety
+//
+// `chart` is a valid chart; `appearance` is a valid `FerroChartAppearance`.
+int32_t ferrochart_set_appearance(struct FerroChart *chart,
+                                  const struct FerroChartAppearance *appearance);
+
+// The chart's interaction switches (set `out->size` first).
+//
+// # Safety
+//
+// `chart` is a valid chart; `out` is a struct with `size` set, valid for
+// writes.
+int32_t ferrochart_interaction(struct FerroChart *chart, struct FerroChartInteraction *out);
+
+// Switches panning, zooming and the crosshair on or off; a gesture in
+// progress that is switched off ends.
+//
+// # Safety
+//
+// `chart` is a valid chart; `interaction` is a valid
+// `FerroChartInteraction`.
+int32_t ferrochart_set_interaction(struct FerroChart *chart,
+                                   const struct FerroChartInteraction *interaction);
+
+// The chart's crosshair style (set `out->size` first).
+//
+// # Safety
+//
+// `chart` is a valid chart; `out` is a struct with `size` set, valid for
+// writes.
+int32_t ferrochart_crosshair_style(struct FerroChart *chart, struct FerroChartCrosshairStyle *out);
+
+// Sets how the crosshair is drawn: lines, labels and an optional dot.
+//
+// # Safety
+//
+// `chart` is a valid chart; `style` is a valid `FerroChartCrosshairStyle`.
+int32_t ferrochart_set_crosshair_style(struct FerroChart *chart,
+                                       const struct FerroChartCrosshairStyle *style);
 
 // The size of the chart's images in device pixels (CSS size × pixel ratio,
 // rounded).

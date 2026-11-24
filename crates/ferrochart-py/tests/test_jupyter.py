@@ -185,7 +185,7 @@ def widget(recording):
 def test_widget_answers_views_and_broadcasts_changes(widget):
     c, s, w, sent = widget
     assert c.widget() is w and (w.width, w.height, w.theme) == (500, 300, "light")
-    assert w.options == {"attributionLogo": True}
+    assert w.options == {}
     assert "__wbg_init" in w._esm and "export default" in w._esm
     w._on_msg(w, {"type": "init", "view": "v1", "wasm": True}, [])
     reply, buffers = sent.pop()
@@ -304,3 +304,13 @@ def test_icons_are_recorded_by_name(recording):
     marker = next(o for o in ops if o["op"] == "setMarkers")["markers"][0]
     assert marker["icon"] == str(icon) and marker["borderWidth"] == 1
     assert ops[-1] == {"op": "unregisterIcon", "name": str(icon)}
+
+
+def test_look_options_are_recorded_camel_cased(recording):
+    c = fc.Chart(theme={"base": "dark", "up_wick": "#00ff00"}, preset="sparkline", width=200, height=60)
+    c.apply_options(crosshair_style={"dot": {"radius": 3}}, price_axis=True)
+    ops = [op for _, op, _ in c._rec.ops if op["op"] == "chartOptions"]
+    assert ops[0]["options"] == {"preset": "sparkline", "theme": {"base": "dark", "upWick": "#00ff00"}}
+    assert ops[1]["options"] == {"crosshairStyle": {"dot": {"radius": 3}}, "priceAxis": True}
+    assert c._theme == "dark"
+    assert fc.Chart(attribution_logo=False)._options == {"attributionLogo": False}

@@ -538,5 +538,182 @@ chart.drawings.add({ kind: 'trend_line', anchors: [at(a), at(b)], style: { line:
       about: '29 built-in tools: lines, channels, Fibonacci, pitchforks, Gann, patterns and positions. Undo/redo, save and load, sync across charts, and custom tools in JavaScript.',
       api: ['drawings.add', 'drawings.startTool', 'drawings.register'],
     },
+    {
+      id: 'quote-card',
+      title: 'Quote card',
+      group: 'App style',
+      live: true,
+      code: `// A quote card: price and change on top, the range's line against the price
+// it started from, and range tabs below. The text and tabs are plain HTML
+// over the canvas; the chart has no axes, no grid and no panning or zooming.
+const chart = await FerroChart.create(canvas, {
+  theme: 'dark',
+  priceAxis: false,
+  timeAxis: false,
+  grid: false,
+  padding: { top: 92, right: 20, bottom: 60, left: 20 },
+  interaction: { pan: false, zoom: false },
+  crosshairStyle: { horizontal: false, labels: false, dot: { radius: 5 } },
+});
+const line = chart.addSeries('baseline', {
+  color: '#2ee6b6', downColor: '#ff5d73', topFill: '#2ee6b633', bottomFill: '#ff5d7333',
+  lineWidth: 2, lastValueVisible: false, priceLineVisible: false,
+});
+// The price the range started from (for 1D: 24 hours ago), dashed.
+const ref = line.createPriceLine({ price: 0, color: '#8b93a7', lineStyle: 'dashed', lineWidth: 1, axisLabelVisible: false });
+
+const head = document.createElement('div');
+head.style.cssText = 'position:absolute;left:24px;top:16px;font:500 13px system-ui;color:#8b93a7;pointer-events:none';
+const tabs = document.createElement('div');
+tabs.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);bottom:16px;display:flex;gap:4px';
+canvas.after(head, tabs);
+
+const RANGES = { '1D': ['5m', 288], '1W': ['1h', 168], '1M': ['4h', 180], '1Y': ['1d', 365], All: ['1w', 3000] };
+const fmt = (v) => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+let range = '1D', bars = null, base = 0, last = 0, ws = null;
+
+function show(price, time) {
+  const change = price - base;
+  const color = change >= 0 ? '#2ee6b6' : '#ff5d73';
+  const when = time ? new Date(time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : range;
+  head.innerHTML = \`ETH / USD
+    <div style="font:600 32px system-ui;color:#e6e9ef;margin:2px 0">\${fmt(price)}</div>
+    <span style="color:\${color}">\${change >= 0 ? '+' : '−'}\${fmt(Math.abs(change))} (\${(change / base * 100).toFixed(2)}%)</span>&nbsp; \${when}\`;
+}
+
+async function load(r) {
+  range = r;
+  for (const b of tabs.children) b.dataset.on = b.textContent === r ? '1' : '';
+  ws?.close();
+  const [interval, count] = RANGES[r];
+  bars = await fetch(\`/api/live/bars?symbol=ETHUSD&interval=\${interval}&count=\${count}\`).then((res) => res.json());
+  if (range !== r) return; // another tab was picked meanwhile
+  base = bars.open[0];
+  last = bars.close.at(-1);
+  line.applyOptions({ baseValue: base });
+  line.setData({ time: bars.time, value: bars.close });
+  ref.applyOptions({ price: base });
+  chart.fitContent();
+  show(last);
+  // Real time: the forming bar every second.
+  ws = new WebSocket(\`/api/stream?symbol=ETHUSD&interval=\${interval}&live=true&trades=false&since=\${bars.time.at(-1)}\`);
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type !== 'bar') return;
+    line.update({ time: msg.time, value: msg.close });
+    last = msg.close;
+    if (!hovering) show(last);
+  };
+}
+
+for (const r of Object.keys(RANGES)) {
+  const b = document.createElement('button');
+  b.textContent = r;
+  b.style.cssText = 'font:600 12px system-ui;color:#c9cfdb;background:none;border:0;border-radius:8px;padding:6px 12px;cursor:pointer';
+  b.onclick = () => load(r);
+  tabs.append(b);
+}
+const style = document.createElement('style');
+style.textContent = 'button[data-on="1"]{background:#ffffff1a!important;color:#fff!important}';
+tabs.append(style);
+
+// While the pointer is over the line, the header shows the value under it.
+let hovering = false;
+chart.on('crosshairMove', ({ point }) => {
+  const v = point && line.dataAt(point.logicalIndex)?.value;
+  hovering = Number.isFinite(v);
+  show(hovering ? v : last, hovering ? point.time : null);
+});
+
+await load('1D');
+const stop = () => ws?.close(); // call before chart.destroy()`,
+      about: 'A phone-style quote: price and change over the chart, the range\'s line coloured above and below the price it started from (dashed), and 1D to All tabs. No axes, no grid, no panning; the crosshair is a vertical line with a dot, and the header follows it.',
+      api: ['priceAxis', 'timeAxis', 'grid', 'padding', 'interaction', 'crosshairStyle', "addSeries('baseline')"],
+    },
+    {
+      id: 'watchlist',
+      title: 'Watchlist',
+      group: 'App style',
+      live: true,
+      code: `// A watchlist: 30 pairs, each row with a 24-hour sparkline. The sparklines
+// come from one pool, so they share one GPU device (a page can hold only a
+// few WebGL contexts); prices refresh every 2 seconds. A row opens its pair
+// in the chart on the left.
+const PAIRS = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK', 'LTC', 'DOT', 'TRX', 'SHIB', 'BCH', 'NEAR',
+  'UNI', 'APT', 'ATOM', 'ETC', 'FIL', 'ARB', 'OP', 'SUI', 'PEPE', 'ICP', 'XLM', 'HBAR', 'AAVE', 'INJ', 'WLD'];
+const UP = '#2ee6b6', DOWN = '#ff5d73';
+const digits = (p) => (p >= 100 ? 2 : p >= 1 ? 3 : p >= 0.01 ? 5 : 8);
+
+// The list: right of the chart, or below it on a narrow screen.
+const narrow = canvas.parentElement.clientWidth < 640;
+const list = document.createElement('div');
+list.style.cssText = 'position:absolute;overflow-y:auto;background:#0b0d12;font:500 13px system-ui;color:#e6e9ef;'
+  + (narrow ? 'left:0;right:0;bottom:0;height:55%;border-top:1px solid #ffffff14' : 'top:0;right:0;bottom:0;width:min(360px,48%);border-left:1px solid #ffffff14');
+if (narrow) canvas.style.height = '45%';
+else canvas.style.width = 'calc(100% - min(360px, 48%))';
+const title = document.createElement('div');
+title.style.cssText = 'position:absolute;left:16px;top:12px;font:600 15px system-ui;color:#e6e9ef;pointer-events:none';
+canvas.after(list, title);
+
+const chart = await FerroChart.create(canvas, { theme: 'dark' });
+const main = chart.addSeries('area', { color: '#4cc9f0', topFill: '#4cc9f055', bottomFill: '#4cc9f000', lineWidth: 2 });
+async function open(sym) {
+  const bars = await fetch(\`/api/live/bars?symbol=\${sym}USDT&interval=15m&count=672\`).then((r) => r.json());
+  main.applyOptions({ pricePrecision: digits(bars.close.at(-1)) });
+  main.setData({ time: bars.time, value: bars.close });
+  chart.fitContent();
+  title.textContent = \`\${sym} / USDT · 15m\`;
+  for (const row of list.children) row.style.boxShadow = row.dataset.sym === sym ? 'inset 3px 0 #4cc9f0' : '';
+}
+
+const pool = await FerroChart.createPool();
+const rows = new Map();
+for (const sym of PAIRS) {
+  const row = document.createElement('div');
+  row.dataset.sym = sym;
+  row.style.cssText = 'display:grid;grid-template-columns:64px 1fr 96px;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid #ffffff0a;cursor:pointer';
+  row.innerHTML = \`<b>\${sym}</b><canvas style="width:100%;height:36px"></canvas>
+    <div style="text-align:right"><div class="p">—</div><div class="c" style="font-size:11px">—</div></div>\`;
+  row.onclick = () => open(sym);
+  list.append(row);
+  const spark = await pool.create(row.querySelector('canvas'), { preset: 'sparkline', theme: { base: 'dark', background: '#0b0d12' } });
+  const s = spark.addSeries('baseline', { color: UP, downColor: DOWN, topFill: '#00000000', bottomFill: '#00000000', lineWidth: 1.5, lastValueVisible: false, priceLineVisible: false });
+  rows.set(sym, { row, spark, s, last: null });
+}
+
+// One day of 5-minute closes per pair, against the price 24 hours ago.
+await Promise.all(PAIRS.map(async (sym) => {
+  const r = rows.get(sym);
+  const bars = await fetch(\`/api/live/bars?symbol=\${sym}USDT&interval=5m&count=288\`).then((res) => (res.ok ? res.json() : null));
+  if (!bars) return;
+  r.s.applyOptions({ baseValue: bars.open[0] });
+  r.s.setData({ time: bars.time, value: bars.close });
+  r.spark.fitContent();
+  r.last = bars.time.at(-1);
+}));
+
+async function tick() {
+  const quotes = await fetch(\`/api/live/tickers?symbols=\${PAIRS.map((p) => \`\${p}USDT\`).join(',')}\`).then((r) => r.json()).catch(() => []);
+  for (const { symbol, price, ref } of quotes) {
+    const r = rows.get(symbol.replace(/USDT$/, ''));
+    if (!r) continue;
+    const pct = (price / ref - 1) * 100;
+    r.row.querySelector('.p').textContent = Number(price).toFixed(digits(price));
+    const c = r.row.querySelector('.c');
+    c.textContent = \`\${pct >= 0 ? '+' : ''}\${pct.toFixed(2)}%\`;
+    c.style.color = pct >= 0 ? UP : DOWN;
+    // The sparkline follows the price: the last 5-minute point, or a new one.
+    if (r.last === null) continue;
+    r.last = Math.max(r.last, Math.floor(Date.now() / 300_000) * 300_000);
+    r.s.update({ time: r.last, value: Number(price) });
+  }
+}
+await tick();
+const timer = setInterval(tick, 2000);
+await open('BTC');
+const stop = () => clearInterval(timer); // then pool.destroy() and chart.destroy()`,
+      about: 'Thirty pairs with a 24-hour sparkline each and prices that refresh every 2 seconds. The sparklines are charts from one pool sharing a GPU device, so a page of many small charts stays within the browser\'s limit of WebGL contexts.',
+      api: ['FerroChart.createPool', "preset: 'sparkline'", 'theme object', "addSeries('baseline')"],
+    },
   ],
 };

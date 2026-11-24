@@ -1,8 +1,9 @@
-<!-- source: 0c15830930 -->
+<!-- source: 7f51672705 -->
 # 테마와 스타일
 
 이 장에서는 차트의 모양과 페이지에 차트를 배치하는 방법을 다룹니다. 테마, 색상,
-출처 표시 로고, 인트로 애니메이션, GPU 렌더러, 크기 지정, 정리를 설명합니다.
+축과 여백, 상호작용, 크로스헤어, 많은 작은 차트, 이미지 내보내기, 출처 표시 로고,
+인트로 애니메이션, GPU 렌더러, 크기 지정, 정리를 설명합니다.
 별도로 언급하지 않는 한 여기 나오는 모든 내용은 `FerroPlot`에도 적용됩니다.
 
 ## 테마
@@ -18,9 +19,25 @@ const chart = await FerroChart.create(canvas, { theme: 'dark' }); // 'light' (de
 ```
 
 테마는 배경, 그리드, 텍스트, 축, 크로스헤어 색상과 캔들의 기본 상승·하락 색상,
-그리고 시리즈, 지표, 드로잉의 기본 색상을 정합니다. 이미 만든 차트의 테마는 바꿀
-수 없습니다. 테마를 바꾸려면 상태를 저장하고([저장과 복원](state.md) 참고) 차트를
-제거한 뒤 새로 만드세요.
+그리고 시리즈, 지표, 드로잉의 기본 색상을 정합니다.
+
+테마는 객체로도 지정할 수 있습니다. `base` 테마(기본값 `'light'`) 위에 덮어쓰는 CSS
+색상이며, 지정하지 않은 키는 `base`에서 가져옵니다. 이미 만든 차트의 테마는
+`applyOptions`로 바꿀 수 있고, 보기와 데이터는 그대로 유지됩니다.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  theme: { base: 'dark', background: '#0b0d12', up: '#30a0f0', down: '#f09030', fontSize: 13 },
+});
+chart.applyOptions({ theme: 'light' });
+```
+
+키는 `background`, `text`, `grid`, `axisLine`, `up`, `down`, `upWick`, `downWick`, `volumeUp`, `volumeDown`, `crosshair`, `crosshairLabelBg`, `crosshairLabelText`, `line`, `fontSize`, `axisPadding`입니다. 알 수 없는 키는 오류입니다.
+`chart.options().theme`으로 현재 테마를 읽을 수 있습니다.
 
 설정하지 않았거나 `null`로 설정한 색상은 테마를 따릅니다. 필요한 곳에만 색상을
 명시적으로 지정하면 나머지는 두 테마 모두에서 일관되게 유지됩니다.
@@ -87,12 +104,112 @@ fillCrossed })`), 드로잉(`style: { line, fill, text }`)입니다.
 점별 색상 열(히스토그램 데이터, 플롯 마크)은 `0xRRGGBBAA` 값의 `Uint32Array`도
 받으므로, 대용량 데이터에서 문자열을 만들지 않아도 됩니다.
 
+## 축, 격자, 여백
+
+앱과 표 안의 차트에는 축이 아예 없는 경우가 많습니다. `priceAxis`와 `timeAxis`로
+축을 보이거나 숨기고, `grid`로 격자선(`true`, `false` 또는
+`{ horizontal, vertical }`)을, `padding`으로 플롯 주위 여백(CSS px, 숫자 또는
+`{ top, right, bottom, left }`)을 정합니다. 숨긴 축의 공간은 플롯이 씁니다.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  priceAxis: false,
+  grid: { vertical: false },
+  padding: { top: 72, bottom: 40 },
+});
+chart.applyOptions({ timeAxis: false });
+```
+
+이 옵션들과 다음 두 절의 옵션은 `create`와 `applyOptions` 모두에서 쓸 수 있고
+`chart.options()`로 읽을 수 있습니다. Python에서는 snake_case 키워드 인수
+(`Chart(preset="sparkline")`, `chart.apply_options(price_axis=False)`), C에서는
+`FerroChartAppearance`, `FerroChartInteraction`, `FerroChartCrosshairStyle`,
+`FerroChartTheme` 구조체입니다.
+
+## 상호작용
+
+`interaction`은 이동, 확대/축소, 크로스헤어를 켜고 끕니다. `{ pan, zoom, crosshair }`
+또는 모두 끄는 `false`입니다. 꺼진 입력은 차트가 쓰지 않으므로 터치스크린에서는
+페이지가 평소처럼 스크롤되고 확대됩니다. 클릭은 계속 보고됩니다.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, { interaction: { pan: false, zoom: false } });
+```
+
+## 크로스헤어 스타일
+
+`crosshairStyle`은 크로스헤어의 어느 부분을 그릴지 정합니다. `vertical`과 `horizontal`
+선, 축의 `labels`, 첫 시리즈 값 위치의 `dot`(`{ radius, color }`, 그리지 않으려면
+`null`, 색상 기본값은 그 시리즈의 색)입니다. 세로선과 점은 시세 카드에서 흔히 쓰는
+크로스헤어입니다.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  crosshairStyle: { horizontal: false, labels: false, dot: { radius: 5 } },
+});
+```
+
+## 많은 작은 차트
+
+`preset: 'sparkline'`은 표 셀에 넣는 차트입니다. 축과 격자가 없고 여백은 2이며
+상호작용이 없고, 크로스헤어는 세로선과 점입니다. 함께 지정한 옵션은 그 위에 적용됩니다.
+
+브라우저는 페이지당 WebGL 컨텍스트를 16개 정도만 유지하며, 차트마다 자기 GPU
+장치를 가집니다. 작은 차트가 많은 페이지에서는 풀에서 차트를 만드세요. 장치
+하나(WebGL2에서는 컨텍스트 하나)를 공유합니다. 뷰포트 밖의 차트는 그리지 않고,
+다시 스크롤되어 들어올 때 그립니다.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvases: HTMLCanvasElement[];
+
+const pool = await FerroChart.createPool();
+const charts = await Promise.all(canvases.map((c) => pool.create(c, { preset: 'sparkline' })));
+// …
+pool.destroy(); // destroys every chart of the pool
+```
+
+WebGL2에서는 풀의 차트가 2D 컨텍스트로 자기 캔버스를 그리므로, 캔버스에 다른
+컨텍스트가 있으면 안 됩니다.
+
+## 이미지 내보내기
+
+`chart.toBlob(type?, quality?)`는 한 프레임을 그려 PNG(기본값), WebP 또는 JPEG
+`Blob`으로 돌려줍니다. `chart.toImageBitmap()`은 `ImageBitmap`을 돌려줍니다.
+이미지의 픽셀 크기는 캔버스와 같고, 캔버스 밖에 있는 출처 표시 로고는 들어가지
+않습니다. `FerroPlot`에도 같은 메서드가 있습니다.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const chart: FerroChart;
+
+const png = await chart.toBlob();
+const jpeg = await chart.toBlob('image/jpeg', 0.9);
+```
+
 ## 출처 표시 로고
 
 기본적으로 가장 아래 패널의 왼쪽 아래 모서리, 시간 축 바로 위에 작은 FerroChart
 로고가 표시됩니다. ferrochart.com으로 연결되며 포인터를 올리면 이름이 표시됩니다.
 
 로고는 라이선스 요구 사항이 아니라 선의의 표시이므로 끌 수 있습니다.
+`attributionLogo`를 지정하지 않으면 로고는 320 × 160 CSS px 이상인 캔버스에서만
+표시되며, 캔버스 크기가 이 경계를 넘나들 때 나타나거나 사라집니다. `true`나
+`false`를 지정하거나 `setAttributionLogo`를 호출하면 고정됩니다.
 
 ```ts
 import { FerroChart } from '@ferrochart/core';

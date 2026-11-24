@@ -16,7 +16,6 @@ use ferrochart_core::geom::SizeCss;
 use ferrochart_core::pane::PaneOptions;
 use ferrochart_core::plugin::{Indicator as _, Placement};
 use ferrochart_core::price_scale::ScaleSide;
-use ferrochart_core::theme::Theme;
 use ferrochart_core::{Chart as CoreChart, ChartOptions};
 use numpy::{PyReadonlyArray1, PyReadonlyArrayDyn};
 use pyo3::prelude::*;
@@ -107,15 +106,7 @@ impl Chart {
     #[new]
     #[pyo3(signature = (theme = "light", width = 1200.0, height = 720.0, fonts = Vec::new()))]
     fn new(theme: &str, width: f64, height: f64, fonts: Vec<Vec<u8>>) -> PyResult<Self> {
-        let theme = match theme {
-            "light" => Theme::light(),
-            "dark" => Theme::dark(),
-            other => {
-                return Err(err(format!(
-                    "unknown theme '{other}' (expected 'light' or 'dark')"
-                )));
-            }
-        };
+        let theme = crate::look::named(theme)?;
         let size = check_size(width, height)?;
         let mut chart = CoreChart::new(ChartOptions {
             theme,
@@ -511,6 +502,35 @@ impl Chart {
             .ok_or_else(|| err("crosshair mode must be 'normal', 'magnet' or 'hidden'"))?;
         self.with(|c| c.set_crosshair_mode(m));
         Ok(())
+    }
+
+    /// Applies look options: `theme`, `preset`, `price_axis`,
+    /// `time_axis`, `grid`, `padding`, `interaction`, `crosshair_style`.
+    /// Keys not given keep their value; on error nothing changes.
+    fn apply_options(&self, options: &Bound<'_, PyDict>) -> PyResult<()> {
+        opts::check_keys(options, &crate::look::KEYS, "chart option")?;
+        let theme = match options.get_item("theme")?.filter(|v| !v.is_none()) {
+            Some(v) => Some(crate::look::theme(&v)?),
+            None => None,
+        };
+        let base = self.with(|c| crate::look::Look::of(c));
+        let look = base.applied(options)?;
+        self.with(|c| {
+            if let Some(t) = theme {
+                c.set_theme(t);
+            }
+            look.set(c);
+        });
+        Ok(())
+    }
+
+    /// The look options with their values, `theme` as a dict.
+    fn chart_options<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let (look, theme) = self.with(|c| (crate::look::Look::of(c), *c.theme()));
+        let d = PyDict::new(py);
+        d.set_item("theme", crate::look::theme_py(py, &theme)?)?;
+        look.write(py, &d)?;
+        Ok(d)
     }
 
     /// The drawings of the chart.

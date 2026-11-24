@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- Browser test page for chart pools and snapshots (r25): 60 sparklines in one pool, toImageBitmap/toBlob; driven by
+     tests/web/pool.mjs. -->
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<style>
+  body { margin: 0; font: 12px sans-serif; }
+  #grid { display: grid; grid-template-columns: repeat(4, 200px); gap: 4px; }
+  #grid canvas { width: 200px; height: 60px; display: block; }
+  #single { width: 400px; height: 200px; display: block; }
+</style>
+<canvas id="single"></canvas>
+<div id="grid"></div>
+<script type="module">
+import { FerroChart, FerroPlot, randomWalk } from '/crates/ferrochart-wasm/pkg/index.js';
+
+const q = new URLSearchParams(location.search);
+const renderer = q.get('renderer') ?? 'auto';
+const results = [];
+const check = (name, ok, detail = '') => results.push({ name, ok: !!ok, detail: typeof detail === 'string' ? detail : JSON.stringify(detail) });
+const N = 60;
+
+/** Whether a bitmap holds more than one flat color. */
+function drawn(bitmap) {
+  const c = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const g = c.getContext('2d');
+  g.drawImage(bitmap, 0, 0);
+  const d = g.getImageData(0, 0, bitmap.width, bitmap.height).data;
+  const [r0, g0, b0] = d;
+  let n = 0;
+  for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - r0) + Math.abs(d[i + 1] - g0) + Math.abs(d[i + 2] - b0) > 40) n++;
+  return n;
+}
+
+try {
+  // A chart on its own: snapshots.
+  const single = await FerroChart.create(document.getElementById('single'), { renderer });
+  single.addCandlestickSeries().setData(randomWalk(1, 200, 0, 60_000));
+  const bmp = await single.toImageBitmap();
+  check('toImageBitmap size', bmp.width === Math.round(400 * devicePixelRatio) && bmp.height === Math.round(200 * devicePixelRatio), [bmp.width, bmp.height]);
+  check('toImageBitmap has the chart', drawn(bmp) > 500, drawn(bmp));
+  const png = await single.toBlob();
+  check('toBlob png', png instanceof Blob && png.type === 'image/png' && png.size > 1000, [png.type, png.size]);
+  const webp = await single.toBlob('image/jpeg', 0.8);
+  check('toBlob jpeg', webp.type === 'image/jpeg', webp.type);
+  try { await single.toBlob('image/gif'); check('bad type', false); } catch (e) { check('bad type', String(e).includes('image/gif'), String(e)); }
+
+  // A pool of sparklines.
+  const pool = await FerroChart.createPool({ renderer });
+  check('pool renderer', pool.renderer === 'webgpu' || pool.renderer === 'webgl2', pool.renderer);
+  const grid = document.getElementById('grid');
+  const charts = [];
+  for (let i = 0; i < N; i++) {
+    const canvas = document.createElement('canvas');
+    grid.append(canvas);
+    const chart = await pool.create(canvas, { preset: 'sparkline', theme: i % 2 ? 'dark' : 'light' });
+    const w = randomWalk(100 + i, 120, 0, 60_000);
+    chart.addSeries('baseline', { baseValue: w.open[0] }).setData({ time: w.time, value: w.close });
+    charts.push(chart);
+  }
+  check('pool size', pool.size === N, pool.size);
+  check('pooled charts use the pool renderer', charts.every((c) => c.renderer === pool.renderer));
+  await new Promise((r) => setTimeout(r, 500));
+  let blank = [];
+  for (let i = 0; i < N; i++) {
+    const b = await charts[i].toImageBitmap();
+    if (drawn(b) < 50) blank.push(i);
+  }
+  check('every pooled chart draws', blank.length === 0, blank);
+  // Real-time updates on all of them, then again.
+  for (const c of charts) c.fitContent();
+  await new Promise((r) => setTimeout(r, 300));
+  blank = [];
+  for (let i = 0; i < N; i += 7) if (drawn(await charts[i].toImageBitmap()) < 50) blank.push(i);
+  check('still drawing after updates', blank.length === 0, blank);
+  // A plot snapshot too.
+  const plotCanvas = document.createElement('canvas');
+  plotCanvas.style.cssText = 'width:300px;height:150px;display:block';
+  document.body.append(plotCanvas);
+  const plot = await FerroPlot.create(plotCanvas, { renderer });
+  plot.addMark('line').setData({ x: [0, 1, 2, 3], y: [1, 3, 2, 4] });
+  plot.fit();
+  const pb = await plot.toImageBitmap();
+  check('plot toImageBitmap', drawn(pb) > 100, drawn(pb));
+  // Destroying the pool.
+  pool.destroy();
+  check('pool destroyed', true);
+  window.__single = single;
+} catch (e) {
+  check('no exception', false, String(e && e.stack || e));
+}
+window.__results = results;
+</script>

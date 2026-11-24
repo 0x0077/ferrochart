@@ -180,10 +180,93 @@ impl Scene for ChartScene {
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_TYPES: &'static str = r#"
+/** A theme given key by key: colors are CSS colors, keys not given come
+ *  from `base` (default `'light'`). Unknown keys are errors. */
+export interface ThemeObject {
+  base?: 'light' | 'dark';
+  background?: string;
+  /** Axis label text. */
+  text?: string;
+  grid?: string;
+  axisLine?: string;
+  /** Up candles; baselines above their base. */
+  up?: string;
+  /** Down candles; baselines below their base. */
+  down?: string;
+  upWick?: string;
+  downWick?: string;
+  volumeUp?: string;
+  volumeDown?: string;
+  crosshair?: string;
+  crosshairLabelBg?: string;
+  crosshairLabelText?: string;
+  /** Default color of lines, areas and histograms. */
+  line?: string;
+  /** Axis label size, CSS px. */
+  fontSize?: number;
+  /** Padding around axis labels, CSS px. */
+  axisPadding?: number;
+}
+
+/** A theme as `options()` returns it: every key set. */
+export type ThemeValues = Required<Omit<ThemeObject, 'base'>>;
+
+/** The dot the crosshair draws on the first series' value. */
+export interface CrosshairDot {
+  /** CSS px. Default 4. */
+  radius?: number;
+  /** CSS color; `null` (default): the series' color at that value. */
+  color?: string | null;
+}
+
+/** Look options of `FerroChart.create` and `applyOptions` (r25). Keys not
+ *  given keep their value. */
+export interface ChartLookOptions {
+  /** Color theme: `'light'` (default), `'dark'` or colors key by key. */
+  theme?: 'light' | 'dark' | ThemeObject;
+  /** Start from a set of options, then apply the other keys given:
+   *  `'sparkline'` = no axes, no grid, 2 px padding, `interaction: false`,
+   *  a crosshair of a vertical line and a dot (shown only if `interaction`
+   *  turns the crosshair back on). */
+  preset?: 'sparkline';
+  /** The price axis. Default `true`. Hidden: no price labels at all. */
+  priceAxis?: boolean;
+  /** The time axis. Default `true`. */
+  timeAxis?: boolean;
+  /** Grid lines. Default `true`. */
+  grid?: boolean | { horizontal?: boolean; vertical?: boolean };
+  /** Space around the plot area, CSS px. Default 0. */
+  padding?: number | { top?: number; right?: number; bottom?: number; left?: number };
+  /** Which gestures the chart takes; `false`: none (the page scrolls over
+   *  it, clicks still fire). Default `true`. */
+  interaction?: boolean | { pan?: boolean; zoom?: boolean; crosshair?: boolean };
+  /** What the crosshair draws. Default: both lines and the labels, no dot. */
+  crosshairStyle?: {
+    vertical?: boolean;
+    horizontal?: boolean;
+    labels?: boolean;
+    dot?: CrosshairDot | null;
+  };
+}
+
+/** What `FerroChart.options()` returns. */
+export interface ChartLook {
+  theme: ThemeValues;
+  priceAxis: boolean;
+  timeAxis: boolean;
+  grid: { horizontal: boolean; vertical: boolean };
+  padding: { top: number; right: number; bottom: number; left: number };
+  interaction: { pan: boolean; zoom: boolean; crosshair: boolean };
+  crosshairStyle: {
+    vertical: boolean;
+    horizontal: boolean;
+    labels: boolean;
+    dot: { radius: number; color: string | null } | null;
+  };
+}
+
 /** Options of `FerroChart.create`. */
-export interface ChartCreateOptions {
-  /** Color theme. Default `'light'`. */
-  theme?: 'light' | 'dark';
+export interface ChartCreateOptions extends ChartLookOptions {
   /** GPU API. `'auto'` (default) tries WebGPU, then WebGL2. */
   renderer?: 'auto' | 'webgpu' | 'webgl2';
   /** Largest bar spacing when zooming in, CSS px. Default 50; footprint
@@ -191,7 +274,8 @@ export interface ChartCreateOptions {
   maxBarSpacing?: number;
   /** A small FerroChart logo linking to ferrochart.com at the bottom-left of
    *  the lowest pane (a DOM element next to the canvas, not drawn into it).
-   *  Default `true`; turning it off is fine (courtesy, not a license term). */
+   *  Not given: shown on canvases of at least 320×160 CSS px, following
+   *  the size. Turning it off is fine (courtesy, not a license term). */
   attributionLogo?: boolean;
   /** Who handles a vertical one-finger swipe on a touch screen. `'chart'`
    *  (default): the chart handles every gesture (full-screen and app-like
@@ -608,13 +692,25 @@ impl FerroChart {
             JsValue,
         >,
     ) -> Result<FerroChart, JsError> {
+        Self::build(canvas, options, None).await
+    }
+}
+
+impl FerroChart {
+    /// `create`, alone or in a pool (r25).
+    pub(crate) async fn build(
+        canvas: HtmlCanvasElement,
+        options: Option<JsValue>,
+        pool: Option<&crate::pool::Pool>,
+    ) -> Result<FerroChart, JsError> {
         let options = options.unwrap_or(JsValue::UNDEFINED);
         let max_bar_spacing = match crate::js::opt_f64(&options, "maxBarSpacing")? {
             None => None,
             Some(v) if v.is_finite() && v >= 1.0 => Some(Css(v as f32)),
             Some(_) => return Err(js_err("'maxBarSpacing' must be a number >= 1")),
         };
-        let mut surface = host::open(&canvas, &options).await?;
+        let look = crate::look::Look::default().applied(&options)?;
+        let mut surface = host::open_in(&canvas, &options, pool).await?;
         // Native order flow series the device supports (the heatmap's
         // compute path on WebGPU); otherwise their portable paths draw.
         ferrochart_orderflow::register_gpu(&surface.ctx, &mut surface.renderer);
@@ -622,6 +718,9 @@ impl FerroChart {
         let chart = Chart::new(ChartOptions {
             theme: surface.theme,
             max_bar_spacing: max_bar_spacing.unwrap_or(defaults.max_bar_spacing),
+            appearance: look.appearance,
+            interaction: look.interaction,
+            crosshair_style: look.crosshair,
             ..defaults
         });
         let scene = ChartScene {
@@ -634,7 +733,112 @@ impl FerroChart {
             marker_objects: HashMap::new(),
         };
         let shared = Host::start(surface, &canvas, scene)?;
+        shared.set_touch(host::TouchPolicy {
+            pan: look.interaction.pan,
+            zoom: look.interaction.zoom,
+            ..shared.touch()
+        });
         Ok(FerroChart { shared })
+    }
+}
+
+#[wasm_bindgen]
+impl FerroChart {
+    /// Changes the look (r25): `theme`, `priceAxis`, `timeAxis`, `grid`,
+    /// `padding`, `interaction`, `crosshairStyle`, `preset` (see
+    /// `ChartCreateOptions`). Keys not given keep their value; on an error
+    /// nothing changes.
+    ///
+    /// @param {ChartLookOptions} options
+    #[wasm_bindgen(js_name = applyOptions)]
+    pub fn apply_options(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "ChartLookOptions")] options: &JsValue,
+    ) -> Result<(), JsError> {
+        let options = options.clone();
+        let theme = match crate::js::get(&options, "theme") {
+            v if v.is_undefined() => None,
+            v => Some(crate::look::theme(&v)?),
+        };
+        let look = self.with_chart(|c| crate::look::Look {
+            appearance: c.appearance(),
+            interaction: c.interaction(),
+            crosshair: c.crosshair_style(),
+        })?;
+        let look = look.applied(&options)?;
+        self.with_chart(|c| {
+            c.set_appearance(look.appearance);
+            c.set_interaction(look.interaction);
+            c.set_crosshair_style(look.crosshair);
+            if let Some(t) = theme {
+                c.set_theme(t);
+            }
+        })?;
+        self.shared.set_touch(host::TouchPolicy {
+            pan: look.interaction.pan,
+            zoom: look.interaction.zoom,
+            ..self.shared.touch()
+        });
+        if let Some(t) = theme {
+            if let Ok(mut state) = self.shared.state.try_borrow_mut() {
+                state.theme = t;
+            }
+            self.shared.refresh_logo();
+        }
+        Ok(())
+    }
+
+    /// The chart's pixels now (r25): draws a frame and reads the canvas. The
+    /// size is the canvas' backing store (CSS size × devicePixelRatio); the
+    /// attribution logo (a DOM element) is not in it.
+    ///
+    /// @returns {Promise<ImageBitmap>}
+    #[wasm_bindgen(js_name = toImageBitmap, unchecked_return_type = "Promise<ImageBitmap>")]
+    pub fn to_image_bitmap(&self) -> Result<js_sys::Promise, JsError> {
+        host::snapshot(&self.shared)
+    }
+
+    /// The chart's pixels now as an image file (r25): `'image/png'`
+    /// (default), `'image/webp'` or `'image/jpeg'`, with `quality` 0..1 for
+    /// the lossy ones.
+    ///
+    /// @param {'image/png' | 'image/webp' | 'image/jpeg'} [type]
+    /// @param {number} [quality]
+    /// @returns {Promise<Blob>}
+    #[wasm_bindgen(js_name = toBlob, unchecked_return_type = "Promise<Blob>")]
+    pub fn to_blob(
+        &self,
+        #[wasm_bindgen(js_name = type, unchecked_optional_param_type = "'image/png' | 'image/webp' | 'image/jpeg'")]
+        kind: Option<String>,
+        #[wasm_bindgen(unchecked_optional_param_type = "number")] quality: Option<f64>,
+    ) -> Result<js_sys::Promise, JsError> {
+        let bitmap = host::snapshot(&self.shared)?;
+        Ok(wasm_bindgen_futures::future_to_promise(async move {
+            crate::pool::blob_of(bitmap, kind, quality)
+                .await
+                .map_err(JsValue::from)
+        }))
+    }
+
+    /// The look as `applyOptions` takes it, with the theme as an object.
+    ///
+    /// @returns {ChartLook}
+    #[wasm_bindgen(unchecked_return_type = "ChartLook")]
+    pub fn options(&self) -> Result<JsValue, JsError> {
+        let (look, theme) = self.with_chart(|c| {
+            (
+                crate::look::Look {
+                    appearance: c.appearance(),
+                    interaction: c.interaction(),
+                    crosshair: c.crosshair_style(),
+                },
+                *c.theme(),
+            )
+        })?;
+        let o = js_sys::Object::new();
+        look.write(&o);
+        crate::host::set(&o, "theme", &crate::look::theme_js(&theme));
+        Ok(o.into())
     }
 
     /// The GPU API in use: `'webgpu'` or `'webgl2'`.

@@ -1,4 +1,4 @@
-<!-- source: 5a2a4a05ee -->
+<!-- source: 2b4219641f -->
 # lightweight-charts からの移行
 
 lightweight-charts向けに書かれたコードをFerroChartで使う方法は2つあります。
@@ -40,7 +40,7 @@ chart.timeScale().fitContent();
 | 時間軸 | `fitContent`、`scrollToRealTime`、`scrollToPosition`、`scrollPosition`、`getVisibleLogicalRange`、`setVisibleLogicalRange`、`getVisibleRange`、`setVisibleRange`、`logicalToCoordinate`、`coordinateToLogical`、`timeToCoordinate`、`coordinateToTime`、表示中の論理範囲と時間範囲の購読、`applyOptions` / `options`（`barSpacing`、`rightOffset`）、`width` |
 | 価格スケール | `chart.priceScale('right', paneIndex)`と`series.priceScale()`：`scaleMargins`、`mode`、`invertScale`、`autoScale`を指定した`applyOptions` / `options` |
 | クロスヘア | `subscribeCrosshairMove` / `unsubscribeCrosshairMove`（`time`、`logical`、`point`、`paneIndex`、`seriesData`付き） |
-| チャート | `applyOptions` / `options`（`width`、`height`、`layout.background.color`、`crosshair.mode`、`timeScale.barSpacing`、`timeScale.rightOffset`）、`resize`、`remove`、`timeScale`、`priceScale` |
+| チャート | `applyOptions` / `options`（`width`、`height`、`layout`、`grid`、`crosshair`、`rightPriceScale.visible`、`handleScroll`、`handleScale`、`timeScale.barSpacing`、`timeScale.rightOffset`、`timeScale.visible`）、`resize`、`remove`、`timeScale`、`priceScale` |
 | 定数 | `ColorType`、`CrosshairMode`、`LineStyle`、`LineType`、`PriceScaleMode`、`isUTCTimestamp`、`isBusinessDay` |
 
 TypeScriptの型宣言（`ISeriesApi`、`IChartApi`、`Time`、`UTCTimestamp`、`SeriesMarker`など）も含まれています。
@@ -80,9 +80,12 @@ console.log(chart.timeScale().getVisibleLogicalRange());
 
 **テーマと色**
 
-- `layout.background.color`でテーマが決まります。`#rrggbb`（または`#rrggbbaa`）で書かれた暗い色ならダークテーマ、それ以外ならライトテーマになります。その他の`layout`オプション（`textColor`、`fontSize`、`fontFamily`、グラデーション）は無視されます。`layout`はGPUのセットアップ完了時に一度だけ読み込まれ、その後に変更しても警告が出力されるだけで効果はありません。
-- `crosshair.mode`：`Normal`、`Magnet`、`Hidden`が動作します。`MagnetOHLC`は`Magnet`として扱われます。
-- `grid`、`watermark`、`handleScroll`、`handleScale`、`localization`、`kineticScroll`など、対応するものがないチャートオプションは受け付けられますが無視されます。
+- `layout.background.color`は背景色を設定し、基になるテーマを決めます。`#rrggbb`（または`#rrggbbaa`）で書かれた暗い色ならダークテーマ、それ以外ならライトテーマです。`layout.textColor`と`layout.fontSize`は文字を設定します。グラデーション背景は`topColor`で描かれ、`fontFamily`は無視されます。いずれも`applyOptions`で変更できます。
+- `grid.vertLines` / `grid.horzLines`：`visible`でそれぞれ縦線・横線を隠せます。グリッドの色は1つだけです（両方指定した場合は横線の色）。
+- `rightPriceScale.visible`（または`priceScale('right').applyOptions({ visible })`）と`timeScale.visible`で軸を隠せます。価格軸はすべてのペインでまとめて隠れます。
+- `handleScroll`と`handleScale`：`false`、またはサブオプションがすべて`false`のオブジェクトでパンやズームをオフにします。サブオプションが1つでも`true`ならオンのままです（FerroChartのスイッチはそれぞれ1つです）。
+- `crosshair.mode`：`Normal`、`Magnet`、`Hidden`が動作します。`MagnetOHLC`は`Magnet`として扱われます。`vertLine.visible`と`horzLine.visible`でそれぞれの線を隠せます。ラベルは両方の線の`labelVisible`が`false`でない限り表示されます。
+- `watermark`、`localization`、`kineticScroll`など、対応するものがないチャートオプションは受け付けられますが無視されます。
 - 色はFerroChartが受け付ける形式で指定する必要があります：`#rgb`、`#rrggbb`、`#rrggbbaa`、`rgb()`、`rgba()`、`transparent`。`'red'`のような色名はエラーになります。[色](styling.md#colors)を参照してください。
 
 **シリーズのオプション。** 使用されるのは次のオプションだけです。それ以外は受け付けられますが無視されます。

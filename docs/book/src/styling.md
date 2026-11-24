@@ -1,7 +1,8 @@
 # Themes and styling
 
 This chapter covers how a chart looks and how it fits into a page: the theme,
-colors, the attribution logo, the intro animation, the GPU renderer, sizing
+colors, axes and padding, interaction, the crosshair, many small charts,
+images, the attribution logo, the intro animation, the GPU renderer, sizing
 and cleanup. Everything here applies to `FerroPlot` as well unless noted.
 
 ## Theme
@@ -18,9 +19,28 @@ const chart = await FerroChart.create(canvas, { theme: 'dark' }); // 'light' (de
 
 The theme sets the background, grid, text, axis and crosshair colors, the
 default up and down colors of candles, and the default colors of series,
-indicators and drawings. It cannot be changed on an existing chart; to switch
-themes, save the state (see [Saving and restoring](state.md)), destroy the
-chart and create a new one.
+indicators and drawings.
+
+A theme can also be an object: colors on top of a `base` theme (`'light'` by
+default), as CSS colors. Keys you leave out come from the base. Change the
+theme of an existing chart with `applyOptions`; the view and data are kept.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  theme: { base: 'dark', background: '#0b0d12', up: '#30a0f0', down: '#f09030', fontSize: 13 },
+});
+chart.applyOptions({ theme: 'light' });
+```
+
+The keys are `background`, `text`, `grid`, `axisLine`, `up`, `down`,
+`upWick`, `downWick`, `volumeUp`, `volumeDown`, `crosshair`,
+`crosshairLabelBg`, `crosshairLabelText`, `line`, `fontSize` and
+`axisPadding`; an unknown key is an error. `chart.options().theme` reads the
+current theme back.
 
 Any color you leave unset, or set to `null`, follows the theme. Set colors
 explicitly only where you need them; the rest then stays consistent in both
@@ -91,6 +111,108 @@ Per-point color columns (histogram data, plot marks) also accept a
 `Uint32Array` of `0xRRGGBBAA` values, which avoids creating strings for large
 data.
 
+## Axes, grid and padding
+
+Charts in apps and tables often have no axes at all. `priceAxis` and
+`timeAxis` show or hide the axes, `grid` the grid lines (`true`, `false` or
+`{ horizontal, vertical }`), and `padding` leaves space around the plot (CSS
+px, a number or `{ top, right, bottom, left }`). Hidden axes give their space
+to the plot.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  priceAxis: false,
+  grid: { vertical: false },
+  padding: { top: 72, bottom: 40 },
+});
+chart.applyOptions({ timeAxis: false });
+```
+
+All of these, and the options of the next two sections, work in `create` and
+in `applyOptions`, and `chart.options()` reads them back. In Python they are
+keyword arguments with snake_case names (`Chart(preset="sparkline")`,
+`chart.apply_options(price_axis=False)`); in C they are the
+`FerroChartAppearance`, `FerroChartInteraction`, `FerroChartCrosshairStyle`
+and `FerroChartTheme` structs.
+
+## Interaction
+
+`interaction` switches panning, zooming and the crosshair on and off:
+`{ pan, zoom, crosshair }`, or `false` for all three. Input a switch turns
+off is not used by the chart, so on a touch screen the page scrolls and
+zooms as usual. Clicks are still reported.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, { interaction: { pan: false, zoom: false } });
+```
+
+## Crosshair style
+
+`crosshairStyle` sets which parts of the crosshair are drawn: `vertical` and
+`horizontal` lines, axis `labels`, and a `dot` on the first series' value
+(`{ radius, color }`, `null` for none; the color defaults to the series').
+A vertical line with a dot is the usual crosshair of a quote card.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvas: HTMLCanvasElement;
+
+const chart = await FerroChart.create(canvas, {
+  crosshairStyle: { horizontal: false, labels: false, dot: { radius: 5 } },
+});
+```
+
+## Many small charts
+
+`preset: 'sparkline'` is a chart for a table cell: no axes, no grid, padding
+2, no interaction, and a crosshair of a vertical line with a dot. Options
+given next to it apply on top.
+
+A browser keeps only about 16 WebGL contexts per page, and every chart has
+its own GPU device. For a page of many small charts, create them from a
+pool: they share one device (and on WebGL2, one context). Charts outside the
+viewport are not drawn until they scroll back in.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const canvases: HTMLCanvasElement[];
+
+const pool = await FerroChart.createPool();
+const charts = await Promise.all(canvases.map((c) => pool.create(c, { preset: 'sparkline' })));
+// …
+pool.destroy(); // destroys every chart of the pool
+```
+
+On WebGL2 a pooled chart draws its canvas with a 2D context, so the canvas
+must not have another context yet.
+
+## Images
+
+`chart.toBlob(type?, quality?)` draws a frame and returns it as a PNG (the
+default), WebP or JPEG `Blob`; `chart.toImageBitmap()` returns an
+`ImageBitmap`. The image has the canvas' pixel size and does not include the
+attribution logo, which is not part of the canvas. `FerroPlot` has the same
+methods.
+
+```ts
+import { FerroChart } from '@ferrochart/core';
+
+declare const chart: FerroChart;
+
+const png = await chart.toBlob();
+const jpeg = await chart.toBlob('image/jpeg', 0.9);
+```
+
 ## Attribution logo
 
 By default a small FerroChart logo is shown at the bottom-left corner of the
@@ -98,6 +220,9 @@ lowest pane, just above the time axis. It links to ferrochart.com and shows
 the name when the pointer is over it.
 
 The logo is a courtesy, not a license requirement: you may turn it off.
+When you do not set `attributionLogo`, it is shown only on canvases of at
+least 320 × 160 CSS px, and appears or goes as the canvas is resized across
+that size; `true` or `false` (or `setAttributionLogo`) fixes it.
 
 ```ts
 import { FerroChart } from '@ferrochart/core';

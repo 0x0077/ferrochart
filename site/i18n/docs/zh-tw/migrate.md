@@ -1,4 +1,4 @@
-<!-- source: 5a2a4a05ee -->
+<!-- source: 2b4219641f -->
 # 從 lightweight-charts 遷移
 
 為 lightweight-charts 撰寫的程式碼有兩種方式可以接上 FerroChart：
@@ -40,7 +40,7 @@ chart.timeScale().fitContent();
 | 時間軸 | `fitContent`、`scrollToRealTime`、`scrollToPosition`、`scrollPosition`、`getVisibleLogicalRange`、`setVisibleLogicalRange`、`getVisibleRange`、`setVisibleRange`、`logicalToCoordinate`、`coordinateToLogical`、`timeToCoordinate`、`coordinateToTime`、可見邏輯範圍與時間範圍的訂閱、`applyOptions` / `options`（`barSpacing`、`rightOffset`）、`width` |
 | 價格軸 | `chart.priceScale('right', paneIndex)` 與 `series.priceScale()`：`applyOptions` / `options`，含 `scaleMargins`、`mode`、`invertScale`、`autoScale` |
 | 十字游標 | `subscribeCrosshairMove` / `unsubscribeCrosshairMove`，提供 `time`、`logical`、`point`、`paneIndex` 與 `seriesData` |
-| 圖表 | `applyOptions` / `options`（`width`、`height`、`layout.background.color`、`crosshair.mode`、`timeScale.barSpacing`、`timeScale.rightOffset`）、`resize`、`remove`、`timeScale`、`priceScale` |
+| 圖表 | `applyOptions` / `options`（`width`、`height`、`layout`、`grid`、`crosshair`、`rightPriceScale.visible`、`handleScroll`、`handleScale`、`timeScale.barSpacing`、`timeScale.rightOffset`、`timeScale.visible`）、`resize`、`remove`、`timeScale`、`priceScale` |
 | 常數 | `ColorType`、`CrosshairMode`、`LineStyle`、`LineType`、`PriceScaleMode`、`isUTCTimestamp`、`isBusinessDay` |
 
 內附 TypeScript 型別宣告（`ISeriesApi`、`IChartApi`、`Time`、`UTCTimestamp`、`SeriesMarker` 等）。
@@ -80,9 +80,12 @@ console.log(chart.timeScale().getVisibleLogicalRange());
 
 **主題與顏色**
 
-- `layout.background.color` 決定主題：以 `#rrggbb`（或 `#rrggbbaa`）寫成的深色會套用深色主題，其他則套用淺色主題。其他 `layout` 選項（`textColor`、`fontSize`、`fontFamily`、漸層）會被忽略。`layout` 只在 GPU 初始化完成時讀取一次；之後再修改會記錄一則警告且沒有效果。
-- `crosshair.mode`：`Normal`、`Magnet` 與 `Hidden` 可正常運作；`MagnetOHLC` 視同 `Magnet`。
-- `grid`、`watermark`、`handleScroll`、`handleScale`、`localization`、`kineticScroll` 以及其他沒有對應功能的圖表選項會被接受但忽略。
+- `layout.background.color` 設定背景並決定基礎主題：以 `#rrggbb`（或 `#rrggbbaa`）寫成的深色套用深色主題，其他則套用淺色主題。`layout.textColor` 與 `layout.fontSize` 設定文字；漸層背景以其 `topColor` 繪製；`fontFamily` 會被忽略。這些都可以用 `applyOptions` 修改。
+- `grid.vertLines` / `grid.horzLines`：`visible` 分別隱藏垂直線與水平線；格線只有一種顏色（兩者都給出時取水平線的顏色）。
+- `rightPriceScale.visible`（或 `priceScale('right').applyOptions({ visible })`）與 `timeScale.visible` 隱藏座標軸；價格軸在所有窗格中一起隱藏。
+- `handleScroll` 與 `handleScale`：`false`，或所有子選項都是 `false` 的物件，會關閉平移或縮放；任一子選項為 `true` 則維持開啟（FerroChart 各只有一個開關）。
+- `crosshair.mode`：`Normal`、`Magnet` 與 `Hidden` 可正常運作；`MagnetOHLC` 視同 `Magnet`。`vertLine.visible` 與 `horzLine.visible` 分別隱藏兩條線；除非兩條線的 `labelVisible` 都是 `false`，否則會顯示標籤。
+- `watermark`、`localization`、`kineticScroll` 以及其他沒有對應功能的圖表選項會被接受但忽略。
 - 顏色必須是 FerroChart 接受的格式：`#rgb`、`#rrggbb`、`#rrggbbaa`、`rgb()`、`rgba()` 或 `transparent`。`'red'` 這類具名顏色會造成錯誤。請見[顏色](styling.md#colors)。
 
 **系列選項。** 只會使用下列選項；其餘選項會被接受但忽略：

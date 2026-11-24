@@ -14,6 +14,7 @@ use std::ffi::{CStr, CString, c_char};
 use std::ptr;
 
 use ferrochart::input::*;
+use ferrochart::look::*;
 use ferrochart::render::*;
 use ferrochart::*;
 
@@ -1302,4 +1303,156 @@ fn bar_flags() {
         ferrochart_series_options(ch.0, s, &mut o);
         assert_eq!(o.filled_bar_color, 0x8888_88FF);
     }
+}
+
+// Look (r25) -------------------------------------------------------------------
+
+fn zeroed<T: Copy>(size: usize) -> T {
+    // The structs are plain numbers: all zeros is valid. `size` first.
+    let mut v: T = unsafe { std::mem::zeroed() };
+    unsafe { ptr::write_unaligned((&raw mut v).cast::<u32>(), size as u32) };
+    v
+}
+
+#[test]
+fn look_structs_round_trip_and_change_the_image() {
+    let ch = chart(FERROCHART_THEME_LIGHT, 300.0, 120.0, 1.0);
+    candles(&ch, 200);
+    let full = render(&ch).2;
+
+    // Appearance: the sparkline look.
+    let mut a: FerroChartAppearance = zeroed(size_of::<FerroChartAppearance>());
+    assert_eq!(
+        unsafe { ferrochart_appearance(ch.0, &mut a) },
+        FERROCHART_OK
+    );
+    assert_eq!(
+        (
+            a.price_axis,
+            a.time_axis,
+            a.grid_horizontal,
+            a.grid_vertical
+        ),
+        (1, 1, 1, 1)
+    );
+    a.price_axis = 0;
+    a.time_axis = 0;
+    a.grid_horizontal = 0;
+    a.grid_vertical = 0;
+    a.padding_top = 2.0;
+    assert_eq!(
+        unsafe { ferrochart_set_appearance(ch.0, &a) },
+        FERROCHART_OK
+    );
+    let mut back: FerroChartAppearance = zeroed(size_of::<FerroChartAppearance>());
+    unsafe { ferrochart_appearance(ch.0, &mut back) };
+    assert_eq!((back.price_axis, back.padding_top), (0, 2.0));
+    let bare = render(&ch).2;
+    assert_ne!(bare, full);
+
+    // Theme: from the dark default, a custom background.
+    let mut t: FerroChartTheme = zeroed(size_of::<FerroChartTheme>());
+    assert_eq!(
+        unsafe { ferrochart_theme_default(1, &mut t) },
+        FERROCHART_OK
+    );
+    t.background = 0x1020_30ff;
+    assert_eq!(unsafe { ferrochart_set_theme(ch.0, &t) }, FERROCHART_OK);
+    let (w, _, px) = render(&ch);
+    let stride = w as usize * 4 + 16;
+    let corner = &px[stride + 4..stride + 8];
+    assert_eq!(corner, [0x10, 0x20, 0x30, 0xff]);
+    let mut t2: FerroChartTheme = zeroed(size_of::<FerroChartTheme>());
+    unsafe { ferrochart_theme(ch.0, &mut t2) };
+    assert_eq!(t2.background, 0x1020_30ff);
+
+    // Interaction and crosshair style.
+    let mut i: FerroChartInteraction = zeroed(size_of::<FerroChartInteraction>());
+    unsafe { ferrochart_interaction(ch.0, &mut i) };
+    assert_eq!((i.pan, i.zoom, i.crosshair), (1, 1, 1));
+    i.pan = 0;
+    i.zoom = 0;
+    assert_eq!(
+        unsafe { ferrochart_set_interaction(ch.0, &i) },
+        FERROCHART_OK
+    );
+    unsafe { ferrochart_interaction(ch.0, &mut i) };
+    assert_eq!((i.pan, i.zoom, i.crosshair), (0, 0, 1));
+    let mut s: FerroChartCrosshairStyle = zeroed(size_of::<FerroChartCrosshairStyle>());
+    unsafe { ferrochart_crosshair_style(ch.0, &mut s) };
+    assert_eq!((s.vertical, s.horizontal, s.labels, s.dot), (1, 1, 1, 0));
+    s.horizontal = 0;
+    s.dot = 1;
+    s.dot_radius = 3.0;
+    assert_eq!(
+        unsafe { ferrochart_set_crosshair_style(ch.0, &s) },
+        FERROCHART_OK
+    );
+    unsafe { ferrochart_crosshair_style(ch.0, &mut s) };
+    assert_eq!(
+        (s.horizontal, s.dot, s.dot_radius, s.dot_color),
+        (0, 1, 3.0, 0)
+    );
+}
+
+#[test]
+fn bad_look_values_are_errors_and_change_nothing() {
+    let ch = chart(FERROCHART_THEME_LIGHT, 300.0, 120.0, 1.0);
+    let mut a: FerroChartAppearance = zeroed(size_of::<FerroChartAppearance>());
+    unsafe { ferrochart_appearance(ch.0, &mut a) };
+    let good = a;
+    a.price_axis = 2;
+    assert_eq!(
+        unsafe { ferrochart_set_appearance(ch.0, &a) },
+        FERROCHART_ERR_INVALID_ARGUMENT
+    );
+    a = good;
+    a.padding_left = -1.0;
+    assert_eq!(
+        unsafe { ferrochart_set_appearance(ch.0, &a) },
+        FERROCHART_ERR_INVALID_ARGUMENT
+    );
+    assert!(last_error().contains("padding_left"), "{}", last_error());
+    let mut back: FerroChartAppearance = zeroed(size_of::<FerroChartAppearance>());
+    unsafe { ferrochart_appearance(ch.0, &mut back) };
+    assert_eq!((back.price_axis, back.padding_left), (1, 0.0));
+
+    let mut t: FerroChartTheme = zeroed(size_of::<FerroChartTheme>());
+    assert_eq!(
+        unsafe { ferrochart_theme_default(2, &mut t) },
+        FERROCHART_ERR_INVALID_ARGUMENT
+    );
+    unsafe { ferrochart_theme_default(0, &mut t) };
+    t.font_size = f32::NAN;
+    assert_eq!(
+        unsafe { ferrochart_set_theme(ch.0, &t) },
+        FERROCHART_ERR_INVALID_ARGUMENT
+    );
+
+    let mut s: FerroChartCrosshairStyle = zeroed(size_of::<FerroChartCrosshairStyle>());
+    unsafe { ferrochart_crosshair_style(ch.0, &mut s) };
+    s.dot = 1;
+    s.dot_radius = 0.0;
+    assert_eq!(
+        unsafe { ferrochart_set_crosshair_style(ch.0, &s) },
+        FERROCHART_ERR_INVALID_ARGUMENT
+    );
+    assert_eq!(
+        unsafe { ferrochart_set_appearance(ch.0, ptr::null()) },
+        FERROCHART_ERR_NULL
+    );
+    assert_eq!(
+        unsafe { ferrochart_set_theme(ptr::null_mut(), &t) },
+        FERROCHART_ERR_NULL
+    );
+
+    // An older, shorter struct: only its fields change.
+    let mut short: FerroChartAppearance = zeroed(size_of::<u32>() + 1);
+    short.price_axis = 0;
+    assert_eq!(
+        unsafe { ferrochart_set_appearance(ch.0, &short) },
+        FERROCHART_OK
+    );
+    unsafe { ferrochart_appearance(ch.0, &mut back) };
+    assert_eq!((back.price_axis, back.time_axis), (0, 1));
 }
